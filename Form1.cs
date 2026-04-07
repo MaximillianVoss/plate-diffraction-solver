@@ -6,8 +6,8 @@ using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
-using DifrOnLenta = Diffraction.Program.DifrOnLenta;
-using Compl = Diffraction.Program.Compl;
+using DifrOnLenta = Diffraction.Core.DiffractionMath.DifrOnLenta;
+using Compl = Diffraction.Core.DiffractionMath.Compl;
 
 namespace Diffraction
 {
