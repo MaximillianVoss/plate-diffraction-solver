@@ -2,7 +2,10 @@ using System;
 using System.Windows.Forms;
 using System.Windows.Forms.DataVisualization.Charting;
 using System.Drawing;
+using System.Drawing.Imaging;
+using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading.Tasks;
 using DifrOnLenta = Diffraction.Program.DifrOnLenta;
 using Compl = Diffraction.Program.Compl;
 
@@ -47,14 +50,14 @@ namespace Diffraction
         }
 
         // Обработчик события Shown для автоматического открытия Form2
-        private void MainForm_Shown(object sender, EventArgs e)
+        private async void MainForm_Shown(object sender, EventArgs e)
         {
             // Автоматически открываем форму с графиками
-            OpenGraphicsForm();
+            await OpenGraphicsFormAsync();
         }
 
         // Метод для открытия формы с графиками (рефакторинг button2_Click)
-        private void OpenGraphicsForm()
+        private async Task OpenGraphicsFormAsync()
         {
             // Повторно используем Form2, если она уже открыта
             if (currentForm2 == null || currentForm2.IsDisposed)
@@ -62,19 +65,41 @@ namespace Diffraction
                 currentForm2 = new Form2();
             }
 
-            // Создание изображений графиков с помощью метода CreateGraphImages
-            GraphImagePair images = CreateGraphImages(currentForm2);
+            PlateCalculationInput input;
+            if (!TryReadCalculationInput(out input))
+                return;
 
-            if (images != null)
+            int width = currentForm2.pictureBoxNoSkin.Width;
+            int height = currentForm2.pictureBoxNoSkin.Height;
+            var progress = new Progress<string>(UpdateCalculationStatus);
+
+            SetCalculationBusy(true, "Построение поля...");
+            try
             {
-                currentForm2.pictureBoxNoSkin.Image = images.ImageNoSkin;
-                currentForm2.pictureBoxSkin.Image = images.ImageSkin;
-            }
+                // Создание изображений графиков с помощью метода CreateGraphImages
+                GraphImagePair images = await Task.Run(() => CreateGraphImages(input, width, height, progress));
 
-            if (!currentForm2.Visible)
-                currentForm2.Show();
-            else
-                currentForm2.Refresh();
+                if (images != null)
+                {
+                    currentForm2.pictureBoxNoSkin.Image = images.ImageNoSkin;
+                    currentForm2.pictureBoxSkin.Image = images.ImageSkin;
+                }
+
+                if (!currentForm2.Visible)
+                    currentForm2.Show();
+                else
+                    currentForm2.Refresh();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    string.Format("Ошибка построения поля: {0}", ex.Message),
+                    "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+            finally
+            {
+                SetCalculationBusy(false, "Готово");
+            }
         }
 
         // Обработчик события изменения значения числового поля xL.
@@ -222,161 +247,272 @@ namespace Diffraction
         }
 
         // Обработчик события нажатия кнопки button1.
-        private void button1_Click(object sender, EventArgs e)
+        private async void button1_Click(object sender, EventArgs e)
         {
             // Очистка предыдущих данных
             chartRealPart.Series[0].Points.Clear(); // Без скин-слоя
             chartRealPart.Series[1].Points.Clear(); // Со скин-слоем
             textBoxChebPolynomial.Clear();
 
-            // Параметры задачи
-            int param = (int)truncationParameterN.Value;
-            double alpha1, beta1, alpha2, beta2;
-            if (!TryReadPlateParameters(out alpha1, out beta1, out alpha2, out beta2))
+            PlateCalculationInput input;
+            if (!TryReadCalculationInput(out input))
                 return;
 
-            double plotLeft = Math.Min(alpha1, alpha2);
-            double plotRight = Math.Max(beta1, beta2);
-            double angle = (double)angleInDegrees.Value / 180 * Math.PI;
-            double len = (double)wavelength.Value;
-            double skinDepth = (double)skinDepthInput.Value;
+            int imageWidth = 0;
+            int imageHeight = 0;
+            bool updateGraphics = currentForm2 != null && !currentForm2.IsDisposed && currentForm2.Visible;
+            if (updateGraphics)
+            {
+                imageWidth = currentForm2.pictureBoxNoSkin.Width;
+                imageHeight = currentForm2.pictureBoxNoSkin.Height;
+            }
 
-            // Решение БЕЗ скин-слоя (skinDepth = 0)
-            DifrOnLenta qNoSkin = new DifrOnLenta(alpha1, beta1, alpha2, beta2, len, angle, param, 0);
-            bool noSkinSolved = false;
+            var progress = new Progress<string>(UpdateCalculationStatus);
+            CalculationResult result = null;
 
-            // z-смещение от поверхности для избежания сингулярности H0 при z=0
-            double z_plot = len / 10.0;
+            SetCalculationBusy(true, "Запуск расчета...");
 
             try
             {
-                if (qNoSkin.SolveDifr() == 1)
-                {
-                    noSkinSolved = true;
-                    // Построение графика для случая без скин-слоя
-                    double h = (plotRight - plotLeft) / 1000, x = plotLeft;
-                    while (x <= plotRight)
-                    {
-                        chartRealPart.Series[0].Points.AddXY(x, qNoSkin.u(x, z_plot).Re);
-                        x += h;
-                    }
-                }
+                result = await Task.Run(() => RunFullCalculation(input, imageWidth, imageHeight, progress));
+                ApplyCalculationResult(result, updateGraphics);
             }
             catch (Exception ex)
             {
                 MessageBox.Show(
-                    string.Format("Ошибка решения без скин-слоя: {0}", ex.Message),
+                    string.Format("Ошибка расчета: {0}", ex.Message),
                     "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
-
-            // Решение С УЧЕТОМ скин-слоя
-            DifrOnLenta qSkin = new DifrOnLenta(alpha1, beta1, alpha2, beta2, len, angle, param, skinDepth);
-            try
+            finally
             {
-                if (qSkin.SolveDifr() == 1)
-                {
-                    // Вывод в текстовое поле коэффициентов разложения по полиномам Чебышева
-                    textBoxChebPolynomial.Clear();
-
-                    // Заголовок с информацией о коэффициенте χ
-                    textBoxChebPolynomial.Text += "Импедансный коэффициент χ:" + Environment.NewLine;
-                    textBoxChebPolynomial.Text += string.Format("χ = {0:F6} + {1:F6}i{2}", qSkin.chi.Re, qSkin.chi.Im, Environment.NewLine);
-                    textBoxChebPolynomial.Text += Environment.NewLine;
-
-                    // Вывод ВСЕХ коэффициентов Чебышева для каждой пластины
-                    int totalCoefficients = param * qSkin.PlateCount;
-                    textBoxChebPolynomial.Text += string.Format("Коэффициенты Чебышева (всего {0}, по {1} на пластину):{2}",
-                        totalCoefficients, param, Environment.NewLine);
-                    textBoxChebPolynomial.Text += string.Format("{0,-10} {1,-4} {2,-25} {3,-25}{4}", "Пластина", "#", "БЕЗ скин-слоя", "СО скин-слоем", Environment.NewLine);
-                    textBoxChebPolynomial.Text += new string('.', 76) + Environment.NewLine;
-
-                    for (int plateIndex = 0; plateIndex < qSkin.PlateCount; plateIndex++)
-                    {
-                        for (int coeffIndex = 0; coeffIndex < param; coeffIndex++)
-                        {
-                            int globalIndex = plateIndex * param + coeffIndex;
-                            string noSkinCoeff = noSkinSolved
-                                ? string.Format("{0:F4}+{1:F4}i", qNoSkin.y[globalIndex].Re, qNoSkin.y[globalIndex].Im)
-                                : "нет решения";
-                            string skinCoeff = string.Format("{0:F4}+{1:F4}i", qSkin.y[globalIndex].Re, qSkin.y[globalIndex].Im);
-                            textBoxChebPolynomial.Text += string.Format("{0,-10} {1,-4} {2,-25} {3,-25}{4}",
-                                plateIndex + 1, coeffIndex + 1, noSkinCoeff, skinCoeff, Environment.NewLine);
-                        }
-                    }
-
-                    // Построение графика для случая со скин-слоем
-                    double h = (plotRight - plotLeft) / 1000, x = plotLeft;
-                    while (x <= plotRight)
-                    {
-                        chartRealPart.Series[1].Points.AddXY(x, qSkin.u(x, z_plot).Re);
-                        x += h;
-                    }
-
-                    // Расчет проводимости материала (только при ненулевой толщине скин-слоя)
-                    if (skinDepth > 0)
-                    {
-                        try
-                        {
-                            double skinDepth_m = skinDepth;
-                            double wavelength_m = len;
-                            double conductivity = qSkin.CalculateConductivity(skinDepth_m, wavelength_m);
-
-                            lblConductivity.Text = string.Format("Проводимость: {0:E2} См/м", conductivity);
-                            lblConductivity.ForeColor = Color.DarkBlue;
-                        }
-                        catch (Exception ex)
-                        {
-                            lblConductivity.Text = string.Format("Ошибка: {0}", ex.Message);
-                            lblConductivity.ForeColor = Color.Red;
-                        }
-                    }
-                    else
-                    {
-                        lblConductivity.Text = "Проводимость: не рассчитана (идеальный проводник)";
-                        lblConductivity.ForeColor = Color.Gray;
-                    }
-
-                    // ========== ВЫВОД ДЛЯ СЛУЧАЯ БЕЗ СКИН-СЛОЯ ==========
-                    if (noSkinSolved)
-                    {
-                        ShowAccuracyReport(qNoSkin, skinDepth: 0, caseName: "БЕЗ СКИН-СЛОЯ (идеальный проводник)");
-                    }
-
-                    // ========== ВЫВОД ДЛЯ СЛУЧАЯ СО СКИН-СЛОЕМ ==========
-                    ShowAccuracyReport(qSkin, skinDepth, caseName: "СО СКИН-СЛОЕМ");
-                }
-                else
-                {
-                    MessageBox.Show(
-                        "Ошибка решения задачи с учетом скин-слоя!",
-                        "Ошибка",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Error
-                    );
-                }
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show(
-                    string.Format("Ошибка при решении со скин-слоем: {0}", ex.Message),
-                    "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                SetCalculationBusy(false, "Готово");
             }
 
-            // Обновляем черно-белое ЭМ поле после пересчета
-            if (currentForm2 != null && !currentForm2.IsDisposed && currentForm2.Visible)
+            if (result != null)
             {
-                GraphImagePair images = CreateGraphImages(currentForm2);
-                if (images != null)
-                {
-                    currentForm2.pictureBoxNoSkin.Image = images.ImageNoSkin;
-                    currentForm2.pictureBoxSkin.Image = images.ImageSkin;
-                    currentForm2.Refresh();
-                }
+                if (result.NoSkinReport != null)
+                    ShowAccuracyReport(result.NoSkinReport);
+                if (result.SkinReport != null)
+                    ShowAccuracyReport(result.SkinReport);
             }
         }
 
+        private class PlateCalculationInput
+        {
+            public int Param;
+            public double Alpha1, Beta1, Alpha2, Beta2;
+            public double PlotLeft, PlotRight;
+            public double X1, X2, Y1, Y2;
+            public double Angle, Len, SkinDepth;
+        }
+
+        private class CalculationResult
+        {
+            public bool NoSkinSolved;
+            public bool SkinSolved;
+            public double[] XValues;
+            public double[] NoSkinReal;
+            public double[] SkinReal;
+            public string CoefficientsText;
+            public string ConductivityText;
+            public Color ConductivityColor;
+            public AccuracyReport NoSkinReport;
+            public AccuracyReport SkinReport;
+            public GraphImagePair Images;
+        }
+
+        private class AccuracyReport
+        {
+            public string Message;
+            public string Title;
+            public MessageBoxIcon Icon;
+        }
+
+        private bool TryReadCalculationInput(out PlateCalculationInput input)
+        {
+            input = null;
+
+            double alpha1, beta1, alpha2, beta2;
+            if (!TryReadPlateParameters(out alpha1, out beta1, out alpha2, out beta2))
+                return false;
+
+            input = new PlateCalculationInput
+            {
+                Param = (int)truncationParameterN.Value,
+                Alpha1 = alpha1,
+                Beta1 = beta1,
+                Alpha2 = alpha2,
+                Beta2 = beta2,
+                PlotLeft = Math.Min(alpha1, alpha2),
+                PlotRight = Math.Max(beta1, beta2),
+                X1 = (double)xL.Value,
+                X2 = (double)xR.Value,
+                Y1 = (double)yDn.Value,
+                Y2 = (double)yUp.Value,
+                Angle = (double)angleInDegrees.Value / 180 * Math.PI,
+                Len = (double)wavelength.Value,
+                SkinDepth = (double)skinDepthInput.Value
+            };
+            return true;
+        }
+
+        private CalculationResult RunFullCalculation(PlateCalculationInput input, int imageWidth, int imageHeight, IProgress<string> progress)
+        {
+            CalculationResult result = new CalculationResult();
+
+            progress.Report("Решение без скин-слоя...");
+            DifrOnLenta qNoSkin = new DifrOnLenta(input.Alpha1, input.Beta1, input.Alpha2, input.Beta2, input.Len, input.Angle, input.Param, 0);
+            result.NoSkinSolved = qNoSkin.SolveDifr() == 1;
+
+            progress.Report("Решение со скин-слоем...");
+            DifrOnLenta qSkin = new DifrOnLenta(input.Alpha1, input.Beta1, input.Alpha2, input.Beta2, input.Len, input.Angle, input.Param, input.SkinDepth);
+            result.SkinSolved = qSkin.SolveDifr() == 1;
+            if (!result.SkinSolved)
+                throw new InvalidOperationException("Ошибка решения задачи с учетом скин-слоя");
+
+            progress.Report("Подготовка графика...");
+            result.XValues = BuildPlotXValues(input.PlotLeft, input.PlotRight, 1000);
+            double zPlot = input.Len / 10.0;
+            if (result.NoSkinSolved)
+                result.NoSkinReal = SampleRealPart(qNoSkin, result.XValues, zPlot);
+            result.SkinReal = SampleRealPart(qSkin, result.XValues, zPlot);
+
+            progress.Report("Подготовка коэффициентов...");
+            result.CoefficientsText = BuildCoefficientText(input, qNoSkin, qSkin, result.NoSkinSolved);
+            BuildConductivityStatus(input, qSkin, out result.ConductivityText, out result.ConductivityColor);
+
+            progress.Report("Расчет проверок точности...");
+            if (result.NoSkinSolved)
+                result.NoSkinReport = BuildAccuracyReport(qNoSkin, skinDepth: 0, caseName: "БЕЗ СКИН-СЛОЯ (идеальный проводник)");
+            result.SkinReport = BuildAccuracyReport(qSkin, input.SkinDepth, caseName: "СО СКИН-СЛОЕМ");
+
+            if (imageWidth > 0 && imageHeight > 0 && result.NoSkinSolved && result.SkinSolved)
+            {
+                progress.Report("Построение поля...");
+                result.Images = CreateGraphImages(input, imageWidth, imageHeight, qNoSkin, qSkin, progress);
+            }
+
+            return result;
+        }
+
+        private static double[] BuildPlotXValues(double left, double right, int segments)
+        {
+            double[] values = new double[segments + 1];
+            double h = (right - left) / segments;
+            for (int i = 0; i < values.Length; i++)
+                values[i] = left + h * i;
+            return values;
+        }
+
+        private static double[] SampleRealPart(DifrOnLenta solver, double[] xValues, double z)
+        {
+            double[] values = new double[xValues.Length];
+            Parallel.For(0, xValues.Length, i =>
+            {
+                values[i] = solver.u(xValues[i], z).Re;
+            });
+            return values;
+        }
+
+        private string BuildCoefficientText(PlateCalculationInput input, DifrOnLenta qNoSkin, DifrOnLenta qSkin, bool noSkinSolved)
+        {
+            StringBuilder builder = new StringBuilder();
+            builder.AppendLine("Импедансный коэффициент χ:");
+            builder.AppendFormat("χ = {0:F6} + {1:F6}i{2}", qSkin.chi.Re, qSkin.chi.Im, Environment.NewLine);
+            builder.AppendLine();
+
+            int totalCoefficients = input.Param * qSkin.PlateCount;
+            builder.AppendFormat("Коэффициенты Чебышева (всего {0}, по {1} на пластину):{2}",
+                totalCoefficients, input.Param, Environment.NewLine);
+            builder.AppendFormat("{0,-10} {1,-4} {2,-25} {3,-25}{4}",
+                "Пластина", "#", "БЕЗ скин-слоя", "СО скин-слоем", Environment.NewLine);
+            builder.AppendLine(new string('.', 76));
+
+            for (int plateIndex = 0; plateIndex < qSkin.PlateCount; plateIndex++)
+            {
+                for (int coeffIndex = 0; coeffIndex < input.Param; coeffIndex++)
+                {
+                    int globalIndex = plateIndex * input.Param + coeffIndex;
+                    string noSkinCoeff = noSkinSolved
+                        ? string.Format("{0:F4}+{1:F4}i", qNoSkin.y[globalIndex].Re, qNoSkin.y[globalIndex].Im)
+                        : "нет решения";
+                    string skinCoeff = string.Format("{0:F4}+{1:F4}i", qSkin.y[globalIndex].Re, qSkin.y[globalIndex].Im);
+                    builder.AppendFormat("{0,-10} {1,-4} {2,-25} {3,-25}{4}",
+                        plateIndex + 1, coeffIndex + 1, noSkinCoeff, skinCoeff, Environment.NewLine);
+                }
+            }
+
+            return builder.ToString();
+        }
+
+        private void BuildConductivityStatus(PlateCalculationInput input, DifrOnLenta qSkin, out string text, out Color color)
+        {
+            if (input.SkinDepth > 0)
+            {
+                try
+                {
+                    double conductivity = qSkin.CalculateConductivity(input.SkinDepth, input.Len);
+                    text = string.Format("Проводимость: {0:E2} См/м", conductivity);
+                    color = Color.DarkBlue;
+                }
+                catch (Exception ex)
+                {
+                    text = string.Format("Ошибка: {0}", ex.Message);
+                    color = Color.Red;
+                }
+            }
+            else
+            {
+                text = "Проводимость: не рассчитана (идеальный проводник)";
+                color = Color.Gray;
+            }
+        }
+
+        private void ApplyCalculationResult(CalculationResult result, bool updateGraphics)
+        {
+            chartRealPart.Series[0].Points.Clear();
+            chartRealPart.Series[1].Points.Clear();
+
+            if (result.NoSkinReal != null)
+                chartRealPart.Series[0].Points.DataBindXY(result.XValues, result.NoSkinReal);
+            if (result.SkinReal != null)
+                chartRealPart.Series[1].Points.DataBindXY(result.XValues, result.SkinReal);
+
+            textBoxChebPolynomial.Text = result.CoefficientsText ?? string.Empty;
+            lblConductivity.Text = result.ConductivityText;
+            lblConductivity.ForeColor = result.ConductivityColor;
+
+            if (updateGraphics && result.Images != null && currentForm2 != null && !currentForm2.IsDisposed)
+            {
+                currentForm2.pictureBoxNoSkin.Image = result.Images.ImageNoSkin;
+                currentForm2.pictureBoxSkin.Image = result.Images.ImageSkin;
+                currentForm2.Refresh();
+            }
+        }
+
+        private void SetCalculationBusy(bool busy, string status)
+        {
+            CalculateButton.Enabled = !busy;
+            buttonGraphic.Enabled = !busy;
+            groupBox1.Enabled = !busy;
+            groupBox2.Enabled = !busy;
+            groupBox3.Enabled = !busy;
+            groupBox4.Enabled = !busy;
+            groupBoxSkin.Enabled = !busy;
+            Cursor = busy ? Cursors.WaitCursor : Cursors.Default;
+            progressCalculation.Visible = busy;
+            progressCalculation.Style = busy ? ProgressBarStyle.Marquee : ProgressBarStyle.Blocks;
+            progressCalculation.MarqueeAnimationSpeed = busy ? 30 : 0;
+            UpdateCalculationStatus(status);
+        }
+
+        private void UpdateCalculationStatus(string status)
+        {
+            labelCalculationStatus.Text = status;
+        }
+
         // Новый метод для отображения отчета о точности
-        private void ShowAccuracyReport(DifrOnLenta solver, double skinDepth, string caseName)
+        private AccuracyReport BuildAccuracyReport(DifrOnLenta solver, double skinDepth, string caseName)
         {
             // Расчет энергий
             var energyComp = solver.CalculateEnergyComponents();
@@ -540,24 +676,33 @@ namespace Diffraction
                 "Контроль точности (идеальный проводник)" :
                 "Контроль точности (скин-эффект)";
 
+            return new AccuracyReport
+            {
+                Message = energyMessage.ToString(),
+                Title = title,
+                Icon = icon
+            };
+        }
+
+
+
+
+
+        private void ShowAccuracyReport(AccuracyReport report)
+        {
             MessageBox.Show(
-                energyMessage.ToString(),
-                title,
+                report.Message,
+                report.Title,
                 MessageBoxButtons.OK,
-                icon
+                report.Icon
             );
         }
 
-
-
-
-
         // Обработчик события нажатия кнопки button2
-        private void button2_Click(object sender, EventArgs e)
+        private async void button2_Click(object sender, EventArgs e)
         {
-            OpenGraphicsForm();
+            await OpenGraphicsFormAsync();
         }
-
 
         // Метод для создания изображения графика.
         private class GraphImagePair
@@ -566,91 +711,124 @@ namespace Diffraction
             public Bitmap ImageSkin;
         }
 
-        private GraphImagePair CreateGraphImages(Form2 form2)
+        private GraphImagePair CreateGraphImages(PlateCalculationInput input, int width, int height, IProgress<string> progress)
         {
-            // Создание экземпляра класса DifrOnLenta с параметрами, заданными значениями числовых полей
-            double y1 = (double)yDn.Value, y2 = (double)yUp.Value;
-            double x1 = (double)xL.Value, x2 = (double)xR.Value;
-            int param = (int)truncationParameterN.Value;
-            double alpha1, beta1, alpha2, beta2;
-            if (!TryReadPlateParameters(out alpha1, out beta1, out alpha2, out beta2))
-                return null;
-            double angle = (double)angleInDegrees.Value / 180 * Math.PI;
-            double len = (double)wavelength.Value;
-            double skinDepth = (double)skinDepthInput.Value;
-
-            // Решение без скин-слоя
-            DifrOnLenta qNoSkin = new DifrOnLenta(alpha1, beta1, alpha2, beta2, len, angle, param, 0);
+            progress.Report("Решение поля без скин-слоя...");
+            DifrOnLenta qNoSkin = new DifrOnLenta(input.Alpha1, input.Beta1, input.Alpha2, input.Beta2, input.Len, input.Angle, input.Param, 0);
             if (qNoSkin.SolveDifr() != 1)
-            {
                 return null;
-            }
 
-            // Решение со скин-слоем
-            DifrOnLenta qSkin = new DifrOnLenta(alpha1, beta1, alpha2, beta2, len, angle, param, skinDepth);
+            progress.Report("Решение поля со скин-слоем...");
+            DifrOnLenta qSkin = new DifrOnLenta(input.Alpha1, input.Beta1, input.Alpha2, input.Beta2, input.Len, input.Angle, input.Param, input.SkinDepth);
             if (qSkin.SolveDifr() != 1)
-            {
                 return null;
-            }
 
-            // Создание массива значений функции u(x, y) на плоскости (x, y).
-            int w = form2.pictureBoxNoSkin.Width;
-            int h = form2.pictureBoxNoSkin.Height;
+            return CreateGraphImages(input, width, height, qNoSkin, qSkin, progress);
+        }
 
-            double[,] uNoSkin = new double[w, h];
-            double[,] uSkin = new double[w, h];
+        private GraphImagePair CreateGraphImages(
+            PlateCalculationInput input,
+            int width,
+            int height,
+            DifrOnLenta qNoSkin,
+            DifrOnLenta qSkin,
+            IProgress<string> progress)
+        {
+            progress.Report("Расчет значений поля...");
+            int pixelCount = width * height;
+            double[] uNoSkin = new double[pixelCount];
+            double[] uSkin = new double[pixelCount];
 
-            double uMaxNoSkin = 0;
-            double uMaxSkin = 0;
+            double zEps = input.Len / 1000.0;
 
-            double z_eps = len / 1000.0; // минимальное смещение от поверхности
-            for (int i = 0; i < w; i++)
+            Parallel.For(0, width, i =>
             {
-                double x = x1 + i / (double)w * (x2 - x1);
-                for (int j = 0; j < h; j++)
+                double x = input.X1 + i / (double)width * (input.X2 - input.X1);
+                for (int j = 0; j < height; j++)
                 {
-                    double y = y1 + j / (double)h * (y2 - y1);
-                    // Избегаем z=0 на полоске для устранения сингулярности H0
-                    double y_safe = y;
-                    if (Math.Abs(y) < z_eps && IsPointOnAnyPlate(x, alpha1, beta1, alpha2, beta2))
-                        y_safe = (y >= 0) ? z_eps : -z_eps;
-                    uNoSkin[i, j] = Compl.Abs(qNoSkin.u(x, y_safe));
-                    uSkin[i, j] = Compl.Abs(qSkin.u(x, y_safe));
-                    if (uMaxNoSkin < uNoSkin[i, j])
-                        uMaxNoSkin = uNoSkin[i, j];
-                    if (uMaxSkin < uSkin[i, j])
-                        uMaxSkin = uSkin[i, j];
+                    double y = input.Y1 + j / (double)height * (input.Y2 - input.Y1);
+                    double ySafe = y;
+                    if (Math.Abs(y) < zEps && IsPointOnAnyPlate(x, input.Alpha1, input.Beta1, input.Alpha2, input.Beta2))
+                        ySafe = (y >= 0) ? zEps : -zEps;
+
+                    int index = j * width + i;
+                    uNoSkin[index] = Compl.Abs(qNoSkin.u(x, ySafe));
+                    uSkin[index] = Compl.Abs(qSkin.u(x, ySafe));
                 }
-            }
+            });
 
-            // Создание изображений графиков.
-            Bitmap imageNoSkin = new Bitmap(w, h);
-            Bitmap imageSkin = new Bitmap(w, h);
+            double uMaxNoSkin = FindMax(uNoSkin);
+            double uMaxSkin = FindMax(uSkin);
 
-            for (int i = 1; i < w; i++)
-            {
-                for (int j = 1; j < h; j++)
-                {
-                    int colNoSkin = (int)(uNoSkin[i, j] / uMaxNoSkin * 255);
-                    int colSkin = (int)(uSkin[i, j] / uMaxSkin * 255);
-                    Color colorNoSkin = Color.FromArgb(colNoSkin, colNoSkin, colNoSkin);
-                    Color colorSkin = Color.FromArgb(colSkin, colSkin, colSkin);
+            progress.Report("Формирование изображений...");
+            Bitmap imageNoSkin = CreateGrayscaleBitmap(uNoSkin, width, height, uMaxNoSkin);
+            Bitmap imageSkin = CreateGrayscaleBitmap(uSkin, width, height, uMaxSkin);
 
-                    // Рисуем пиксели для поля без скин-слоя и со скин-слоем
-                    imageNoSkin.SetPixel(i, j, colorNoSkin);
-                    imageSkin.SetPixel(i, j, colorSkin);
-                }
-            }
-
-            // Добавление на изображение маркеров пластин.
-            int yC = h / 2;
-
-            DrawPlateMarker(imageNoSkin, alpha1, beta1, x1, x2, yC);
-            DrawPlateMarker(imageNoSkin, alpha2, beta2, x1, x2, yC);
-            DrawPlateMarker(imageSkin, alpha1, beta1, x1, x2, yC);
-            DrawPlateMarker(imageSkin, alpha2, beta2, x1, x2, yC);
+            int yC = height / 2;
+            DrawPlateMarker(imageNoSkin, input.Alpha1, input.Beta1, input.X1, input.X2, yC);
+            DrawPlateMarker(imageNoSkin, input.Alpha2, input.Beta2, input.X1, input.X2, yC);
+            DrawPlateMarker(imageSkin, input.Alpha1, input.Beta1, input.X1, input.X2, yC);
+            DrawPlateMarker(imageSkin, input.Alpha2, input.Beta2, input.X1, input.X2, yC);
 
             return new GraphImagePair { ImageNoSkin = imageNoSkin, ImageSkin = imageSkin };
+        }
+
+        private static double FindMax(double[] values)
+        {
+            double max = 0;
+            for (int i = 0; i < values.Length; i++)
+            {
+                if (!double.IsNaN(values[i]) && !double.IsInfinity(values[i]) && values[i] > max)
+                    max = values[i];
+            }
+            return max > 0 ? max : 1.0;
+        }
+
+        private static Bitmap CreateGrayscaleBitmap(double[] values, int width, int height, double maxValue)
+        {
+            Bitmap image = new Bitmap(width, height, PixelFormat.Format24bppRgb);
+            BitmapData data = image.LockBits(
+                new Rectangle(0, 0, width, height),
+                ImageLockMode.WriteOnly,
+                PixelFormat.Format24bppRgb);
+
+            try
+            {
+                int stride = data.Stride;
+                byte[] bytes = new byte[stride * height];
+
+                Parallel.For(0, height, y =>
+                {
+                    int rowOffset = y * stride;
+                    for (int x = 0; x < width; x++)
+                    {
+                        int valueIndex = y * width + x;
+                        int color = ScaleToByte(values[valueIndex], maxValue);
+                        int byteIndex = rowOffset + x * 3;
+                        bytes[byteIndex] = (byte)color;
+                        bytes[byteIndex + 1] = (byte)color;
+                        bytes[byteIndex + 2] = (byte)color;
+                    }
+                });
+
+                Marshal.Copy(bytes, 0, data.Scan0, bytes.Length);
+            }
+            finally
+            {
+                image.UnlockBits(data);
+            }
+
+            return image;
+        }
+
+        private static int ScaleToByte(double value, double maxValue)
+        {
+            if (double.IsNaN(value) || double.IsInfinity(value) || maxValue <= 0)
+                return 0;
+            int color = (int)(value / maxValue * 255.0);
+            if (color < 0) return 0;
+            if (color > 255) return 255;
+            return color;
         }
 
         private static bool IsPointOnAnyPlate(double x, double alpha1, double beta1, double alpha2, double beta2)

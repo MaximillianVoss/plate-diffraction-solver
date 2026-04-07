@@ -961,66 +961,64 @@ namespace Diffraction
                 CMatr A_mat = new CMatr(totalUnknowns);
                 CVect B_vec = new CVect(totalUnknowns);
 
-                for (int targetPlate = 0; targetPlate < PlateCount; targetPlate++)
+                Parallel.For(0, totalUnknowns, row =>
                 {
+                    int targetPlate = row / N;
+                    int ik = row % N;
                     double targetHalfL = HalfLength(targetPlate);
-                    for (int ik = 0; ik < N; ik++)
+                    double xk = x_c[targetPlate][ik], tau_k = tau_c[targetPlate][ik];
+
+                    for (int sourcePlate = 0; sourcePlate < PlateCount; sourcePlate++)
                     {
-                        double xk = x_c[targetPlate][ik], tau_k = tau_c[targetPlate][ik];
-                        int row = CoeffIndex(targetPlate, ik);
-
-                        for (int sourcePlate = 0; sourcePlate < PlateCount; sourcePlate++)
+                        for (int j = 0; j < N; j++)
                         {
-                            for (int j = 0; j < N; j++)
+                            int col = CoeffIndex(sourcePlate, j);
+
+                            if (sourcePlate == targetPlate)
                             {
-                                int col = CoeffIndex(sourcePlate, j);
-
-                                if (sourcePlate == targetPlate)
+                                Compl sum_reg = new Compl(0, 0);
+                                for (int m = 0; m < M_quad; m++)
                                 {
-                                    Compl sum_reg = new Compl(0, 0);
-                                    for (int m = 0; m < M_quad; m++)
-                                    {
-                                        double kd = k_wave * targetHalfL * Math.Abs(tau_k - tau_q[targetPlate][m]);
-                                        Compl R = R_H0(kd);
-                                        double Tj = Cheb(j, tau_q[targetPlate][m]);
-                                        sum_reg += R * Tj * w_q[targetPlate][m];
-                                    }
-                                    double ln_const = Math.Log(k_wave * targetHalfL / 2.0);
-                                    double I_ortho = (j == 0) ? Math.PI : 0.0;
-                                    double I_log = (j == 0) ? (-Math.PI * Math.Log(2.0)) : (-(Math.PI / j) * Cheb(j, tau_k));
-                                    Compl S_log = ci * (-2.0 / Math.PI) * targetHalfL * (ln_const * I_ortho + I_log);
-                                    A_mat[row][col] = ci / 4.0 * (sum_reg + S_log);
-
-                                    if (skinDepth > 0)
-                                    {
-                                        double Tj_k = Cheb(j, tau_c[targetPlate][ik]);
-                                        double sqrt_w = Math.Sqrt(1.0 - tau_c[targetPlate][ik] * tau_c[targetPlate][ik]);
-                                        A_mat[row][col] = A_mat[row][col] - chi / 2.0 * Tj_k / sqrt_w;
-                                    }
+                                    double kd = k_wave * targetHalfL * Math.Abs(tau_k - tau_q[targetPlate][m]);
+                                    Compl R = R_H0(kd);
+                                    double Tj = Cheb(j, tau_q[targetPlate][m]);
+                                    sum_reg += R * Tj * w_q[targetPlate][m];
                                 }
-                                else
+                                double ln_const = Math.Log(k_wave * targetHalfL / 2.0);
+                                double I_ortho = (j == 0) ? Math.PI : 0.0;
+                                double I_log = (j == 0) ? (-Math.PI * Math.Log(2.0)) : (-(Math.PI / j) * Cheb(j, tau_k));
+                                Compl S_log = ci * (-2.0 / Math.PI) * targetHalfL * (ln_const * I_ortho + I_log);
+                                A_mat[row][col] = ci / 4.0 * (sum_reg + S_log);
+
+                                if (skinDepth > 0)
                                 {
-                                    Compl sum_cross = new Compl(0, 0);
-                                    for (int m = 0; m < M_quad; m++)
-                                    {
-                                        double distance = Math.Abs(t_q[sourcePlate][m] - xk);
-                                        if (distance < 1e-14) distance = 1e-14;
-                                        double Tj = Cheb(j, tau_q[sourcePlate][m]);
-                                        sum_cross += H0_2(k_wave * distance) * Tj * w_q[sourcePlate][m];
-                                    }
-                                    A_mat[row][col] = ci / 4.0 * sum_cross;
+                                    double Tj_k = Cheb(j, tau_c[targetPlate][ik]);
+                                    double sqrt_w = Math.Sqrt(1.0 - tau_c[targetPlate][ik] * tau_c[targetPlate][ik]);
+                                    A_mat[row][col] = A_mat[row][col] - chi / 2.0 * Tj_k / sqrt_w;
                                 }
                             }
+                            else
+                            {
+                                Compl sum_cross = new Compl(0, 0);
+                                for (int m = 0; m < M_quad; m++)
+                                {
+                                    double distance = Math.Abs(t_q[sourcePlate][m] - xk);
+                                    if (distance < 1e-14) distance = 1e-14;
+                                    double Tj = Cheb(j, tau_q[sourcePlate][m]);
+                                    sum_cross += H0_2(k_wave * distance) * Tj * w_q[sourcePlate][m];
+                                }
+                                A_mat[row][col] = ci / 4.0 * sum_cross;
+                            }
                         }
-
-                        if (skinDepth > 0)
-                        {
-                            Compl du0_dz = ci * k_wave * Math.Sin(teta) * u0(xk, 0);
-                            B_vec[row] = -1.0 * u0(xk, 0) - chi * du0_dz;
-                        }
-                        else { B_vec[row] = -1.0 * u0(xk, 0); }
                     }
-                }
+
+                    if (skinDepth > 0)
+                    {
+                        Compl du0_dz = ci * k_wave * Math.Sin(teta) * u0(xk, 0);
+                        B_vec[row] = -1.0 * u0(xk, 0) - chi * du0_dz;
+                    }
+                    else { B_vec[row] = -1.0 * u0(xk, 0); }
+                });
 
                 CVect w = new CVect(totalUnknowns);
                 int output = Gauss(A_mat, B_vec, w);

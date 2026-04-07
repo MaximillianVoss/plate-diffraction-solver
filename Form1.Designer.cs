@@ -66,6 +66,8 @@ namespace Diffraction
             this.CalculateButton = new System.Windows.Forms.Button();
             this.buttonGraphic = new System.Windows.Forms.Button();
             this.chartRealPart = new System.Windows.Forms.DataVisualization.Charting.Chart();
+            this.progressCalculation = new System.Windows.Forms.ProgressBar();
+            this.labelCalculationStatus = new System.Windows.Forms.Label();
             ((System.ComponentModel.ISupportInitialize)(this.xL)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.yDn)).BeginInit();
             this.groupBox1.SuspendLayout();
@@ -629,6 +631,25 @@ namespace Diffraction
             this.lblConductivity.Size = new System.Drawing.Size(200, 16);
             this.lblConductivity.Text = "Проводимость: не рассчитана";
             this.Controls.Add(this.lblConductivity);
+            //
+            // progressCalculation
+            //
+            this.progressCalculation.Location = new System.Drawing.Point(280, 552);
+            this.progressCalculation.MarqueeAnimationSpeed = 0;
+            this.progressCalculation.Name = "progressCalculation";
+            this.progressCalculation.Size = new System.Drawing.Size(590, 18);
+            this.progressCalculation.Style = System.Windows.Forms.ProgressBarStyle.Blocks;
+            this.progressCalculation.TabIndex = 19;
+            this.progressCalculation.Visible = false;
+            //
+            // labelCalculationStatus
+            //
+            this.labelCalculationStatus.AutoSize = true;
+            this.labelCalculationStatus.Location = new System.Drawing.Point(280, 580);
+            this.labelCalculationStatus.Name = "labelCalculationStatus";
+            this.labelCalculationStatus.Size = new System.Drawing.Size(45, 16);
+            this.labelCalculationStatus.TabIndex = 20;
+            this.labelCalculationStatus.Text = "Готово";
 
             // 
             // MainForm
@@ -636,6 +657,8 @@ namespace Diffraction
             this.AutoScaleDimensions = new System.Drawing.SizeF(8F, 16F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(1171, 650);
+            this.Controls.Add(this.labelCalculationStatus);
+            this.Controls.Add(this.progressCalculation);
             this.Controls.Add(this.chartRealPart);
             this.Controls.Add(this.buttonGraphic);
             this.Controls.Add(this.CalculateButton);
@@ -710,5 +733,7 @@ namespace Diffraction
         private System.Windows.Forms.Label labelSkin;
         private System.Windows.Forms.GroupBox groupBoxSkin;
         private System.Windows.Forms.Label lblConductivity;
+        private System.Windows.Forms.ProgressBar progressCalculation;
+        private System.Windows.Forms.Label labelCalculationStatus;
     }
 }
