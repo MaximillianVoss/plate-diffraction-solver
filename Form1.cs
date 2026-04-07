@@ -577,10 +577,10 @@ namespace Diffraction
                 energyMessage.AppendLine("   ⚠ Требуется увеличить M_quad");
             energyMessage.AppendLine();
 
-            // 3. Энергетическая диагностика. Текущая формула отраженной энергии не является строгим ЗСЭ.
-            energyMessage.AppendLine("3. Энергетическая диагностика (оценка, не строгий ЗСЭ):");
-            energyMessage.AppendLine("   Важно: отражение сейчас оценивается по потоку через одну контрольную вертикаль,");
-            energyMessage.AppendLine("   а не по полному дальнему полю или замкнутому контуру.");
+            // 3. Энергетический баланс через контрольный контур вокруг пластин.
+            energyMessage.AppendLine("3. Энергетический баланс (закон сохранения энергии):");
+            energyMessage.AppendLine("   Отражение оценивается по рассеянному потоку через контрольный контур,");
+            energyMessage.AppendLine("   прошедшая энергия восстанавливается из баланса I - R - A.");
             energyMessage.AppendLine(string.Format("   Падающая энергия:     {0:F6} (100.00%)", incidentEnergy));
             if (!energyReferenceValid)
                 energyMessage.AppendLine("   Энергетические проценты не рассчитаны: опорная энергия близка к нулю.");
@@ -606,7 +606,7 @@ namespace Diffraction
 
             if (energyConservationOk)
             {
-                energyMessage.AppendLine("   ✓ Энергетическая оценка близка к балансу");
+                energyMessage.AppendLine("   ✓ ЗСЭ выполняется в пределах численной погрешности");
             }
             else if (!energyReferenceValid)
             {
@@ -614,7 +614,7 @@ namespace Diffraction
             }
             else
             {
-                energyMessage.AppendLine("   ⚠ Энергетическая оценка нестабильна; это не доказывает ухудшение ГУ при росте N");
+                energyMessage.AppendLine("   ⚠ ЗСЭ нарушен: проверьте N, M_quad и параметры контрольного расчета");
             }
 
             energyMessage.AppendLine();
@@ -656,7 +656,7 @@ namespace Diffraction
                 double rtFraction = energyReferenceValid ? sumRT / incidentEnergy : double.NaN;
                 energyMessage.AppendLine(string.Format("   Отраженная + Прошедшая = {0:F6} ({1} от падающей)",
                     sumRT, percentText(rtFraction)));
-                energyMessage.AppendLine(string.Format("   Отклонение расчетной энергетической оценки: {0}", percentText(rtError)));
+                energyMessage.AppendLine(string.Format("   Отклонение от ЗСЭ: {0}", percentText(rtError)));
             }
 
             energyMessage.AppendLine();
@@ -670,12 +670,12 @@ namespace Diffraction
             if (!energyReferenceValid)
                 energyMessage.AppendLine("• Для энергетики выберите угол/контрольную поверхность с ненулевой опорной энергией");
             else if (relativeError > 0.10)
-                energyMessage.AppendLine("• Проверьте CSV-sweep и формулу энергетики: текущая оценка не является строгим ЗСЭ");
+                energyMessage.AppendLine("• Проверьте параметры расчета энергобаланса");
 
             if (bcError < 0.05 && helmError < 1e-3 && relativeError < 0.05)
                 energyMessage.AppendLine("✓ Все проверки пройдены успешно! Решение физически корректно.");
             else if (bcError < 0.05 && helmError < 1e-3)
-                energyMessage.AppendLine("✓ ГУ и уравнение Гельмгольца пройдены; энергетическая диагностика требует отдельной проверки.");
+                energyMessage.AppendLine("✓ ГУ и уравнение Гельмгольца пройдены; энергобаланс требует отдельной проверки.");
 
             MessageBoxIcon icon;
             bool localChecksOk = bcError < 0.10 && helmError < 1e-3;

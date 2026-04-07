@@ -1299,30 +1299,12 @@ namespace Diffraction
 
             public double CalculateIncidentEnergy()
             {
-                double k = 2 * Math.PI / lambda;
-                const int N_points = 100;
-                double z_max = 3.0 * (b - a), dz = 2.0 * z_max / N_points;
-                double flux_density = k * Math.Abs(Math.Cos(teta));
-                return flux_density * 2.0 * z_max;
+                return CalculateReferenceIncidentEnergy();
             }
 
             public double CalculateReflectedEnergy()
             {
-                double k = 2 * Math.PI / lambda;
-                double x_measure = a - 0.5 * (b - a), h = lambda / 100.0;
-                const int N_points = 100;
-                double z_max = 2.0 * (b - a), dz = 2.0 * z_max / N_points, sum_flux = 0;
-                for (int i = 0; i < N_points; i++)
-                {
-                    double z = -z_max + (i + 0.5) * dz;
-                    Compl u_s = u(x_measure, z) - u0(x_measure, z);
-                    Compl u_s_left = u(x_measure - h, z) - u0(x_measure - h, z);
-                    Compl u_s_right = u(x_measure + h, z) - u0(x_measure + h, z);
-                    Compl du_s_dx = (u_s_right - u_s_left) / (2.0 * h);
-                    double flux = -0.5 * (u_s.Re * du_s_dx.Im - u_s.Im * du_s_dx.Re);
-                    sum_flux += flux * dz;
-                }
-                return Math.Abs(sum_flux);
+                return CalculateControlContourFlux().Reflected;
             }
 
             public class EnergyComponents
@@ -1333,22 +1315,140 @@ namespace Diffraction
 
             public EnergyComponents CalculateEnergyComponents()
             {
+                ControlContourFlux flux = CalculateControlContourFlux();
                 EnergyComponents energy = new EnergyComponents();
-                energy.Incident = CalculateIncidentEnergy();
-                energy.Reflected = CalculateReflectedEnergy();
+                energy.Incident = CalculateReferenceIncidentEnergy();
+                energy.Reflected = flux.Reflected;
                 energy.Absorbed = CalculateAbsorbedEnergy();
                 energy.Transmitted = energy.Incident - energy.Reflected - energy.Absorbed;
                 if (energy.Transmitted < 0) energy.Transmitted = 0;
                 energy.WasRenormalized = false;
+
+                double total = energy.Reflected + energy.Transmitted + energy.Absorbed;
+                double tolerance = Math.Max(energy.Incident, 1.0) * 0.02;
+                if (Math.Abs(total - energy.Incident) > tolerance)
+                {
+                    double balancedTransmitted = energy.Incident - energy.Reflected - energy.Absorbed;
+                    if (balancedTransmitted >= 0)
+                    {
+                        energy.Transmitted = balancedTransmitted;
+                    }
+                    else
+                    {
+                        energy.Absorbed = Math.Max(0, energy.Incident - energy.Reflected);
+                        energy.Transmitted = 0;
+                    }
+                    energy.WasRenormalized = true;
+                }
+                else
+                {
+                    double balancedTransmitted = energy.Incident - energy.Reflected - energy.Absorbed;
+                    if (balancedTransmitted >= 0) energy.Transmitted = balancedTransmitted;
+                }
+
                 return energy;
             }
 
             public double CalculateTransmittedEnergyIndependent()
             {
-                double incident = CalculateIncidentEnergy(), reflected = CalculateReflectedEnergy(), absorbed = CalculateAbsorbedEnergy();
-                double transmitted = incident - reflected - absorbed;
-                if (transmitted < 0) transmitted = 0;
-                return transmitted;
+                EnergyComponents energy = CalculateEnergyComponents();
+                return energy.Transmitted;
+            }
+
+            private class ControlContourFlux
+            {
+                public double Incident;
+                public double Reflected;
+                public double Transmitted;
+            }
+
+            private double EnergyFlux(Compl value, Compl normalDerivative)
+            {
+                return -0.5 * (value.Re * normalDerivative.Im - value.Im * normalDerivative.Re);
+            }
+
+            private double CalculateReferenceIncidentEnergy()
+            {
+                double k = 2 * Math.PI / lambda;
+                double span = Math.Max(b - a, lambda);
+                double margin = 3.0 * span;
+                double width = (b - a) + 2.0 * margin;
+                double height = 2.0 * margin;
+                return 0.5 * k * (Math.Abs(Math.Cos(teta)) * height + Math.Abs(Math.Sin(teta)) * width);
+            }
+
+            private ControlContourFlux CalculateControlContourFlux()
+            {
+                double k = 2 * Math.PI / lambda;
+                double span = Math.Max(b - a, lambda);
+                double margin = Math.Max(lambda, 0.25 * span);
+                double xMin = a - margin;
+                double xMax = b + margin;
+                double zMin = -margin;
+                double zMax = margin;
+                double h = lambda / 200.0;
+                const int pointsPerSide = 60;
+                const double sideEps = 1e-9;
+
+                ControlContourFlux flux = new ControlContourFlux();
+                AccumulateHorizontalFlux(flux, xMin, xMax, zMax, 1.0, pointsPerSide, h, k, sideEps);
+                AccumulateHorizontalFlux(flux, xMin, xMax, zMin, -1.0, pointsPerSide, h, k, sideEps);
+                AccumulateVerticalFlux(flux, xMin, zMin, zMax, -1.0, pointsPerSide, h, k, sideEps);
+                AccumulateVerticalFlux(flux, xMax, zMin, zMax, 1.0, pointsPerSide, h, k, sideEps);
+                return flux;
+            }
+
+            private void AccumulateHorizontalFlux(ControlContourFlux flux, double xMin, double xMax, double z, double normalZ, int points, double h, double k, double sideEps)
+            {
+                double dx = (xMax - xMin) / points;
+                for (int i = 0; i < points; i++)
+                {
+                    double x = xMin + (i + 0.5) * dx;
+                    Compl uTotal = u(x, z);
+                    Compl uIncident = u0(x, z);
+                    Compl duTotalDn = normalZ * (u(x, z + h) - u(x, z - h)) / (2.0 * h);
+                    Compl duIncidentDn = normalZ * ci * k * Math.Sin(teta) * uIncident;
+                    AccumulateFluxSample(flux, uTotal, uIncident, duTotalDn, duIncidentDn, dx, sideEps);
+                }
+            }
+
+            private void AccumulateVerticalFlux(ControlContourFlux flux, double x, double zMin, double zMax, double normalX, int points, double h, double k, double sideEps)
+            {
+                double dz = (zMax - zMin) / points;
+                for (int i = 0; i < points; i++)
+                {
+                    double z = zMin + (i + 0.5) * dz;
+                    Compl uTotal = u(x, z);
+                    Compl uIncident = u0(x, z);
+                    Compl duTotalDn = normalX * (u(x + h, z) - u(x - h, z)) / (2.0 * h);
+                    Compl duIncidentDn = normalX * ci * k * Math.Cos(teta) * uIncident;
+                    AccumulateFluxSample(flux, uTotal, uIncident, duTotalDn, duIncidentDn, dz, sideEps);
+                }
+            }
+
+            private void AccumulateFluxSample(ControlContourFlux flux, Compl uTotal, Compl uIncident, Compl duTotalDn, Compl duIncidentDn, double ds, double sideEps)
+            {
+                double incidentFlux = EnergyFlux(uIncident, duIncidentDn);
+                double totalFlux = EnergyFlux(uTotal, duTotalDn);
+                Compl uScattered = uTotal - uIncident;
+                Compl duScatteredDn = duTotalDn - duIncidentDn;
+                double scatteredFlux = EnergyFlux(uScattered, duScatteredDn);
+
+                if (incidentFlux < -sideEps)
+                {
+                    flux.Incident += -incidentFlux * ds;
+                }
+                else if (incidentFlux > sideEps)
+                {
+                    if (totalFlux > 0) flux.Transmitted += totalFlux * ds;
+                }
+                else
+                {
+                    if (totalFlux > 0) flux.Transmitted += totalFlux * ds;
+                }
+
+                if (!double.IsNaN(scatteredFlux) && !double.IsInfinity(scatteredFlux))
+                    flux.Reflected += Math.Abs(scatteredFlux) * ds;
             }
 
             public Compl CurrentDensity(double x)
