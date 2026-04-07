@@ -143,23 +143,71 @@ namespace Diffraction
         // Обработчик события изменения значения числового поля bandBoundaryA.
         private void numericUpDown5_ValueChanged(object sender, EventArgs e)
         {
-            // Если значение числового поля bandBoundaryA больше или равно значению числового поля bandBoundaryB,
-            // установить значение числового поля bandBoundaryA равным значению числового поля bandBoundaryB - 1.
-            if (bandBoundaryA.Value >= bandBoundaryB.Value)
-            {
-                bandBoundaryA.Value = bandBoundaryB.Value - 1;
-            }
+            EnsureIncreasingInterval(bandBoundaryA, bandBoundaryB, changedLeft: true);
         }
 
         // Обработчик события изменения значения числового поля bandBoundaryB.
         private void numericUpDown6_ValueChanged(object sender, EventArgs e)
         {
-            // Если значение числового поля bandBoundaryA больше или равно значению числового поля bandBoundaryB,
-            // установить значение числового поля bandBoundaryB равным значению числового поля bandBoundaryA + 1.
-            if (bandBoundaryA.Value >= bandBoundaryB.Value)
+            EnsureIncreasingInterval(bandBoundaryA, bandBoundaryB, changedLeft: false);
+        }
+
+        private void numericUpDown9_ValueChanged(object sender, EventArgs e)
+        {
+            EnsureIncreasingInterval(bandBoundaryA2, bandBoundaryB2, changedLeft: true);
+        }
+
+        private void numericUpDown10_ValueChanged(object sender, EventArgs e)
+        {
+            EnsureIncreasingInterval(bandBoundaryA2, bandBoundaryB2, changedLeft: false);
+        }
+
+        private void EnsureIncreasingInterval(NumericUpDown left, NumericUpDown right, bool changedLeft)
+        {
+            decimal gap = Math.Max(left.Increment, 0.001m);
+            if (left.Value < right.Value) return;
+
+            if (changedLeft)
             {
-                bandBoundaryB.Value = bandBoundaryA.Value + 1;
+                decimal newLeft = right.Value - gap;
+                if (newLeft >= left.Minimum)
+                    left.Value = newLeft;
+                else
+                    right.Value = left.Value + gap;
             }
+            else
+            {
+                decimal newRight = left.Value + gap;
+                if (newRight <= right.Maximum)
+                    right.Value = newRight;
+                else
+                    left.Value = right.Value - gap;
+            }
+        }
+
+        private bool TryReadPlateParameters(out double alpha1, out double beta1, out double alpha2, out double beta2)
+        {
+            alpha1 = (double)bandBoundaryA.Value;
+            beta1 = (double)bandBoundaryB.Value;
+            alpha2 = (double)bandBoundaryA2.Value;
+            beta2 = (double)bandBoundaryB2.Value;
+
+            string error = ValidatePlateGeometry(alpha1, beta1, alpha2, beta2);
+            if (error == null) return true;
+
+            MessageBox.Show(error, "Ошибка геометрии пластин", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return false;
+        }
+
+        private static string ValidatePlateGeometry(double alpha1, double beta1, double alpha2, double beta2)
+        {
+            if (alpha1 >= beta1)
+                return "Для пластины 1 должно выполняться alpha1 < beta1.";
+            if (alpha2 >= beta2)
+                return "Для пластины 2 должно выполняться alpha2 < beta2.";
+            if (Math.Max(alpha1, alpha2) < Math.Min(beta1, beta2))
+                return "Пластины накладываются друг на друга. Измените alpha/beta так, чтобы интервалы не пересекались.";
+            return null;
         }
 
         // Обработчик события изменения значения числового поля wavelength.
@@ -183,16 +231,19 @@ namespace Diffraction
 
             // Параметры задачи
             int param = (int)truncationParameterN.Value;
-            double a = (double)bandBoundaryA.Value;
-            double b = (double)bandBoundaryB.Value;
+            double alpha1, beta1, alpha2, beta2;
+            if (!TryReadPlateParameters(out alpha1, out beta1, out alpha2, out beta2))
+                return;
+
+            double plotLeft = Math.Min(alpha1, alpha2);
+            double plotRight = Math.Max(beta1, beta2);
             double angle = (double)angleInDegrees.Value / 180 * Math.PI;
             double len = (double)wavelength.Value;
             double skinDepth = (double)skinDepthInput.Value;
 
             // Решение БЕЗ скин-слоя (skinDepth = 0)
-            DifrOnLenta qNoSkin = new DifrOnLenta(a, b, len, angle, param, 0);
+            DifrOnLenta qNoSkin = new DifrOnLenta(alpha1, beta1, alpha2, beta2, len, angle, param, 0);
             bool noSkinSolved = false;
-            bool skinSolved = false;
 
             // z-смещение от поверхности для избежания сингулярности H0 при z=0
             double z_plot = len / 10.0;
@@ -203,8 +254,8 @@ namespace Diffraction
                 {
                     noSkinSolved = true;
                     // Построение графика для случая без скин-слоя
-                    double h = (b - a) / 1000, x = a + h;
-                    while (x < (b - h))
+                    double h = (plotRight - plotLeft) / 1000, x = plotLeft;
+                    while (x <= plotRight)
                     {
                         chartRealPart.Series[0].Points.AddXY(x, qNoSkin.u(x, z_plot).Re);
                         x += h;
@@ -219,13 +270,11 @@ namespace Diffraction
             }
 
             // Решение С УЧЕТОМ скин-слоя
-            DifrOnLenta qSkin = new DifrOnLenta(a, b, len, angle, param, skinDepth);
+            DifrOnLenta qSkin = new DifrOnLenta(alpha1, beta1, alpha2, beta2, len, angle, param, skinDepth);
             try
             {
                 if (qSkin.SolveDifr() == 1)
                 {
-                    skinSolved = true;
-
                     // Вывод в текстовое поле коэффициентов разложения по полиномам Чебышева
                     textBoxChebPolynomial.Clear();
 
@@ -234,24 +283,30 @@ namespace Diffraction
                     textBoxChebPolynomial.Text += string.Format("χ = {0:F6} + {1:F6}i{2}", qSkin.chi.Re, qSkin.chi.Im, Environment.NewLine);
                     textBoxChebPolynomial.Text += Environment.NewLine;
 
-                    // Вывод ВСЕХ коэффициентов Чебышева (до param = N)
-                    int totalCoefficients = param;
-                    textBoxChebPolynomial.Text += string.Format("Коэффициенты Чебышева (всего {0}):{1}", totalCoefficients, Environment.NewLine);
-                    textBoxChebPolynomial.Text += string.Format("{0,-4} {1,-25} {2,-25}{3}", "#", "БЕЗ скин-слоя", "СО скин-слоем", Environment.NewLine);
-                    textBoxChebPolynomial.Text += new string('.', 60) + Environment.NewLine;
+                    // Вывод ВСЕХ коэффициентов Чебышева для каждой пластины
+                    int totalCoefficients = param * qSkin.PlateCount;
+                    textBoxChebPolynomial.Text += string.Format("Коэффициенты Чебышева (всего {0}, по {1} на пластину):{2}",
+                        totalCoefficients, param, Environment.NewLine);
+                    textBoxChebPolynomial.Text += string.Format("{0,-10} {1,-4} {2,-25} {3,-25}{4}", "Пластина", "#", "БЕЗ скин-слоя", "СО скин-слоем", Environment.NewLine);
+                    textBoxChebPolynomial.Text += new string('.', 76) + Environment.NewLine;
 
-                    // Выводим ВСЕ коэффициенты от 0 до param-1
-                    for (int coeffIndex = 0; coeffIndex < totalCoefficients; coeffIndex++)
+                    for (int plateIndex = 0; plateIndex < qSkin.PlateCount; plateIndex++)
                     {
-                        string noSkinCoeff = string.Format("{0:F4}+{1:F4}i", qNoSkin.y[coeffIndex].Re, qNoSkin.y[coeffIndex].Im);
-                        string skinCoeff = string.Format("{0:F4}+{1:F4}i", qSkin.y[coeffIndex].Re, qSkin.y[coeffIndex].Im);
-                        textBoxChebPolynomial.Text += string.Format("{0,-4} {1,-25} {2,-25}{3}",
-                            coeffIndex + 1, noSkinCoeff, skinCoeff, Environment.NewLine);
+                        for (int coeffIndex = 0; coeffIndex < param; coeffIndex++)
+                        {
+                            int globalIndex = plateIndex * param + coeffIndex;
+                            string noSkinCoeff = noSkinSolved
+                                ? string.Format("{0:F4}+{1:F4}i", qNoSkin.y[globalIndex].Re, qNoSkin.y[globalIndex].Im)
+                                : "нет решения";
+                            string skinCoeff = string.Format("{0:F4}+{1:F4}i", qSkin.y[globalIndex].Re, qSkin.y[globalIndex].Im);
+                            textBoxChebPolynomial.Text += string.Format("{0,-10} {1,-4} {2,-25} {3,-25}{4}",
+                                plateIndex + 1, coeffIndex + 1, noSkinCoeff, skinCoeff, Environment.NewLine);
+                        }
                     }
 
                     // Построение графика для случая со скин-слоем
-                    double h = (b - a) / 1000, x = a + h;
-                    while (x < (b - h))
+                    double h = (plotRight - plotLeft) / 1000, x = plotLeft;
+                    while (x <= plotRight)
                     {
                         chartRealPart.Series[1].Points.AddXY(x, qSkin.u(x, z_plot).Re);
                         x += h;
@@ -517,21 +572,22 @@ namespace Diffraction
             double y1 = (double)yDn.Value, y2 = (double)yUp.Value;
             double x1 = (double)xL.Value, x2 = (double)xR.Value;
             int param = (int)truncationParameterN.Value;
-            double a = (double)bandBoundaryA.Value;
-            double b = (double)bandBoundaryB.Value;
+            double alpha1, beta1, alpha2, beta2;
+            if (!TryReadPlateParameters(out alpha1, out beta1, out alpha2, out beta2))
+                return null;
             double angle = (double)angleInDegrees.Value / 180 * Math.PI;
             double len = (double)wavelength.Value;
             double skinDepth = (double)skinDepthInput.Value;
 
             // Решение без скин-слоя
-            DifrOnLenta qNoSkin = new DifrOnLenta(a, b, len, angle, param, 0);
+            DifrOnLenta qNoSkin = new DifrOnLenta(alpha1, beta1, alpha2, beta2, len, angle, param, 0);
             if (qNoSkin.SolveDifr() != 1)
             {
                 return null;
             }
 
             // Решение со скин-слоем
-            DifrOnLenta qSkin = new DifrOnLenta(a, b, len, angle, param, skinDepth);
+            DifrOnLenta qSkin = new DifrOnLenta(alpha1, beta1, alpha2, beta2, len, angle, param, skinDepth);
             if (qSkin.SolveDifr() != 1)
             {
                 return null;
@@ -556,7 +612,7 @@ namespace Diffraction
                     double y = y1 + j / (double)h * (y2 - y1);
                     // Избегаем z=0 на полоске для устранения сингулярности H0
                     double y_safe = y;
-                    if (Math.Abs(y) < z_eps && x >= a && x <= b)
+                    if (Math.Abs(y) < z_eps && IsPointOnAnyPlate(x, alpha1, beta1, alpha2, beta2))
                         y_safe = (y >= 0) ? z_eps : -z_eps;
                     uNoSkin[i, j] = Compl.Abs(qNoSkin.u(x, y_safe));
                     uSkin[i, j] = Compl.Abs(qSkin.u(x, y_safe));
@@ -586,34 +642,48 @@ namespace Diffraction
                 }
             }
 
-            // Добавление на изображение графика точек, соответствующих границам ленты.
-            int xC_A = (int)((a - x1) / (x2 - x1) * w);
-            int xC_B = (int)((b - x1) / (x2 - x1) * w);
+            // Добавление на изображение маркеров пластин.
             int yC = h / 2;
 
-            // Рисуем метки для границы A (левый край ленты)
-            SafeSetPixel(imageNoSkin, xC_A - 2, yC - 2, Color.Black);
-            SafeSetPixel(imageNoSkin, xC_A - 2, yC + 2, Color.Black);
-            SafeSetPixel(imageNoSkin, xC_A + 2, yC - 2, Color.Black);
-            SafeSetPixel(imageNoSkin, xC_A + 2, yC + 2, Color.Black);
-
-            SafeSetPixel(imageSkin, xC_A - 2, yC - 2, Color.Black);
-            SafeSetPixel(imageSkin, xC_A - 2, yC + 2, Color.Black);
-            SafeSetPixel(imageSkin, xC_A + 2, yC - 2, Color.Black);
-            SafeSetPixel(imageSkin, xC_A + 2, yC + 2, Color.Black);
-
-            // Рисуем метки для границы B (правый край ленты)
-            SafeSetPixel(imageNoSkin, xC_B - 2, yC - 2, Color.Black);
-            SafeSetPixel(imageNoSkin, xC_B - 2, yC + 2, Color.Black);
-            SafeSetPixel(imageNoSkin, xC_B + 2, yC - 2, Color.Black);
-            SafeSetPixel(imageNoSkin, xC_B + 2, yC + 2, Color.Black);
-
-            SafeSetPixel(imageSkin, xC_B - 2, yC - 2, Color.Black);
-            SafeSetPixel(imageSkin, xC_B - 2, yC + 2, Color.Black);
-            SafeSetPixel(imageSkin, xC_B + 2, yC - 2, Color.Black);
-            SafeSetPixel(imageSkin, xC_B + 2, yC + 2, Color.Black);
+            DrawPlateMarker(imageNoSkin, alpha1, beta1, x1, x2, yC);
+            DrawPlateMarker(imageNoSkin, alpha2, beta2, x1, x2, yC);
+            DrawPlateMarker(imageSkin, alpha1, beta1, x1, x2, yC);
+            DrawPlateMarker(imageSkin, alpha2, beta2, x1, x2, yC);
 
             return new GraphImagePair { ImageNoSkin = imageNoSkin, ImageSkin = imageSkin };
+        }
+
+        private static bool IsPointOnAnyPlate(double x, double alpha1, double beta1, double alpha2, double beta2)
+        {
+            return (x >= alpha1 && x <= beta1) || (x >= alpha2 && x <= beta2);
+        }
+
+        private void DrawPlateMarker(Bitmap image, double alphaValue, double betaValue, double xMin, double xMax, int yCenter)
+        {
+            if (Math.Abs(xMax - xMin) < 1e-12) return;
+
+            int xStart = (int)((alphaValue - xMin) / (xMax - xMin) * image.Width);
+            int xEnd = (int)((betaValue - xMin) / (xMax - xMin) * image.Width);
+            if (xStart > xEnd)
+            {
+                int tmp = xStart;
+                xStart = xEnd;
+                xEnd = tmp;
+            }
+            if (xEnd < 0 || xStart >= image.Width) return;
+
+            xStart = Math.Max(0, xStart);
+            xEnd = Math.Min(image.Width - 1, xEnd);
+
+            for (int x = xStart; x <= xEnd; x++)
+                for (int dy = -1; dy <= 1; dy++)
+                    SafeSetPixel(image, x, yCenter + dy, Color.Black);
+
+            for (int dy = -4; dy <= 4; dy++)
+            {
+                SafeSetPixel(image, xStart, yCenter + dy, Color.Black);
+                SafeSetPixel(image, xEnd, yCenter + dy, Color.Black);
+            }
         }
 
         // Функция для безопасной установки пикселей

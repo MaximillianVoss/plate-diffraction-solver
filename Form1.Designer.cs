@@ -51,6 +51,10 @@ namespace Diffraction
             this.bandBoundaryB = new System.Windows.Forms.NumericUpDown();
             this.label5 = new System.Windows.Forms.Label();
             this.bandBoundaryA = new System.Windows.Forms.NumericUpDown();
+            this.label12 = new System.Windows.Forms.Label();
+            this.bandBoundaryB2 = new System.Windows.Forms.NumericUpDown();
+            this.label13 = new System.Windows.Forms.Label();
+            this.bandBoundaryA2 = new System.Windows.Forms.NumericUpDown();
             this.groupBox4 = new System.Windows.Forms.GroupBox();
             this.label9 = new System.Windows.Forms.Label();
             this.angleInDegrees = new System.Windows.Forms.NumericUpDown();
@@ -72,14 +76,16 @@ namespace Diffraction
             this.groupBox3.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.bandBoundaryB)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.bandBoundaryA)).BeginInit();
+            ((System.ComponentModel.ISupportInitialize)(this.bandBoundaryB2)).BeginInit();
+            ((System.ComponentModel.ISupportInitialize)(this.bandBoundaryA2)).BeginInit();
             this.groupBox4.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.angleInDegrees)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.wavelength)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.chartRealPart)).BeginInit();
             this.SuspendLayout();
-            // 
+            //
             // label1
-            // 
+            //
             this.label1.AutoSize = true;
             this.label1.Location = new System.Drawing.Point(8, 52);
             this.label1.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
@@ -88,9 +94,9 @@ namespace Diffraction
             this.label1.TabIndex = 1;
             this.label1.Text = "yDn";
             this.label1.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
-            // 
+            //
             // label2
-            // 
+            //
             this.label2.AutoSize = true;
             this.label2.Location = new System.Drawing.Point(8, 20);
             this.label2.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
@@ -99,9 +105,9 @@ namespace Diffraction
             this.label2.TabIndex = 2;
             this.label2.Text = "xL";
             this.label2.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
-            // 
+            //
             // xL
-            // 
+            //
             this.xL.Location = new System.Drawing.Point(51, 17);
             this.xL.Margin = new System.Windows.Forms.Padding(4);
             this.xL.Maximum = new decimal(new int[] {
@@ -123,9 +129,9 @@ namespace Diffraction
             0,
             -2147483648});
             this.xL.ValueChanged += new System.EventHandler(this.numericUpDown1_ValueChanged);
-            // 
+            //
             // yDn
-            // 
+            //
             this.yDn.Location = new System.Drawing.Point(51, 49);
             this.yDn.Margin = new System.Windows.Forms.Padding(4);
             this.yDn.Maximum = new decimal(new int[] {
@@ -282,6 +288,10 @@ namespace Diffraction
             // 
             // groupBox3
             // 
+            this.groupBox3.Controls.Add(this.label12);
+            this.groupBox3.Controls.Add(this.bandBoundaryB2);
+            this.groupBox3.Controls.Add(this.label13);
+            this.groupBox3.Controls.Add(this.bandBoundaryA2);
             this.groupBox3.Controls.Add(this.label6);
             this.groupBox3.Controls.Add(this.bandBoundaryB);
             this.groupBox3.Controls.Add(this.label5);
@@ -293,22 +303,24 @@ namespace Diffraction
             this.groupBox3.Size = new System.Drawing.Size(325, 81);
             this.groupBox3.TabIndex = 11;
             this.groupBox3.TabStop = false;
-            this.groupBox3.Text = "Границы полосы";
+            this.groupBox3.Text = "Границы пластин";
             // 
             // label6
             // 
             this.label6.AutoSize = true;
-            this.label6.Location = new System.Drawing.Point(172, 38);
+            this.label6.Location = new System.Drawing.Point(165, 25);
             this.label6.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
             this.label6.Name = "label6";
-            this.label6.Size = new System.Drawing.Size(22, 16);
+            this.label6.Size = new System.Drawing.Size(47, 16);
             this.label6.TabIndex = 5;
-            this.label6.Text = "b=";
+            this.label6.Text = "beta1=";
             this.label6.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
             // 
             // bandBoundaryB
             // 
-            this.bandBoundaryB.Location = new System.Drawing.Point(205, 36);
+            this.bandBoundaryB.DecimalPlaces = 3;
+            this.bandBoundaryB.Increment = 0.1M;
+            this.bandBoundaryB.Location = new System.Drawing.Point(220, 23);
             this.bandBoundaryB.Margin = new System.Windows.Forms.Padding(4);
             this.bandBoundaryB.Maximum = new decimal(new int[] {
             1000,
@@ -321,29 +333,27 @@ namespace Diffraction
             0,
             -2147483648});
             this.bandBoundaryB.Name = "bandBoundaryB";
-            this.bandBoundaryB.Size = new System.Drawing.Size(105, 22);
+            this.bandBoundaryB.Size = new System.Drawing.Size(90, 22);
             this.bandBoundaryB.TabIndex = 6;
-            this.bandBoundaryB.Value = new decimal(new int[] {
-            1,
-            0,
-            0,
-            0});
+            this.bandBoundaryB.Value = -0.5M;
             this.bandBoundaryB.ValueChanged += new System.EventHandler(this.numericUpDown6_ValueChanged);
             // 
             // label5
             // 
             this.label5.AutoSize = true;
-            this.label5.Location = new System.Drawing.Point(8, 38);
+            this.label5.Location = new System.Drawing.Point(8, 25);
             this.label5.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
             this.label5.Name = "label5";
-            this.label5.Size = new System.Drawing.Size(22, 16);
+            this.label5.Size = new System.Drawing.Size(53, 16);
             this.label5.TabIndex = 2;
-            this.label5.Text = "a=";
+            this.label5.Text = "alpha1=";
             this.label5.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
             // 
             // bandBoundaryA
             // 
-            this.bandBoundaryA.Location = new System.Drawing.Point(41, 36);
+            this.bandBoundaryA.DecimalPlaces = 3;
+            this.bandBoundaryA.Increment = 0.1M;
+            this.bandBoundaryA.Location = new System.Drawing.Point(67, 23);
             this.bandBoundaryA.Margin = new System.Windows.Forms.Padding(4);
             this.bandBoundaryA.Maximum = new decimal(new int[] {
             1000,
@@ -356,14 +366,76 @@ namespace Diffraction
             0,
             -2147483648});
             this.bandBoundaryA.Name = "bandBoundaryA";
-            this.bandBoundaryA.Size = new System.Drawing.Size(105, 22);
+            this.bandBoundaryA.Size = new System.Drawing.Size(90, 22);
             this.bandBoundaryA.TabIndex = 4;
-            this.bandBoundaryA.Value = new decimal(new int[] {
-            1,
+            this.bandBoundaryA.Value = -1.5M;
+            this.bandBoundaryA.ValueChanged += new System.EventHandler(this.numericUpDown5_ValueChanged);
+            //
+            // label12
+            //
+            this.label12.AutoSize = true;
+            this.label12.Location = new System.Drawing.Point(165, 54);
+            this.label12.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
+            this.label12.Name = "label12";
+            this.label12.Size = new System.Drawing.Size(47, 16);
+            this.label12.TabIndex = 9;
+            this.label12.Text = "beta2=";
+            this.label12.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+            //
+            // bandBoundaryB2
+            //
+            this.bandBoundaryB2.DecimalPlaces = 3;
+            this.bandBoundaryB2.Increment = 0.1M;
+            this.bandBoundaryB2.Location = new System.Drawing.Point(220, 52);
+            this.bandBoundaryB2.Margin = new System.Windows.Forms.Padding(4);
+            this.bandBoundaryB2.Maximum = new decimal(new int[] {
+            1000,
+            0,
+            0,
+            0});
+            this.bandBoundaryB2.Minimum = new decimal(new int[] {
+            1000,
             0,
             0,
             -2147483648});
-            this.bandBoundaryA.ValueChanged += new System.EventHandler(this.numericUpDown5_ValueChanged);
+            this.bandBoundaryB2.Name = "bandBoundaryB2";
+            this.bandBoundaryB2.Size = new System.Drawing.Size(90, 22);
+            this.bandBoundaryB2.TabIndex = 10;
+            this.bandBoundaryB2.Value = 1.5M;
+            this.bandBoundaryB2.ValueChanged += new System.EventHandler(this.numericUpDown10_ValueChanged);
+            //
+            // label13
+            //
+            this.label13.AutoSize = true;
+            this.label13.Location = new System.Drawing.Point(8, 54);
+            this.label13.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
+            this.label13.Name = "label13";
+            this.label13.Size = new System.Drawing.Size(53, 16);
+            this.label13.TabIndex = 7;
+            this.label13.Text = "alpha2=";
+            this.label13.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+            //
+            // bandBoundaryA2
+            //
+            this.bandBoundaryA2.DecimalPlaces = 3;
+            this.bandBoundaryA2.Increment = 0.1M;
+            this.bandBoundaryA2.Location = new System.Drawing.Point(67, 52);
+            this.bandBoundaryA2.Margin = new System.Windows.Forms.Padding(4);
+            this.bandBoundaryA2.Maximum = new decimal(new int[] {
+            1000,
+            0,
+            0,
+            0});
+            this.bandBoundaryA2.Minimum = new decimal(new int[] {
+            1000,
+            0,
+            0,
+            -2147483648});
+            this.bandBoundaryA2.Name = "bandBoundaryA2";
+            this.bandBoundaryA2.Size = new System.Drawing.Size(90, 22);
+            this.bandBoundaryA2.TabIndex = 8;
+            this.bandBoundaryA2.Value = 0.5M;
+            this.bandBoundaryA2.ValueChanged += new System.EventHandler(this.numericUpDown9_ValueChanged);
             // 
             // groupBox4
             // 
@@ -590,6 +662,8 @@ namespace Diffraction
             this.groupBox3.PerformLayout();
             ((System.ComponentModel.ISupportInitialize)(this.bandBoundaryB)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.bandBoundaryA)).EndInit();
+            ((System.ComponentModel.ISupportInitialize)(this.bandBoundaryB2)).EndInit();
+            ((System.ComponentModel.ISupportInitialize)(this.bandBoundaryA2)).EndInit();
             this.groupBox4.ResumeLayout(false);
             this.groupBox4.PerformLayout();
             ((System.ComponentModel.ISupportInitialize)(this.angleInDegrees)).EndInit();
@@ -597,13 +671,6 @@ namespace Diffraction
             ((System.ComponentModel.ISupportInitialize)(this.chartRealPart)).EndInit();
             this.ResumeLayout(false);
             this.PerformLayout();
-            this.lblConductivity = new System.Windows.Forms.Label();
-            this.lblConductivity.Location = new System.Drawing.Point(900, 550);
-            this.lblConductivity.AutoSize = true;
-            this.lblConductivity.Name = "lblConductivity";
-            this.lblConductivity.Size = new System.Drawing.Size(200, 16); // Примерный размер
-            this.lblConductivity.Text = "Проводимость: не рассчитана";
-            this.Controls.Add(this.lblConductivity);
         }
 
         #endregion
@@ -624,6 +691,10 @@ namespace Diffraction
         private System.Windows.Forms.NumericUpDown bandBoundaryB;
         private System.Windows.Forms.Label label5;
         private System.Windows.Forms.NumericUpDown bandBoundaryA;
+        private System.Windows.Forms.Label label12;
+        private System.Windows.Forms.NumericUpDown bandBoundaryB2;
+        private System.Windows.Forms.Label label13;
+        private System.Windows.Forms.NumericUpDown bandBoundaryA2;
         private System.Windows.Forms.GroupBox groupBox4;
         private System.Windows.Forms.Label label8;
         private System.Windows.Forms.NumericUpDown wavelength;
@@ -641,4 +712,3 @@ namespace Diffraction
         private System.Windows.Forms.Label lblConductivity;
     }
 }
-
