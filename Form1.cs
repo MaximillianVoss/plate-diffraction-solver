@@ -521,13 +521,17 @@ namespace Diffraction
             double reflectedEnergy = energyComp.Reflected;
             double transmittedEnergy = energyComp.Transmitted;
             double absorbedEnergy = energyComp.Absorbed;
+            bool energyReferenceValid = Math.Abs(incidentEnergy) >= 1e-8;
+            Func<double, string> percentText = value =>
+                (double.IsNaN(value) || double.IsInfinity(value)) ? "н/д" : string.Format("{0:P2}", value);
 
             // Относительные доли энергии
-            double reflectedFraction = reflectedEnergy / incidentEnergy;
-            double transmittedFraction = transmittedEnergy / incidentEnergy;
-            double absorbedFraction = absorbedEnergy / incidentEnergy;
+            double reflectedFraction = energyReferenceValid ? reflectedEnergy / incidentEnergy : double.NaN;
+            double transmittedFraction = energyReferenceValid ? transmittedEnergy / incidentEnergy : double.NaN;
+            double absorbedFraction = energyReferenceValid ? absorbedEnergy / incidentEnergy : double.NaN;
 
             double sumRAT = reflectedEnergy + absorbedEnergy + transmittedEnergy;
+            double sumFraction = energyReferenceValid ? sumRAT / incidentEnergy : double.NaN;
 
             // Формирование сообщения для всплывающего окна
             StringBuilder energyMessage = new StringBuilder();
@@ -573,36 +577,44 @@ namespace Diffraction
                 energyMessage.AppendLine("   ⚠ Требуется увеличить M_quad");
             energyMessage.AppendLine();
 
-            // 3. Энергетический баланс (Закон сохранения энергии)
-            energyMessage.AppendLine("3. Энергетический баланс (закон сохранения энергии):");
+            // 3. Энергетическая диагностика. Текущая формула отраженной энергии не является строгим ЗСЭ.
+            energyMessage.AppendLine("3. Энергетическая диагностика (оценка, не строгий ЗСЭ):");
+            energyMessage.AppendLine("   Важно: отражение сейчас оценивается по потоку через одну контрольную вертикаль,");
+            energyMessage.AppendLine("   а не по полному дальнему полю или замкнутому контуру.");
             energyMessage.AppendLine(string.Format("   Падающая энергия:     {0:F6} (100.00%)", incidentEnergy));
-            energyMessage.AppendLine(string.Format("   Отраженная:           {0:F6} ({1:P2})", reflectedEnergy, reflectedFraction));
-            energyMessage.AppendLine(string.Format("   Прошедшая:            {0:F6} ({1:P2})", transmittedEnergy, transmittedFraction));
+            if (!energyReferenceValid)
+                energyMessage.AppendLine("   Энергетические проценты не рассчитаны: опорная энергия близка к нулю.");
+            energyMessage.AppendLine(string.Format("   Отраженная:           {0:F6} ({1})", reflectedEnergy, percentText(reflectedFraction)));
+            energyMessage.AppendLine(string.Format("   Прошедшая:            {0:F6} ({1})", transmittedEnergy, percentText(transmittedFraction)));
 
             if (skinDepth > 0)
-                energyMessage.AppendLine(string.Format("   Поглощенная:          {0:F6} ({1:P2})", absorbedEnergy, absorbedFraction));
+                energyMessage.AppendLine(string.Format("   Поглощенная:          {0:F6} ({1})", absorbedEnergy, percentText(absorbedFraction)));
             else
                 energyMessage.AppendLine("   Поглощенная:          0.000000 (0.00%)");
 
             energyMessage.AppendLine(new string('-', 50));
-            energyMessage.AppendLine(string.Format("   ИТОГО (расчетная сумма): {0:F6} ({1:P2} от падающей)",
-                sumRAT, sumRAT / incidentEnergy));
+            energyMessage.AppendLine(string.Format("   ИТОГО (расчетная сумма): {0:F6} ({1} от падающей)",
+                sumRAT, percentText(sumFraction)));
 
             // Проверка энергетического баланса
             double balanceError = Math.Abs(incidentEnergy - sumRAT);
-            double relativeError = balanceError / Math.Max(incidentEnergy, 1e-10);
+            double relativeError = energyReferenceValid ? balanceError / incidentEnergy : double.NaN;
 
-            bool energyConservationOk = relativeError < 0.10; // погрешность менее 10%
+            bool energyConservationOk = energyReferenceValid && relativeError < 0.10; // погрешность менее 10%
 
-            energyMessage.AppendLine(string.Format("   Дисбаланс энергии:       {0:P2}", relativeError));
+            energyMessage.AppendLine(string.Format("   Дисбаланс энергии:       {0}", percentText(relativeError)));
 
             if (energyConservationOk)
             {
-                energyMessage.AppendLine("   ✓ ЗСЭ выполняется в пределах численной погрешности");
+                energyMessage.AppendLine("   ✓ Энергетическая оценка близка к балансу");
+            }
+            else if (!energyReferenceValid)
+            {
+                energyMessage.AppendLine("   ⚠ Энергетическая оценка недоступна для этой контрольной поверхности");
             }
             else
             {
-                energyMessage.AppendLine("   ⚠ ЗСЭ нарушен: требуется увеличить N или M_quad");
+                energyMessage.AppendLine("   ⚠ Энергетическая оценка нестабильна; это не доказывает ухудшение ГУ при росте N");
             }
 
             energyMessage.AppendLine();
@@ -640,10 +652,11 @@ namespace Diffraction
 
                 // Проверка: отраженная + прошедшая = падающая
                 double sumRT = reflectedEnergy + transmittedEnergy;
-                double rtError = Math.Abs(incidentEnergy - sumRT) / incidentEnergy;
-                energyMessage.AppendLine(string.Format("   Отраженная + Прошедшая = {0:F6} ({1:P2} от падающей)",
-                    sumRT, sumRT / incidentEnergy));
-                energyMessage.AppendLine(string.Format("   Отклонение от ЗСЭ: {0:P2}", rtError));
+                double rtError = energyReferenceValid ? Math.Abs(incidentEnergy - sumRT) / incidentEnergy : double.NaN;
+                double rtFraction = energyReferenceValid ? sumRT / incidentEnergy : double.NaN;
+                energyMessage.AppendLine(string.Format("   Отраженная + Прошедшая = {0:F6} ({1} от падающей)",
+                    sumRT, percentText(rtFraction)));
+                energyMessage.AppendLine(string.Format("   Отклонение расчетной энергетической оценки: {0}", percentText(rtError)));
             }
 
             energyMessage.AppendLine();
@@ -654,22 +667,27 @@ namespace Diffraction
                 energyMessage.AppendLine("• Увеличьте N (параметр усечения) для улучшения граничных условий");
             if (helmError > 1e-3)
                 energyMessage.AppendLine("• Увеличьте M_quad (число узлов квадратуры) для лучшей точности поля");
-            if (relativeError > 0.10)
-                energyMessage.AppendLine("• Уточните параметры интегрирования для лучшего энергобаланса");
+            if (!energyReferenceValid)
+                energyMessage.AppendLine("• Для энергетики выберите угол/контрольную поверхность с ненулевой опорной энергией");
+            else if (relativeError > 0.10)
+                energyMessage.AppendLine("• Проверьте CSV-sweep и формулу энергетики: текущая оценка не является строгим ЗСЭ");
 
             if (bcError < 0.05 && helmError < 1e-3 && relativeError < 0.05)
                 energyMessage.AppendLine("✓ Все проверки пройдены успешно! Решение физически корректно.");
+            else if (bcError < 0.05 && helmError < 1e-3)
+                energyMessage.AppendLine("✓ ГУ и уравнение Гельмгольца пройдены; энергетическая диагностика требует отдельной проверки.");
 
             MessageBoxIcon icon;
+            bool localChecksOk = bcError < 0.10 && helmError < 1e-3;
             if (skinDepth == 0)
             {
                 // Для идеального проводника
-                icon = (relativeError < 0.05 && bcError < 0.10) ? MessageBoxIcon.Information : MessageBoxIcon.Warning;
+                icon = localChecksOk ? MessageBoxIcon.Information : MessageBoxIcon.Warning;
             }
             else
             {
                 // Для проводника со скин-слоем
-                icon = (energyConservationOk && bcError < 0.15) ? MessageBoxIcon.Information : MessageBoxIcon.Warning;
+                icon = (bcError < 0.15 && helmError < 1e-3) ? MessageBoxIcon.Information : MessageBoxIcon.Warning;
             }
 
             string title = skinDepth == 0 ?

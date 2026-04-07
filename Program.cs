@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.IO;
+using System.Globalization;
 using System.Diagnostics; // Для Stopwatch
 
 using System.Text;
@@ -14,13 +15,233 @@ namespace Diffraction
     internal static class Program
     {
         [STAThread]
-        static void Main()
+        static void Main(string[] args)
         {
-            RunDiagnostics();
+            if (args != null && args.Length > 0)
+            {
+                if (HasArg(args, "--diagnostics"))
+                {
+                    RunDiagnostics();
+                    return;
+                }
+
+                if (HasArg(args, "--accuracy-sweep") || HasArg(args, "--accuracy-sweep-quick"))
+                {
+                    bool quick = HasArg(args, "--accuracy-sweep-quick") || HasArg(args, "--quick");
+                    string outputFile = GetArgValue(args, "--output") ?? Path.Combine(Environment.CurrentDirectory, "accuracy_sweep.csv");
+                    double[] angles = ParseDoubleListArg(args, "--angles");
+                    int[] ns = ParseIntListArg(args, "--n-values");
+                    double[] skinDepths = ParseDoubleListArg(args, "--skins");
+                    RunAccuracySweep(outputFile, quick, angles, ns, skinDepths);
+                    return;
+                }
+            }
 
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             Application.Run(new MainForm());
+        }
+
+        private static bool HasArg(string[] args, string name)
+        {
+            return args.Any(arg => string.Equals(arg, name, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static string GetArgValue(string[] args, string name)
+        {
+            for (int i = 0; i < args.Length - 1; i++)
+            {
+                if (string.Equals(args[i], name, StringComparison.OrdinalIgnoreCase))
+                    return args[i + 1];
+            }
+            return null;
+        }
+
+        private static double[] ParseDoubleListArg(string[] args, string name)
+        {
+            string value = GetArgValue(args, name);
+            if (string.IsNullOrWhiteSpace(value)) return null;
+
+            return value
+                .Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(item => double.Parse(item.Trim(), CultureInfo.InvariantCulture))
+                .ToArray();
+        }
+
+        private static int[] ParseIntListArg(string[] args, string name)
+        {
+            string value = GetArgValue(args, name);
+            if (string.IsNullOrWhiteSpace(value)) return null;
+
+            return value
+                .Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(item => int.Parse(item.Trim(), CultureInfo.InvariantCulture))
+                .ToArray();
+        }
+
+        private class AccuracySweepRow
+        {
+            public int SolveResult;
+            public double ThetaDeg, SkinDepth;
+            public int N;
+            public double BcError, HelmholtzResidual;
+            public double Incident, Reflected, Transmitted, Absorbed, EnergyTotal, EnergyBalanceError;
+            public double TransmittedThroughStrip;
+            public long SolveTimeMs, MetricsTimeMs;
+            public string ErrorMessage;
+        }
+
+        private static string F(double value)
+        {
+            if (double.IsNaN(value)) return "NaN";
+            if (double.IsPositiveInfinity(value)) return "Infinity";
+            if (double.IsNegativeInfinity(value)) return "-Infinity";
+            return value.ToString("G17", CultureInfo.InvariantCulture);
+        }
+
+        private static double PercentOf(double value, double total)
+        {
+            if (Math.Abs(total) < 1e-8) return double.NaN;
+            return value / total * 100.0;
+        }
+
+        private static AccuracySweepRow RunAccuracySweepCase(double thetaDeg, int n, double skinDepth)
+        {
+            AccuracySweepRow row = new AccuracySweepRow
+            {
+                ThetaDeg = thetaDeg,
+                N = n,
+                SkinDepth = skinDepth,
+                SolveResult = -1,
+                BcError = double.NaN,
+                HelmholtzResidual = double.NaN,
+                Incident = double.NaN,
+                Reflected = double.NaN,
+                Transmitted = double.NaN,
+                Absorbed = double.NaN,
+                EnergyTotal = double.NaN,
+                EnergyBalanceError = double.NaN,
+                TransmittedThroughStrip = double.NaN
+            };
+
+            try
+            {
+                double theta = thetaDeg * Math.PI / 180.0;
+                var solver = new DifrOnLenta(-1.5, -0.5, 0.5, 1.5, 1.0, theta, n, skinDepth);
+                var solveWatch = Stopwatch.StartNew();
+                row.SolveResult = solver.SolveDifr();
+                solveWatch.Stop();
+                row.SolveTimeMs = solveWatch.ElapsedMilliseconds;
+
+                if (row.SolveResult != 1) return row;
+
+                var metricsWatch = Stopwatch.StartNew();
+                row.BcError = solver.VerifyBoundaryConditions();
+                row.HelmholtzResidual = solver.VerifyHelmholtz();
+                var energy = solver.CalculateEnergyComponents();
+                row.Incident = energy.Incident;
+                row.Reflected = energy.Reflected;
+                row.Transmitted = energy.Transmitted;
+                row.Absorbed = energy.Absorbed;
+                row.EnergyTotal = energy.Reflected + energy.Transmitted + energy.Absorbed;
+                row.EnergyBalanceError = Math.Abs(row.Incident) < 1e-8
+                    ? double.NaN
+                    : Math.Abs(row.Incident - row.EnergyTotal) / row.Incident;
+                row.TransmittedThroughStrip = solver.CalculateTransmittedThroughStrip();
+                metricsWatch.Stop();
+                row.MetricsTimeMs = metricsWatch.ElapsedMilliseconds;
+            }
+            catch (Exception ex)
+            {
+                row.ErrorMessage = ex.Message;
+            }
+
+            return row;
+        }
+
+        private static void RunAccuracySweep(string outputFilePath, bool quick, double[] angleOverride, int[] nOverride, double[] skinDepthOverride)
+        {
+            string directory = Path.GetDirectoryName(Path.GetFullPath(outputFilePath));
+            if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
+
+            string compareFilePath = Path.Combine(
+                directory ?? Environment.CurrentDirectory,
+                Path.GetFileNameWithoutExtension(outputFilePath) + "_compare.csv");
+
+            double[] angles = angleOverride ?? (quick ? new double[] { 0, 30, 60, 90 } : Enumerable.Range(0, 19).Select(i => i * 5.0).ToArray());
+            int[] ns = nOverride ?? (quick ? new int[] { 5, 10, 20, 30, 60 } : Enumerable.Range(1, 12).Select(i => i * 5).ToArray());
+            double[] skinDepths = skinDepthOverride ?? new double[] { 0.0, 0.1, 0.01, 0.001 };
+
+            using (var rowsWriter = new StreamWriter(outputFilePath, false, Encoding.UTF8))
+            using (var compareWriter = new StreamWriter(compareFilePath, false, Encoding.UTF8))
+            {
+                rowsWriter.WriteLine("ThetaDeg;N;SkinDepth;SolveResult;BcErrorPct;HelmholtzResidual;Incident;ReflectedPct;TransmittedPct;AbsorbedPct;EnergyTotalPct;EnergyBalanceErrorPct;TransmittedThroughStrip;SolveTimeMs;MetricsTimeMs;ErrorMessage");
+                compareWriter.WriteLine("ThetaDeg;N;SkinDepth;IdealBcErrorPct;SkinBcErrorPct;BcAbsDiffPct;IdealEnergyTotalPct;SkinEnergyTotalPct;EnergyTotalAbsDiffPct;IdealReflectedPct;SkinReflectedPct;ReflectedAbsDiffPct;IdealTransmittedPct;SkinTransmittedPct;AbsorbedSkinPct");
+
+                foreach (double thetaDeg in angles)
+                {
+                    foreach (int n in ns)
+                    {
+                        AccuracySweepRow ideal = null;
+                        foreach (double skinDepth in skinDepths)
+                        {
+                            AccuracySweepRow row = RunAccuracySweepCase(thetaDeg, n, skinDepth);
+                            if (skinDepth == 0) ideal = row;
+
+                            rowsWriter.WriteLine(string.Join(";",
+                                F(row.ThetaDeg),
+                                row.N.ToString(CultureInfo.InvariantCulture),
+                                F(row.SkinDepth),
+                                row.SolveResult.ToString(CultureInfo.InvariantCulture),
+                                F(row.BcError * 100.0),
+                                F(row.HelmholtzResidual),
+                                F(row.Incident),
+                                F(PercentOf(row.Reflected, row.Incident)),
+                                F(PercentOf(row.Transmitted, row.Incident)),
+                                F(PercentOf(row.Absorbed, row.Incident)),
+                                F(PercentOf(row.EnergyTotal, row.Incident)),
+                                F(row.EnergyBalanceError * 100.0),
+                                F(row.TransmittedThroughStrip),
+                                row.SolveTimeMs.ToString(CultureInfo.InvariantCulture),
+                                row.MetricsTimeMs.ToString(CultureInfo.InvariantCulture),
+                                row.ErrorMessage ?? ""));
+
+                            if (ideal != null && skinDepth > 0)
+                            {
+                                double idealTotalPct = PercentOf(ideal.EnergyTotal, ideal.Incident);
+                                double skinTotalPct = PercentOf(row.EnergyTotal, row.Incident);
+                                double idealReflectedPct = PercentOf(ideal.Reflected, ideal.Incident);
+                                double skinReflectedPct = PercentOf(row.Reflected, row.Incident);
+                                double idealTransmittedPct = PercentOf(ideal.Transmitted, ideal.Incident);
+                                double skinTransmittedPct = PercentOf(row.Transmitted, row.Incident);
+
+                                compareWriter.WriteLine(string.Join(";",
+                                    F(thetaDeg),
+                                    n.ToString(CultureInfo.InvariantCulture),
+                                    F(skinDepth),
+                                    F(ideal.BcError * 100.0),
+                                    F(row.BcError * 100.0),
+                                    F(Math.Abs(row.BcError - ideal.BcError) * 100.0),
+                                    F(idealTotalPct),
+                                    F(skinTotalPct),
+                                    F(Math.Abs(skinTotalPct - idealTotalPct)),
+                                    F(idealReflectedPct),
+                                    F(skinReflectedPct),
+                                    F(Math.Abs(skinReflectedPct - idealReflectedPct)),
+                                    F(idealTransmittedPct),
+                                    F(skinTransmittedPct),
+                                    F(PercentOf(row.Absorbed, row.Incident))));
+                            }
+                        }
+
+                        rowsWriter.Flush();
+                        compareWriter.Flush();
+                    }
+                }
+            }
+
+            Console.WriteLine("Accuracy sweep saved to: " + Path.GetFullPath(outputFilePath));
+            Console.WriteLine("Comparison sweep saved to: " + Path.GetFullPath(compareFilePath));
         }
 
         static void RunDiagnostics()
@@ -994,7 +1215,7 @@ namespace Diffraction
                                 {
                                     double Tj_k = Cheb(j, tau_c[targetPlate][ik]);
                                     double sqrt_w = Math.Sqrt(1.0 - tau_c[targetPlate][ik] * tau_c[targetPlate][ik]);
-                                    A_mat[row][col] = A_mat[row][col] - chi / 2.0 * Tj_k / sqrt_w;
+                                    A_mat[row][col] = A_mat[row][col] - chi / (2.0 * targetHalfL) * Tj_k / sqrt_w;
                                 }
                             }
                             else
@@ -1116,7 +1337,8 @@ namespace Diffraction
                 energy.Incident = CalculateIncidentEnergy();
                 energy.Reflected = CalculateReflectedEnergy();
                 energy.Absorbed = CalculateAbsorbedEnergy();
-                energy.Transmitted = CalculateTransmittedEnergyIndependent();
+                energy.Transmitted = energy.Incident - energy.Reflected - energy.Absorbed;
+                if (energy.Transmitted < 0) energy.Transmitted = 0;
                 energy.WasRenormalized = false;
                 return energy;
             }
