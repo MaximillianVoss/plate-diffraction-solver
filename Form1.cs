@@ -15,13 +15,29 @@ namespace Diffraction
 {
     public partial class MainForm : Form
     {
-        private Form2 currentForm2 = null;
+        private FlowLayoutPanel parameterFlowPanel;
+        private TabControl resultsTabControl;
+        private TabControl detailsTabControl;
+        private TabPage tabPageField;
+        private TabPage tabPageDiagnostics;
+        private PictureBox pictureBoxFieldNoSkin;
+        private PictureBox pictureBoxFieldSkin;
+        private RichTextBox textBoxDiagnostics;
+        private RichTextBox textBoxJournal;
+        private string lastStatusMessage;
 
         public MainForm()
         {
             InitializeComponent();
+            ConfigureChart();
+            BuildAdaptiveLayout();
+            labelExecutionTime.Text = "Время решения: н/д";
+            labelCalculationStatus.Text = "Готово к расчёту";
+            AppendJournalEntry("Приложение готово к расчету.");
+        }
 
-            // Настройка графика chartRealPart
+        private void ConfigureChart()
+        {
             chartRealPart.Series[0].ChartType = SeriesChartType.Line;
             chartRealPart.Series[0].Color = Color.Blue;
             chartRealPart.Series[0].BorderWidth = 3;
@@ -46,63 +62,289 @@ namespace Diffraction
             // Настройка внешнего вида осей
             chartRealPart.ChartAreas[0].AxisX.TitleFont = new Font("Arial", 10, FontStyle.Bold);
             chartRealPart.ChartAreas[0].AxisY.TitleFont = new Font("Arial", 10, FontStyle.Bold);
-            
-            // Автоматический запуск формы с графиками при загрузке
-            this.Shown += MainForm_Shown;
-            labelExecutionTime.Text = "Время решения: н/д";
+            chartRealPart.ChartAreas[0].AxisX.MajorGrid.LineColor = Color.Gainsboro;
+            chartRealPart.ChartAreas[0].AxisY.MajorGrid.LineColor = Color.Gainsboro;
+            chartRealPart.Dock = DockStyle.Fill;
         }
 
-        // Обработчик события Shown для автоматического открытия Form2
-        private async void MainForm_Shown(object sender, EventArgs e)
+        private void BuildAdaptiveLayout()
         {
-            // Автоматически открываем форму с графиками
-            await OpenGraphicsFormAsync();
-        }
+            SuspendLayout();
 
-        // Метод для открытия формы с графиками (рефакторинг button2_Click)
-        private async Task OpenGraphicsFormAsync()
-        {
-            // Повторно используем Form2, если она уже открыта
-            if (currentForm2 == null || currentForm2.IsDisposed)
+            Text = "Решатель дифракции на двух пластинах";
+            MinimumSize = new Size(1220, 780);
+            StartPosition = FormStartPosition.CenterScreen;
+            AcceptButton = CalculateButton;
+
+            groupBox1.Text = "Область визуализации";
+            buttonGraphic.Visible = false;
+            buttonGraphic.Enabled = false;
+            label10.Visible = false;
+            label11.Visible = false;
+
+            Font monoFont = new Font("Consolas", 9F, FontStyle.Regular, GraphicsUnit.Point);
+
+            textBoxChebPolynomial.Dock = DockStyle.Fill;
+            textBoxChebPolynomial.Multiline = true;
+            textBoxChebPolynomial.ScrollBars = ScrollBars.Both;
+            textBoxChebPolynomial.WordWrap = false;
+            textBoxChebPolynomial.Font = monoFont;
+
+            lblConductivity.Dock = DockStyle.Top;
+            lblConductivity.Padding = new Padding(0, 0, 0, 8);
+
+            pictureBoxFieldNoSkin = CreateFieldPictureBox();
+            pictureBoxFieldSkin = CreateFieldPictureBox();
+            textBoxDiagnostics = CreateReadOnlyRichTextBox(monoFont);
+            textBoxJournal = CreateReadOnlyRichTextBox(monoFont);
+            textBoxDiagnostics.Text = "Подробная диагностика появится после расчета.";
+
+            parameterFlowPanel = new FlowLayoutPanel();
+            parameterFlowPanel.Dock = DockStyle.Fill;
+            parameterFlowPanel.FlowDirection = FlowDirection.TopDown;
+            parameterFlowPanel.WrapContents = false;
+            parameterFlowPanel.AutoScroll = true;
+            parameterFlowPanel.Padding = new Padding(0);
+            parameterFlowPanel.Margin = new Padding(0);
+            parameterFlowPanel.SizeChanged += ResizeParameterGroups;
+
+            ConfigureParameterGroup(groupBox4);
+            ConfigureParameterGroup(groupBox3);
+            ConfigureParameterGroup(groupBox2);
+            ConfigureParameterGroup(groupBox1);
+            ConfigureParameterGroup(groupBoxSkin);
+
+            parameterFlowPanel.Controls.Add(groupBox4);
+            parameterFlowPanel.Controls.Add(groupBox3);
+            parameterFlowPanel.Controls.Add(groupBox2);
+            parameterFlowPanel.Controls.Add(groupBox1);
+            parameterFlowPanel.Controls.Add(groupBoxSkin);
+
+            resultsTabControl = new TabControl();
+            resultsTabControl.Dock = DockStyle.Fill;
+
+            TabPage tabPageSlice = new TabPage("Сечение поля");
+            tabPageSlice.Padding = new Padding(8);
+            tabPageSlice.Controls.Add(chartRealPart);
+
+            tabPageField = new TabPage("Карта поля");
+            tabPageField.Padding = new Padding(8);
+            tabPageField.Controls.Add(BuildFieldLayout());
+
+            resultsTabControl.TabPages.Add(tabPageSlice);
+            resultsTabControl.TabPages.Add(tabPageField);
+
+            detailsTabControl = new TabControl();
+            detailsTabControl.Dock = DockStyle.Fill;
+
+            TabPage tabPageCoefficients = new TabPage("Коэффициенты");
+            tabPageCoefficients.Padding = new Padding(8);
+            tabPageCoefficients.Controls.Add(BuildCoefficientLayout());
+
+            tabPageDiagnostics = new TabPage("Диагностика");
+            tabPageDiagnostics.Padding = new Padding(8);
+            tabPageDiagnostics.Controls.Add(textBoxDiagnostics);
+
+            detailsTabControl.TabPages.Add(tabPageCoefficients);
+            detailsTabControl.TabPages.Add(tabPageDiagnostics);
+
+            SplitContainer contentSplit = new SplitContainer();
+            contentSplit.Dock = DockStyle.Fill;
+            contentSplit.FixedPanel = FixedPanel.Panel1;
+            contentSplit.Panel1MinSize = 300;
+            contentSplit.Panel2MinSize = 640;
+            contentSplit.SplitterDistance = 340;
+            contentSplit.Panel1.Controls.Add(parameterFlowPanel);
+
+            SplitContainer visualSplit = new SplitContainer();
+            visualSplit.Dock = DockStyle.Fill;
+            visualSplit.FixedPanel = FixedPanel.Panel2;
+            visualSplit.Panel1MinSize = 420;
+            visualSplit.Panel2MinSize = 300;
+            visualSplit.SplitterDistance = 720;
+            visualSplit.SizeChanged += delegate
             {
-                currentForm2 = new Form2();
-            }
+                int desiredPanel2Width = 340;
+                int newDistance = visualSplit.Width - desiredPanel2Width;
+                if (newDistance > visualSplit.Panel1MinSize &&
+                    newDistance < visualSplit.Width - visualSplit.Panel2MinSize)
+                {
+                    visualSplit.SplitterDistance = newDistance;
+                }
+            };
+            visualSplit.Panel1.Controls.Add(resultsTabControl);
+            visualSplit.Panel2.Controls.Add(detailsTabControl);
+            contentSplit.Panel2.Controls.Add(visualSplit);
 
-            PlateCalculationInput input;
-            if (!TryReadCalculationInput(out input))
+            TableLayoutPanel toolbarLayout = new TableLayoutPanel();
+            toolbarLayout.Dock = DockStyle.Fill;
+            toolbarLayout.AutoSize = true;
+            toolbarLayout.ColumnCount = 3;
+            toolbarLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            toolbarLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            toolbarLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+
+            Label titleLabel = new Label();
+            titleLabel.Text = "Дифракция на двух пластинах";
+            titleLabel.Dock = DockStyle.Fill;
+            titleLabel.TextAlign = ContentAlignment.MiddleLeft;
+            titleLabel.AutoSize = true;
+            titleLabel.Font = new Font(Font, FontStyle.Bold);
+            titleLabel.Margin = new Padding(0, 6, 0, 6);
+
+            checkBoxUseCuda.Margin = new Padding(0, 4, 12, 4);
+            CalculateButton.Margin = new Padding(0, 0, 0, 0);
+            CalculateButton.AutoSize = true;
+            CalculateButton.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            CalculateButton.Padding = new Padding(10, 3, 10, 3);
+
+            toolbarLayout.Controls.Add(titleLabel, 0, 0);
+            toolbarLayout.Controls.Add(checkBoxUseCuda, 1, 0);
+            toolbarLayout.Controls.Add(CalculateButton, 2, 0);
+
+            progressCalculation.Dock = DockStyle.Fill;
+            progressCalculation.Margin = new Padding(8, 4, 8, 4);
+
+            labelCalculationStatus.Dock = DockStyle.Fill;
+            labelCalculationStatus.TextAlign = ContentAlignment.MiddleLeft;
+            labelCalculationStatus.AutoEllipsis = true;
+
+            labelExecutionTime.Dock = DockStyle.Fill;
+            labelExecutionTime.TextAlign = ContentAlignment.MiddleRight;
+            labelExecutionTime.AutoEllipsis = true;
+
+            TableLayoutPanel statusLayout = new TableLayoutPanel();
+            statusLayout.Dock = DockStyle.Fill;
+            statusLayout.AutoSize = true;
+            statusLayout.ColumnCount = 3;
+            statusLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 240F));
+            statusLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            statusLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 440F));
+            statusLayout.Controls.Add(labelCalculationStatus, 0, 0);
+            statusLayout.Controls.Add(progressCalculation, 1, 0);
+            statusLayout.Controls.Add(labelExecutionTime, 2, 0);
+
+            GroupBox journalGroup = new GroupBox();
+            journalGroup.Text = "Журнал расчета";
+            journalGroup.Dock = DockStyle.Fill;
+            journalGroup.Controls.Add(textBoxJournal);
+
+            TableLayoutPanel bottomLayout = new TableLayoutPanel();
+            bottomLayout.Dock = DockStyle.Fill;
+            bottomLayout.RowCount = 2;
+            bottomLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            bottomLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            bottomLayout.Controls.Add(statusLayout, 0, 0);
+            bottomLayout.Controls.Add(journalGroup, 0, 1);
+
+            TableLayoutPanel rootLayout = new TableLayoutPanel();
+            rootLayout.Dock = DockStyle.Fill;
+            rootLayout.Padding = new Padding(12);
+            rootLayout.RowCount = 3;
+            rootLayout.ColumnCount = 1;
+            rootLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            rootLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            rootLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 210F));
+            rootLayout.Controls.Add(toolbarLayout, 0, 0);
+            rootLayout.Controls.Add(contentSplit, 0, 1);
+            rootLayout.Controls.Add(bottomLayout, 0, 2);
+
+            Controls.Clear();
+            Controls.Add(rootLayout);
+
+            ResizeParameterGroups(this, EventArgs.Empty);
+            ResumeLayout(true);
+        }
+
+        private static PictureBox CreateFieldPictureBox()
+        {
+            PictureBox pictureBox = new PictureBox();
+            pictureBox.Dock = DockStyle.Fill;
+            pictureBox.BackColor = Color.White;
+            pictureBox.BorderStyle = BorderStyle.FixedSingle;
+            pictureBox.SizeMode = PictureBoxSizeMode.Zoom;
+            return pictureBox;
+        }
+
+        private static RichTextBox CreateReadOnlyRichTextBox(Font font)
+        {
+            RichTextBox textBox = new RichTextBox();
+            textBox.Dock = DockStyle.Fill;
+            textBox.ReadOnly = true;
+            textBox.WordWrap = false;
+            textBox.BorderStyle = BorderStyle.None;
+            textBox.BackColor = SystemColors.Window;
+            textBox.Font = font;
+            return textBox;
+        }
+
+        private Control BuildFieldLayout()
+        {
+            TableLayoutPanel fieldLayout = new TableLayoutPanel();
+            fieldLayout.Dock = DockStyle.Fill;
+            fieldLayout.ColumnCount = 2;
+            fieldLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
+            fieldLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
+
+            fieldLayout.Controls.Add(CreateFieldGroup("Модуль поля без скин-слоя", pictureBoxFieldNoSkin), 0, 0);
+            fieldLayout.Controls.Add(CreateFieldGroup("Модуль поля со скин-слоем", pictureBoxFieldSkin), 1, 0);
+            return fieldLayout;
+        }
+
+        private static GroupBox CreateFieldGroup(string title, Control content)
+        {
+            GroupBox group = new GroupBox();
+            group.Text = title;
+            group.Dock = DockStyle.Fill;
+            group.Padding = new Padding(8);
+            group.Controls.Add(content);
+            return group;
+        }
+
+        private Control BuildCoefficientLayout()
+        {
+            TableLayoutPanel coefficientLayout = new TableLayoutPanel();
+            coefficientLayout.Dock = DockStyle.Fill;
+            coefficientLayout.RowCount = 2;
+            coefficientLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            coefficientLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            coefficientLayout.Controls.Add(lblConductivity, 0, 0);
+            coefficientLayout.Controls.Add(textBoxChebPolynomial, 0, 1);
+            return coefficientLayout;
+        }
+
+        private void ConfigureParameterGroup(Control control)
+        {
+            control.Margin = new Padding(0, 0, 0, 12);
+            control.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top;
+        }
+
+        private void ResizeParameterGroups(object sender, EventArgs e)
+        {
+            if (parameterFlowPanel == null) return;
+
+            int availableWidth = parameterFlowPanel.ClientSize.Width - SystemInformation.VerticalScrollBarWidth - 4;
+            if (availableWidth < 200) return;
+
+            foreach (Control control in parameterFlowPanel.Controls)
+                control.Width = availableWidth;
+        }
+
+        private void AppendJournalEntry(string message)
+        {
+            if (string.IsNullOrWhiteSpace(message) || textBoxJournal == null)
                 return;
 
-            int width = currentForm2.pictureBoxNoSkin.Width;
-            int height = currentForm2.pictureBoxNoSkin.Height;
-            var progress = new Progress<string>(UpdateCalculationStatus);
-
-            SetCalculationBusy(true, "Построение поля...");
-            try
+            if (InvokeRequired)
             {
-                // Создание изображений графиков с помощью метода CreateGraphImages
-                GraphImagePair images = await Task.Run(() => CreateGraphImages(input, width, height, progress));
+                BeginInvoke(new Action<string>(AppendJournalEntry), message);
+                return;
+            }
 
-                if (images != null)
-                {
-                    currentForm2.pictureBoxNoSkin.Image = images.ImageNoSkin;
-                    currentForm2.pictureBoxSkin.Image = images.ImageSkin;
-                }
-
-                if (!currentForm2.Visible)
-                    currentForm2.Show();
-                else
-                    currentForm2.Refresh();
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show(
-                    string.Format("Ошибка построения поля: {0}", ex.Message),
-                    "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            }
-            finally
-            {
-                SetCalculationBusy(false, "Готово");
-            }
+            textBoxJournal.AppendText(
+                string.Format("[{0:HH:mm:ss}] {1}{2}", DateTime.Now, message.Trim(), Environment.NewLine));
+            textBoxJournal.SelectionStart = textBoxJournal.TextLength;
+            textBoxJournal.ScrollToCaret();
         }
 
         // Обработчик события изменения значения числового поля xL.
@@ -223,6 +465,7 @@ namespace Diffraction
             string error = ValidatePlateGeometry(alpha1, beta1, alpha2, beta2);
             if (error == null) return true;
 
+            AppendJournalEntry("Ошибка геометрии пластин: " + error);
             MessageBox.Show(error, "Ошибка геометрии пластин", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return false;
         }
@@ -252,36 +495,35 @@ namespace Diffraction
         // Обработчик события нажатия кнопки button1.
         private async void button1_Click(object sender, EventArgs e)
         {
-            // Очистка предыдущих данных
-            chartRealPart.Series[0].Points.Clear(); // Без скин-слоя
-            chartRealPart.Series[1].Points.Clear(); // Со скин-слоем
-            textBoxChebPolynomial.Clear();
+            ClearVisualOutputs();
 
             PlateCalculationInput input;
             if (!TryReadCalculationInput(out input))
                 return;
 
-            int imageWidth = 0;
-            int imageHeight = 0;
-            bool updateGraphics = currentForm2 != null && !currentForm2.IsDisposed && currentForm2.Visible;
-            if (updateGraphics)
-            {
-                imageWidth = currentForm2.pictureBoxNoSkin.Width;
-                imageHeight = currentForm2.pictureBoxNoSkin.Height;
-            }
+            int imageWidth = Math.Max(320, pictureBoxFieldNoSkin == null ? 0 : pictureBoxFieldNoSkin.ClientSize.Width);
+            int imageHeight = Math.Max(260, pictureBoxFieldNoSkin == null ? 0 : pictureBoxFieldNoSkin.ClientSize.Height);
 
             var progress = new Progress<string>(UpdateCalculationStatus);
             CalculationResult result = null;
 
+            AppendJournalEntry(string.Format(
+                "Запуск расчета: N={0}, λ={1:G4}, θ={2:G4}°, skin={3:G4}, CUDA={4}.",
+                input.Param,
+                input.Len,
+                angleInDegrees.Value,
+                input.SkinDepth,
+                input.UseCuda ? "вкл" : "выкл"));
             SetCalculationBusy(true, "Запуск расчета...");
 
             try
             {
                 result = await Task.Run(() => RunFullCalculation(input, imageWidth, imageHeight, progress));
-                ApplyCalculationResult(result, updateGraphics);
+                ApplyCalculationResult(result);
             }
             catch (Exception ex)
             {
+                AppendJournalEntry("Ошибка расчета: " + ex.Message);
                 MessageBox.Show(
                     string.Format("Ошибка расчета: {0}", ex.Message),
                     "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Warning);
@@ -293,10 +535,7 @@ namespace Diffraction
 
             if (result != null)
             {
-                if (result.NoSkinReport != null)
-                    ShowAccuracyReport(result.NoSkinReport);
-                if (result.SkinReport != null)
-                    ShowAccuracyReport(result.SkinReport);
+                PublishDiagnostics(result);
             }
         }
 
@@ -537,7 +776,7 @@ namespace Diffraction
             }
         }
 
-        private void ApplyCalculationResult(CalculationResult result, bool updateGraphics)
+        private void ApplyCalculationResult(CalculationResult result)
         {
             chartRealPart.Series[0].Points.Clear();
             chartRealPart.Series[1].Points.Clear();
@@ -552,13 +791,9 @@ namespace Diffraction
             lblConductivity.ForeColor = result.ConductivityColor;
             labelExecutionTime.Text = result.ExecutionSummaryText ?? "Время решения: н/д";
             labelExecutionTime.ForeColor = result.ExecutionSummaryColor;
-
-            if (updateGraphics && result.Images != null && currentForm2 != null && !currentForm2.IsDisposed)
-            {
-                currentForm2.pictureBoxNoSkin.Image = result.Images.ImageNoSkin;
-                currentForm2.pictureBoxSkin.Image = result.Images.ImageSkin;
-                currentForm2.Refresh();
-            }
+            SetPictureBoxImage(pictureBoxFieldNoSkin, result.Images == null ? null : result.Images.ImageNoSkin);
+            SetPictureBoxImage(pictureBoxFieldSkin, result.Images == null ? null : result.Images.ImageSkin);
+            AppendJournalEntry("Расчет завершен. Результаты обновлены на вкладках.");
         }
 
         private void SetCalculationBusy(bool busy, string status)
@@ -581,6 +816,87 @@ namespace Diffraction
         private void UpdateCalculationStatus(string status)
         {
             labelCalculationStatus.Text = status;
+            if (!string.Equals(lastStatusMessage, status, StringComparison.Ordinal))
+            {
+                lastStatusMessage = status;
+                AppendJournalEntry(status);
+            }
+        }
+
+        private void ClearVisualOutputs()
+        {
+            chartRealPart.Series[0].Points.Clear();
+            chartRealPart.Series[1].Points.Clear();
+            textBoxChebPolynomial.Clear();
+
+            if (textBoxDiagnostics != null)
+                textBoxDiagnostics.Text = "Подробная диагностика появится после расчета.";
+
+            SetPictureBoxImage(pictureBoxFieldNoSkin, null);
+            SetPictureBoxImage(pictureBoxFieldSkin, null);
+        }
+
+        private static void SetPictureBoxImage(PictureBox pictureBox, Image image)
+        {
+            if (pictureBox == null)
+                return;
+
+            Image previous = pictureBox.Image;
+            pictureBox.Image = image;
+            if (previous != null && !ReferenceEquals(previous, image))
+                previous.Dispose();
+        }
+
+        private void PublishDiagnostics(CalculationResult result)
+        {
+            string diagnosticText = BuildDiagnosticText(result.NoSkinReport, result.SkinReport);
+            if (textBoxDiagnostics != null)
+                textBoxDiagnostics.Text = diagnosticText;
+
+            bool hasWarning = false;
+            if (result.NoSkinReport != null && result.NoSkinReport.Icon == MessageBoxIcon.Warning)
+                hasWarning = true;
+            if (result.SkinReport != null && result.SkinReport.Icon == MessageBoxIcon.Warning)
+                hasWarning = true;
+
+            if (hasWarning)
+            {
+                detailsTabControl.SelectedTab = tabPageDiagnostics;
+                AppendJournalEntry("Диагностика содержит предупреждения. Подробности открыты на вкладке \"Диагностика\".");
+                MessageBox.Show(
+                    "Расчет завершен с предупреждениями. Полный отчет перенесен на вкладку \"Диагностика\".",
+                    "Предупреждение расчета",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+            }
+            else
+            {
+                AppendJournalEntry("Диагностика обновлена без предупреждений.");
+            }
+        }
+
+        private static string BuildDiagnosticText(AccuracyReport noSkinReport, AccuracyReport skinReport)
+        {
+            StringBuilder builder = new StringBuilder();
+
+            AppendReport(builder, noSkinReport);
+            if (noSkinReport != null && skinReport != null)
+                builder.AppendLine();
+            AppendReport(builder, skinReport);
+
+            return builder.Length == 0
+                ? "Подробная диагностика отсутствует."
+                : builder.ToString();
+        }
+
+        private static void AppendReport(StringBuilder builder, AccuracyReport report)
+        {
+            if (report == null)
+                return;
+
+            builder.AppendLine(report.Title);
+            builder.AppendLine(new string('=', report.Title.Length));
+            builder.AppendLine(report.Message.Trim());
         }
 
         // Новый метод для отображения отчета о точности
@@ -774,24 +1090,11 @@ namespace Diffraction
             };
         }
 
-
-
-
-
-        private void ShowAccuracyReport(AccuracyReport report)
-        {
-            MessageBox.Show(
-                report.Message,
-                report.Title,
-                MessageBoxButtons.OK,
-                report.Icon
-            );
-        }
-
-        // Обработчик события нажатия кнопки button2
         private async void button2_Click(object sender, EventArgs e)
         {
-            await OpenGraphicsFormAsync();
+            await Task.CompletedTask;
+            if (resultsTabControl != null && tabPageField != null)
+                resultsTabControl.SelectedTab = tabPageField;
         }
 
         // Метод для создания изображения графика.
