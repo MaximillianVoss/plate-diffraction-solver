@@ -13,6 +13,7 @@ namespace Diffraction.Core
         public sealed class SolveResponse
         {
             public bool Success;
+            public bool Cancelled;
             public string ErrorMessage;
             public string BackendName;
             public double AssemblyMilliseconds;
@@ -23,66 +24,78 @@ namespace Diffraction.Core
 
         public static SolveResponse Solve(DiffractionMath.DifrOnLenta solver, CancellationToken cancellationToken = default(CancellationToken))
         {
-            if (solver == null) throw new ArgumentNullException(nameof(solver));
-            cancellationToken.ThrowIfCancellationRequested();
-            if (solver.PlateCount != 2)
+            try
             {
-                return new SolveResponse
+                if (solver == null) throw new ArgumentNullException(nameof(solver));
+                cancellationToken.ThrowIfCancellationRequested();
+                if (solver.PlateCount != 2)
                 {
-                    Success = false,
-                    ErrorMessage = "CUDA backend сейчас поддерживает только две пластины."
-                };
-            }
-
-            string executablePath = EnsureCudaExecutable(cancellationToken);
-            if (string.IsNullOrEmpty(executablePath))
-            {
-                return new SolveResponse
-                {
-                    Success = false,
-                    ErrorMessage = "Не удалось найти или собрать DiffractionCuda.exe"
-                };
-            }
-
-            ProcessStartInfo startInfo = new ProcessStartInfo
-            {
-                FileName = executablePath,
-                Arguments = BuildArguments(solver),
-                WorkingDirectory = Path.GetDirectoryName(executablePath),
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true,
-                StandardOutputEncoding = Encoding.UTF8,
-                StandardErrorEncoding = Encoding.UTF8
-            };
-
-            using (Process process = new Process { StartInfo = startInfo })
-            {
-                using (cancellationToken.Register(() => TryTerminateProcess(process)))
-                {
-                    process.Start();
-                    string stdout = process.StandardOutput.ReadToEnd();
-                    string stderr = process.StandardError.ReadToEnd();
-                    process.WaitForExit();
-                    cancellationToken.ThrowIfCancellationRequested();
-
-                    if (process.ExitCode != 0)
+                    return new SolveResponse
                     {
-                        return new SolveResponse
-                        {
-                            Success = false,
-                            ErrorMessage = string.IsNullOrWhiteSpace(stderr)
-                                ? "CUDA backend завершился с кодом " + process.ExitCode.ToString(CultureInfo.InvariantCulture)
-                                : stderr.Trim()
-                        };
-                    }
-
-                    SolveResponse response = ParseSolveOutput(stdout, solver.TotalUnknowns);
-                    if (!response.Success && !string.IsNullOrWhiteSpace(stderr))
-                        response.ErrorMessage = string.IsNullOrWhiteSpace(response.ErrorMessage) ? stderr.Trim() : response.ErrorMessage;
-                    return response;
+                        Success = false,
+                        ErrorMessage = "CUDA backend сейчас поддерживает только две пластины."
+                    };
                 }
+
+                string executablePath = EnsureCudaExecutable(cancellationToken);
+                if (string.IsNullOrEmpty(executablePath))
+                {
+                    return new SolveResponse
+                    {
+                        Success = false,
+                        ErrorMessage = "Не удалось найти или собрать DiffractionCuda.exe"
+                    };
+                }
+
+                ProcessStartInfo startInfo = new ProcessStartInfo
+                {
+                    FileName = executablePath,
+                    Arguments = BuildArguments(solver),
+                    WorkingDirectory = Path.GetDirectoryName(executablePath),
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true,
+                    StandardOutputEncoding = Encoding.UTF8,
+                    StandardErrorEncoding = Encoding.UTF8
+                };
+
+                using (Process process = new Process { StartInfo = startInfo })
+                {
+                    using (cancellationToken.Register(() => TryTerminateProcess(process)))
+                    {
+                        process.Start();
+                        string stdout = process.StandardOutput.ReadToEnd();
+                        string stderr = process.StandardError.ReadToEnd();
+                        process.WaitForExit();
+                        cancellationToken.ThrowIfCancellationRequested();
+
+                        if (process.ExitCode != 0)
+                        {
+                            return new SolveResponse
+                            {
+                                Success = false,
+                                ErrorMessage = string.IsNullOrWhiteSpace(stderr)
+                                    ? "CUDA backend завершился с кодом " + process.ExitCode.ToString(CultureInfo.InvariantCulture)
+                                    : stderr.Trim()
+                            };
+                        }
+
+                        SolveResponse response = ParseSolveOutput(stdout, solver.TotalUnknowns);
+                        if (!response.Success && !string.IsNullOrWhiteSpace(stderr))
+                            response.ErrorMessage = string.IsNullOrWhiteSpace(response.ErrorMessage) ? stderr.Trim() : response.ErrorMessage;
+                        return response;
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                return new SolveResponse
+                {
+                    Success = false,
+                    Cancelled = true,
+                    ErrorMessage = "Операция была отменена."
+                };
             }
         }
 

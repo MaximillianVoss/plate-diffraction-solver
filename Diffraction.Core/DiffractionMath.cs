@@ -325,6 +325,7 @@ namespace Diffraction.Core
             public double[] alpha;
             public double[] beta;
             public SolvePerformance LastSolvePerformance { get; private set; }
+            public bool LastSolveCancelled { get; private set; }
             public int TotalUnknowns => N * PlateCount;
 
             public DifrOnLenta(double _a, double _b, double _lambda, double _teta, int _N, double _skinDepth = 0)
@@ -382,6 +383,7 @@ namespace Diffraction.Core
                 ResetPreparedState();
                 chi = CalculateChi();
                 LastSolvePerformance = null;
+                LastSolveCancelled = false;
             }
 
             private Compl CalculateChi()
@@ -583,6 +585,7 @@ namespace Diffraction.Core
                     TotalMilliseconds = totalMilliseconds,
                     UsedCuda = usedCuda
                 };
+                LastSolveCancelled = false;
             }
 
             private int CoeffIndex(int plateIndex, int localIndex) => plateIndex * N + localIndex;
@@ -629,101 +632,112 @@ namespace Diffraction.Core
 
             public int SolveDifr(CancellationToken cancellationToken = default(CancellationToken))
             {
-                Stopwatch totalWatch = Stopwatch.StartNew();
-                cancellationToken.ThrowIfCancellationRequested();
-                EnsurePreparedState();
-
-                double k_wave = 2 * Math.PI / lambda;
-                int totalUnknowns = TotalUnknowns;
-                CMatr A_mat = new CMatr(totalUnknowns);
-                CVect B_vec = new CVect(totalUnknowns);
-                Stopwatch assemblyWatch = Stopwatch.StartNew();
-
-                Parallel.For(0, totalUnknowns, new ParallelOptions { CancellationToken = cancellationToken }, row =>
+                try
                 {
+                    LastSolveCancelled = false;
+                    Stopwatch totalWatch = Stopwatch.StartNew();
                     cancellationToken.ThrowIfCancellationRequested();
-                    int targetPlate = row / N;
-                    int ik = row % N;
-                    double targetHalfL = HalfLength(targetPlate);
-                    double xk = x_c[targetPlate][ik], tau_k = tau_c[targetPlate][ik];
+                    EnsurePreparedState();
 
-                    for (int sourcePlate = 0; sourcePlate < PlateCount; sourcePlate++)
+                    double k_wave = 2 * Math.PI / lambda;
+                    int totalUnknowns = TotalUnknowns;
+                    CMatr A_mat = new CMatr(totalUnknowns);
+                    CVect B_vec = new CVect(totalUnknowns);
+                    Stopwatch assemblyWatch = Stopwatch.StartNew();
+
+                    Parallel.For(0, totalUnknowns, new ParallelOptions { CancellationToken = cancellationToken }, row =>
                     {
-                        for (int j = 0; j < N; j++)
+                        cancellationToken.ThrowIfCancellationRequested();
+                        int targetPlate = row / N;
+                        int ik = row % N;
+                        double targetHalfL = HalfLength(targetPlate);
+                        double xk = x_c[targetPlate][ik], tau_k = tau_c[targetPlate][ik];
+
+                        for (int sourcePlate = 0; sourcePlate < PlateCount; sourcePlate++)
                         {
-                            int col = CoeffIndex(sourcePlate, j);
-
-                            if (sourcePlate == targetPlate)
+                            for (int j = 0; j < N; j++)
                             {
-                                Compl sum_reg = new Compl(0, 0);
-                                for (int m = 0; m < M_quad; m++)
-                                {
-                                    double kd = k_wave * targetHalfL * Math.Abs(tau_k - tau_q[targetPlate][m]);
-                                    Compl R = R_H0(kd);
-                                    double Tj = Cheb(j, tau_q[targetPlate][m]);
-                                    sum_reg += R * Tj * w_q[targetPlate][m];
-                                }
-                                double ln_const = Math.Log(k_wave * targetHalfL / 2.0);
-                                double I_ortho = (j == 0) ? Math.PI : 0.0;
-                                double I_log = (j == 0) ? (-Math.PI * Math.Log(2.0)) : (-(Math.PI / j) * Cheb(j, tau_k));
-                                Compl S_log = ci * (-2.0 / Math.PI) * targetHalfL * (ln_const * I_ortho + I_log);
-                                A_mat[row][col] = ci / 4.0 * (sum_reg + S_log);
+                                int col = CoeffIndex(sourcePlate, j);
 
-                                if (skinDepth > 0)
+                                if (sourcePlate == targetPlate)
                                 {
-                                    double Tj_k = Cheb(j, tau_c[targetPlate][ik]);
-                                    double sqrt_w = Math.Sqrt(1.0 - tau_c[targetPlate][ik] * tau_c[targetPlate][ik]);
-                                    A_mat[row][col] = A_mat[row][col] - chi / (2.0 * targetHalfL) * Tj_k / sqrt_w;
+                                    Compl sum_reg = new Compl(0, 0);
+                                    for (int m = 0; m < M_quad; m++)
+                                    {
+                                        double kd = k_wave * targetHalfL * Math.Abs(tau_k - tau_q[targetPlate][m]);
+                                        Compl R = R_H0(kd);
+                                        double Tj = Cheb(j, tau_q[targetPlate][m]);
+                                        sum_reg += R * Tj * w_q[targetPlate][m];
+                                    }
+                                    double ln_const = Math.Log(k_wave * targetHalfL / 2.0);
+                                    double I_ortho = (j == 0) ? Math.PI : 0.0;
+                                    double I_log = (j == 0) ? (-Math.PI * Math.Log(2.0)) : (-(Math.PI / j) * Cheb(j, tau_k));
+                                    Compl S_log = ci * (-2.0 / Math.PI) * targetHalfL * (ln_const * I_ortho + I_log);
+                                    A_mat[row][col] = ci / 4.0 * (sum_reg + S_log);
+
+                                    if (skinDepth > 0)
+                                    {
+                                        double Tj_k = Cheb(j, tau_c[targetPlate][ik]);
+                                        double sqrt_w = Math.Sqrt(1.0 - tau_c[targetPlate][ik] * tau_c[targetPlate][ik]);
+                                        A_mat[row][col] = A_mat[row][col] - chi / (2.0 * targetHalfL) * Tj_k / sqrt_w;
+                                    }
                                 }
-                            }
-                            else
-                            {
-                                Compl sum_cross = new Compl(0, 0);
-                                for (int m = 0; m < M_quad; m++)
+                                else
                                 {
-                                    double distance = Math.Abs(t_q[sourcePlate][m] - xk);
-                                    if (distance < 1e-14) distance = 1e-14;
-                                    double Tj = Cheb(j, tau_q[sourcePlate][m]);
-                                    sum_cross += H0_2(k_wave * distance) * Tj * w_q[sourcePlate][m];
+                                    Compl sum_cross = new Compl(0, 0);
+                                    for (int m = 0; m < M_quad; m++)
+                                    {
+                                        double distance = Math.Abs(t_q[sourcePlate][m] - xk);
+                                        if (distance < 1e-14) distance = 1e-14;
+                                        double Tj = Cheb(j, tau_q[sourcePlate][m]);
+                                        sum_cross += H0_2(k_wave * distance) * Tj * w_q[sourcePlate][m];
+                                    }
+                                    A_mat[row][col] = ci / 4.0 * sum_cross;
                                 }
-                                A_mat[row][col] = ci / 4.0 * sum_cross;
                             }
                         }
-                    }
 
-                    if (skinDepth > 0)
+                        if (skinDepth > 0)
+                        {
+                            Compl du0_dz = ci * k_wave * Math.Sin(teta) * u0(xk, 0);
+                            B_vec[row] = -1.0 * u0(xk, 0) - chi * du0_dz;
+                        }
+                        else { B_vec[row] = -1.0 * u0(xk, 0); }
+                    });
+                    assemblyWatch.Stop();
+
+                    CVect w = new CVect(totalUnknowns);
+                    Stopwatch solveWatch = Stopwatch.StartNew();
+                    cancellationToken.ThrowIfCancellationRequested();
+                    int output = Gauss(A_mat, B_vec, w, cancellationToken);
+                    solveWatch.Stop();
+                    for (int ik = 0; ik < totalUnknowns; ik++) y[ik] = w[ik];
+
+                    // Сохраняем матрицу для расчёта обусловленности
+                    LastMatrixA = new CMatr(totalUnknowns);
+                    for (int r = 0; r < totalUnknowns; r++)
+                        for (int c = 0; c < totalUnknowns; c++)
+                            LastMatrixA[r][c] = A_mat[r][c];
+
+                    totalWatch.Stop();
+                    LastSolvePerformance = new SolvePerformance
                     {
-                        Compl du0_dz = ci * k_wave * Math.Sin(teta) * u0(xk, 0);
-                        B_vec[row] = -1.0 * u0(xk, 0) - chi * du0_dz;
-                    }
-                    else { B_vec[row] = -1.0 * u0(xk, 0); }
-                });
-                assemblyWatch.Stop();
+                        BackendName = "CPU (C#)",
+                        AssemblyMilliseconds = assemblyWatch.Elapsed.TotalMilliseconds,
+                        LinearSolveMilliseconds = solveWatch.Elapsed.TotalMilliseconds,
+                        TotalMilliseconds = totalWatch.Elapsed.TotalMilliseconds,
+                        UsedCuda = false
+                    };
 
-                CVect w = new CVect(totalUnknowns);
-                Stopwatch solveWatch = Stopwatch.StartNew();
-                cancellationToken.ThrowIfCancellationRequested();
-                int output = Gauss(A_mat, B_vec, w, cancellationToken);
-                solveWatch.Stop();
-                for (int ik = 0; ik < totalUnknowns; ik++) y[ik] = w[ik];
-
-                // Сохраняем матрицу для расчёта обусловленности
-                LastMatrixA = new CMatr(totalUnknowns);
-                for (int r = 0; r < totalUnknowns; r++)
-                    for (int c = 0; c < totalUnknowns; c++)
-                        LastMatrixA[r][c] = A_mat[r][c];
-
-                totalWatch.Stop();
-                LastSolvePerformance = new SolvePerformance
+                    return output;
+                }
+                catch (OperationCanceledException)
                 {
-                    BackendName = "CPU (C#)",
-                    AssemblyMilliseconds = assemblyWatch.Elapsed.TotalMilliseconds,
-                    LinearSolveMilliseconds = solveWatch.Elapsed.TotalMilliseconds,
-                    TotalMilliseconds = totalWatch.Elapsed.TotalMilliseconds,
-                    UsedCuda = false
-                };
-
-                return output;
+                    LastSolveCancelled = true;
+                    LastSolvePerformance = null;
+                    LastMatrixA = null;
+                    return 0;
+                }
             }
 
             public static void RunParameterSweep_Collocation(

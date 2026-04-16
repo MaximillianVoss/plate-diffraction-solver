@@ -749,6 +749,9 @@ namespace Diffraction
             {
                 progress.Report("Решение " + caseName + " через CUDA...");
                 CudaSolverBridge.SolveResponse cudaResponse = CudaSolverBridge.Solve(solver, cancellationToken);
+                if (cudaResponse.Cancelled)
+                    throw new OperationCanceledException();
+
                 if (cudaResponse.Success)
                 {
                     solver.ApplySolvedCoefficients(
@@ -771,6 +774,9 @@ namespace Diffraction
 
             progress.Report("Решение " + caseName + " на CPU...");
             bool solved = solver.SolveDifr(cancellationToken) == 1;
+            if (solver.LastSolveCancelled)
+                throw new OperationCanceledException();
+
             return new SolveCaseResult
             {
                 Solver = solver,
