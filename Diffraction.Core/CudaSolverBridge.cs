@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Text;
+using System.Threading;
 
 namespace Diffraction.Core
 {
@@ -20,9 +21,10 @@ namespace Diffraction.Core
             public DiffractionMath.Compl[] Coefficients;
         }
 
-        public static SolveResponse Solve(DiffractionMath.DifrOnLenta solver)
+        public static SolveResponse Solve(DiffractionMath.DifrOnLenta solver, CancellationToken cancellationToken = default(CancellationToken))
         {
             if (solver == null) throw new ArgumentNullException(nameof(solver));
+            cancellationToken.ThrowIfCancellationRequested();
             if (solver.PlateCount != 2)
             {
                 return new SolveResponse
@@ -32,7 +34,7 @@ namespace Diffraction.Core
                 };
             }
 
-            string executablePath = EnsureCudaExecutable();
+            string executablePath = EnsureCudaExecutable(cancellationToken);
             if (string.IsNullOrEmpty(executablePath))
             {
                 return new SolveResponse
@@ -57,26 +59,30 @@ namespace Diffraction.Core
 
             using (Process process = new Process { StartInfo = startInfo })
             {
-                process.Start();
-                string stdout = process.StandardOutput.ReadToEnd();
-                string stderr = process.StandardError.ReadToEnd();
-                process.WaitForExit();
-
-                if (process.ExitCode != 0)
+                using (cancellationToken.Register(() => TryTerminateProcess(process)))
                 {
-                    return new SolveResponse
-                    {
-                        Success = false,
-                        ErrorMessage = string.IsNullOrWhiteSpace(stderr)
-                            ? "CUDA backend завершился с кодом " + process.ExitCode.ToString(CultureInfo.InvariantCulture)
-                            : stderr.Trim()
-                    };
-                }
+                    process.Start();
+                    string stdout = process.StandardOutput.ReadToEnd();
+                    string stderr = process.StandardError.ReadToEnd();
+                    process.WaitForExit();
+                    cancellationToken.ThrowIfCancellationRequested();
 
-                SolveResponse response = ParseSolveOutput(stdout, solver.TotalUnknowns);
-                if (!response.Success && !string.IsNullOrWhiteSpace(stderr))
-                    response.ErrorMessage = string.IsNullOrWhiteSpace(response.ErrorMessage) ? stderr.Trim() : response.ErrorMessage;
-                return response;
+                    if (process.ExitCode != 0)
+                    {
+                        return new SolveResponse
+                        {
+                            Success = false,
+                            ErrorMessage = string.IsNullOrWhiteSpace(stderr)
+                                ? "CUDA backend завершился с кодом " + process.ExitCode.ToString(CultureInfo.InvariantCulture)
+                                : stderr.Trim()
+                        };
+                    }
+
+                    SolveResponse response = ParseSolveOutput(stdout, solver.TotalUnknowns);
+                    if (!response.Success && !string.IsNullOrWhiteSpace(stderr))
+                        response.ErrorMessage = string.IsNullOrWhiteSpace(response.ErrorMessage) ? stderr.Trim() : response.ErrorMessage;
+                    return response;
+                }
             }
         }
 
@@ -85,8 +91,9 @@ namespace Diffraction.Core
             return FindRelativeFile(Path.Combine("Diffraction.Cuda", "build", "DiffractionCuda.exe"));
         }
 
-        private static string EnsureCudaExecutable()
+        private static string EnsureCudaExecutable(CancellationToken cancellationToken)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             string executablePath = GetCudaExecutablePath();
             if (!string.IsNullOrEmpty(executablePath))
                 return executablePath;
@@ -110,10 +117,14 @@ namespace Diffraction.Core
 
             using (Process process = new Process { StartInfo = startInfo })
             {
-                process.Start();
-                process.StandardOutput.ReadToEnd();
-                process.StandardError.ReadToEnd();
-                process.WaitForExit();
+                using (cancellationToken.Register(() => TryTerminateProcess(process)))
+                {
+                    process.Start();
+                    process.StandardOutput.ReadToEnd();
+                    process.StandardError.ReadToEnd();
+                    process.WaitForExit();
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
             }
 
             return GetCudaExecutablePath();
@@ -247,6 +258,21 @@ namespace Diffraction.Core
         private static string Format(double value)
         {
             return value.ToString("G17", CultureInfo.InvariantCulture);
+        }
+
+        private static void TryTerminateProcess(Process process)
+        {
+            if (process == null)
+                return;
+
+            try
+            {
+                if (!process.HasExited)
+                    process.Kill();
+            }
+            catch
+            {
+            }
         }
     }
 }

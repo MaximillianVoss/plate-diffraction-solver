@@ -5,6 +5,7 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Diagnostics;
 using Diffraction.Core;
@@ -15,7 +16,8 @@ namespace Diffraction
 {
     public partial class MainForm : Form
     {
-        private FlowLayoutPanel parameterFlowPanel;
+        private Panel parameterHostPanel;
+        private TableLayoutPanel parameterLayoutPanel;
         private TabControl resultsTabControl;
         private TabControl detailsTabControl;
         private TabPage tabPageField;
@@ -24,6 +26,8 @@ namespace Diffraction
         private PictureBox pictureBoxFieldSkin;
         private RichTextBox textBoxDiagnostics;
         private RichTextBox textBoxJournal;
+        private Button cancelCalculationButton;
+        private CancellationTokenSource currentCalculationCancellation;
         private string lastStatusMessage;
 
         public MainForm()
@@ -73,6 +77,7 @@ namespace Diffraction
 
             Text = "Решатель дифракции на двух пластинах";
             MinimumSize = new Size(1220, 780);
+            ClientSize = new Size(1360, 860);
             StartPosition = FormStartPosition.CenterScreen;
             AcceptButton = CalculateButton;
 
@@ -99,14 +104,27 @@ namespace Diffraction
             textBoxJournal = CreateReadOnlyRichTextBox(monoFont);
             textBoxDiagnostics.Text = "Подробная диагностика появится после расчета.";
 
-            parameterFlowPanel = new FlowLayoutPanel();
-            parameterFlowPanel.Dock = DockStyle.Fill;
-            parameterFlowPanel.FlowDirection = FlowDirection.TopDown;
-            parameterFlowPanel.WrapContents = false;
-            parameterFlowPanel.AutoScroll = true;
-            parameterFlowPanel.Padding = new Padding(0);
-            parameterFlowPanel.Margin = new Padding(0);
-            parameterFlowPanel.SizeChanged += ResizeParameterGroups;
+            parameterHostPanel = new Panel();
+            parameterHostPanel.Dock = DockStyle.Fill;
+            parameterHostPanel.AutoScroll = true;
+            parameterHostPanel.Padding = new Padding(0, 0, 8, 0);
+
+            parameterLayoutPanel = new TableLayoutPanel();
+            parameterLayoutPanel.Dock = DockStyle.Top;
+            parameterLayoutPanel.AutoSize = true;
+            parameterLayoutPanel.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            parameterLayoutPanel.ColumnCount = 1;
+            parameterLayoutPanel.RowCount = 5;
+            parameterLayoutPanel.Margin = new Padding(0);
+            parameterLayoutPanel.Padding = new Padding(0);
+            parameterLayoutPanel.GrowStyle = TableLayoutPanelGrowStyle.FixedSize;
+            parameterLayoutPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            parameterLayoutPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            parameterLayoutPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            parameterLayoutPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            parameterLayoutPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            parameterLayoutPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            parameterLayoutPanel.SizeChanged += ResizeParameterGroups;
 
             ConfigureParameterGroup(groupBox4);
             ConfigureParameterGroup(groupBox3);
@@ -114,11 +132,12 @@ namespace Diffraction
             ConfigureParameterGroup(groupBox1);
             ConfigureParameterGroup(groupBoxSkin);
 
-            parameterFlowPanel.Controls.Add(groupBox4);
-            parameterFlowPanel.Controls.Add(groupBox3);
-            parameterFlowPanel.Controls.Add(groupBox2);
-            parameterFlowPanel.Controls.Add(groupBox1);
-            parameterFlowPanel.Controls.Add(groupBoxSkin);
+            parameterLayoutPanel.Controls.Add(groupBox4, 0, 0);
+            parameterLayoutPanel.Controls.Add(groupBox3, 0, 1);
+            parameterLayoutPanel.Controls.Add(groupBox2, 0, 2);
+            parameterLayoutPanel.Controls.Add(groupBox1, 0, 3);
+            parameterLayoutPanel.Controls.Add(groupBoxSkin, 0, 4);
+            parameterHostPanel.Controls.Add(parameterLayoutPanel);
 
             resultsTabControl = new TabControl();
             resultsTabControl.Dock = DockStyle.Fill;
@@ -148,39 +167,25 @@ namespace Diffraction
             detailsTabControl.TabPages.Add(tabPageCoefficients);
             detailsTabControl.TabPages.Add(tabPageDiagnostics);
 
-            SplitContainer contentSplit = new SplitContainer();
-            contentSplit.Dock = DockStyle.Fill;
-            contentSplit.FixedPanel = FixedPanel.Panel1;
-            contentSplit.Panel1MinSize = 300;
-            contentSplit.Panel2MinSize = 640;
-            contentSplit.SplitterDistance = 340;
-            contentSplit.Panel1.Controls.Add(parameterFlowPanel);
-
-            SplitContainer visualSplit = new SplitContainer();
-            visualSplit.Dock = DockStyle.Fill;
-            visualSplit.FixedPanel = FixedPanel.Panel2;
-            visualSplit.Panel1MinSize = 420;
-            visualSplit.Panel2MinSize = 300;
-            visualSplit.SplitterDistance = 720;
-            visualSplit.SizeChanged += delegate
-            {
-                int desiredPanel2Width = 340;
-                int newDistance = visualSplit.Width - desiredPanel2Width;
-                if (newDistance > visualSplit.Panel1MinSize &&
-                    newDistance < visualSplit.Width - visualSplit.Panel2MinSize)
-                {
-                    visualSplit.SplitterDistance = newDistance;
-                }
-            };
-            visualSplit.Panel1.Controls.Add(resultsTabControl);
-            visualSplit.Panel2.Controls.Add(detailsTabControl);
-            contentSplit.Panel2.Controls.Add(visualSplit);
+            TableLayoutPanel workspaceLayout = new TableLayoutPanel();
+            workspaceLayout.Dock = DockStyle.Fill;
+            workspaceLayout.ColumnCount = 3;
+            workspaceLayout.RowCount = 1;
+            workspaceLayout.Margin = new Padding(0);
+            workspaceLayout.Padding = new Padding(0);
+            workspaceLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 26F));
+            workspaceLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 37F));
+            workspaceLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 37F));
+            workspaceLayout.Controls.Add(parameterHostPanel, 0, 0);
+            workspaceLayout.Controls.Add(resultsTabControl, 1, 0);
+            workspaceLayout.Controls.Add(detailsTabControl, 2, 0);
 
             TableLayoutPanel toolbarLayout = new TableLayoutPanel();
             toolbarLayout.Dock = DockStyle.Fill;
             toolbarLayout.AutoSize = true;
-            toolbarLayout.ColumnCount = 3;
+            toolbarLayout.ColumnCount = 4;
             toolbarLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            toolbarLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             toolbarLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             toolbarLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
@@ -193,6 +198,15 @@ namespace Diffraction
             titleLabel.Margin = new Padding(0, 6, 0, 6);
 
             checkBoxUseCuda.Margin = new Padding(0, 4, 12, 4);
+            cancelCalculationButton = new Button();
+            cancelCalculationButton.Text = "Отмена";
+            cancelCalculationButton.AutoSize = true;
+            cancelCalculationButton.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            cancelCalculationButton.Padding = new Padding(10, 3, 10, 3);
+            cancelCalculationButton.Margin = new Padding(0, 0, 8, 0);
+            cancelCalculationButton.Enabled = false;
+            cancelCalculationButton.Click += cancelCalculationButton_Click;
+
             CalculateButton.Margin = new Padding(0, 0, 0, 0);
             CalculateButton.AutoSize = true;
             CalculateButton.AutoSizeMode = AutoSizeMode.GrowAndShrink;
@@ -200,7 +214,8 @@ namespace Diffraction
 
             toolbarLayout.Controls.Add(titleLabel, 0, 0);
             toolbarLayout.Controls.Add(checkBoxUseCuda, 1, 0);
-            toolbarLayout.Controls.Add(CalculateButton, 2, 0);
+            toolbarLayout.Controls.Add(cancelCalculationButton, 2, 0);
+            toolbarLayout.Controls.Add(CalculateButton, 3, 0);
 
             progressCalculation.Dock = DockStyle.Fill;
             progressCalculation.Margin = new Padding(8, 4, 8, 4);
@@ -212,17 +227,17 @@ namespace Diffraction
             labelExecutionTime.Dock = DockStyle.Fill;
             labelExecutionTime.TextAlign = ContentAlignment.MiddleRight;
             labelExecutionTime.AutoEllipsis = true;
+            labelExecutionTime.Visible = false;
+            labelExecutionTime.Text = string.Empty;
 
             TableLayoutPanel statusLayout = new TableLayoutPanel();
             statusLayout.Dock = DockStyle.Fill;
             statusLayout.AutoSize = true;
-            statusLayout.ColumnCount = 3;
+            statusLayout.ColumnCount = 2;
             statusLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 240F));
             statusLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-            statusLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 440F));
             statusLayout.Controls.Add(labelCalculationStatus, 0, 0);
             statusLayout.Controls.Add(progressCalculation, 1, 0);
-            statusLayout.Controls.Add(labelExecutionTime, 2, 0);
 
             GroupBox journalGroup = new GroupBox();
             journalGroup.Text = "Журнал расчета";
@@ -246,14 +261,16 @@ namespace Diffraction
             rootLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             rootLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 210F));
             rootLayout.Controls.Add(toolbarLayout, 0, 0);
-            rootLayout.Controls.Add(contentSplit, 0, 1);
+            rootLayout.Controls.Add(workspaceLayout, 0, 1);
             rootLayout.Controls.Add(bottomLayout, 0, 2);
 
             Controls.Clear();
             Controls.Add(rootLayout);
 
-            ResizeParameterGroups(this, EventArgs.Empty);
             ResumeLayout(true);
+            PerformLayout();
+            rootLayout.PerformLayout();
+            ResizeParameterGroups(this, EventArgs.Empty);
         }
 
         private static PictureBox CreateFieldPictureBox()
@@ -316,33 +333,43 @@ namespace Diffraction
         private void ConfigureParameterGroup(Control control)
         {
             control.Margin = new Padding(0, 0, 0, 12);
-            control.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top;
+            control.Dock = DockStyle.Fill;
         }
 
         private void ResizeParameterGroups(object sender, EventArgs e)
         {
-            if (parameterFlowPanel == null) return;
+            if (parameterHostPanel == null || parameterLayoutPanel == null) return;
 
-            int availableWidth = parameterFlowPanel.ClientSize.Width - SystemInformation.VerticalScrollBarWidth - 4;
+            int availableWidth = parameterHostPanel.ClientSize.Width - SystemInformation.VerticalScrollBarWidth - parameterHostPanel.Padding.Horizontal;
             if (availableWidth < 200) return;
 
-            foreach (Control control in parameterFlowPanel.Controls)
+            parameterLayoutPanel.Width = availableWidth;
+            foreach (Control control in parameterLayoutPanel.Controls)
                 control.Width = availableWidth;
         }
 
         private void AppendJournalEntry(string message)
+        {
+            AppendJournalEntry(message, null);
+        }
+
+        private void AppendJournalEntry(string message, Color? color)
         {
             if (string.IsNullOrWhiteSpace(message) || textBoxJournal == null)
                 return;
 
             if (InvokeRequired)
             {
-                BeginInvoke(new Action<string>(AppendJournalEntry), message);
+                BeginInvoke(new Action<string, Color?>(AppendJournalEntry), message, color);
                 return;
             }
 
-            textBoxJournal.AppendText(
-                string.Format("[{0:HH:mm:ss}] {1}{2}", DateTime.Now, message.Trim(), Environment.NewLine));
+            string line = string.Format("[{0:HH:mm:ss}] {1}{2}", DateTime.Now, message.Trim(), Environment.NewLine);
+            textBoxJournal.SelectionStart = textBoxJournal.TextLength;
+            textBoxJournal.SelectionLength = 0;
+            textBoxJournal.SelectionColor = color ?? textBoxJournal.ForeColor;
+            textBoxJournal.AppendText(line);
+            textBoxJournal.SelectionColor = textBoxJournal.ForeColor;
             textBoxJournal.SelectionStart = textBoxJournal.TextLength;
             textBoxJournal.ScrollToCaret();
         }
@@ -465,7 +492,7 @@ namespace Diffraction
             string error = ValidatePlateGeometry(alpha1, beta1, alpha2, beta2);
             if (error == null) return true;
 
-            AppendJournalEntry("Ошибка геометрии пластин: " + error);
+            AppendJournalEntry("Ошибка геометрии пластин: " + error, Color.Firebrick);
             MessageBox.Show(error, "Ошибка геометрии пластин", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return false;
         }
@@ -506,6 +533,8 @@ namespace Diffraction
 
             var progress = new Progress<string>(UpdateCalculationStatus);
             CalculationResult result = null;
+            CancellationTokenSource cancellationSource = new CancellationTokenSource();
+            currentCalculationCancellation = cancellationSource;
 
             AppendJournalEntry(string.Format(
                 "Запуск расчета: N={0}, λ={1:G4}, θ={2:G4}°, skin={3:G4}, CUDA={4}.",
@@ -518,25 +547,54 @@ namespace Diffraction
 
             try
             {
-                result = await Task.Run(() => RunFullCalculation(input, imageWidth, imageHeight, progress));
+                result = await Task.Run(
+                    () => RunFullCalculation(input, imageWidth, imageHeight, progress, cancellationSource.Token),
+                    cancellationSource.Token);
                 ApplyCalculationResult(result);
+            }
+            catch (OperationCanceledException)
+            {
+                labelCalculationStatus.Text = "Расчет отменен";
+                labelCalculationStatus.ForeColor = Color.DarkGoldenrod;
+                AppendJournalEntry("Расчет отменен пользователем.", Color.DarkGoldenrod);
             }
             catch (Exception ex)
             {
-                AppendJournalEntry("Ошибка расчета: " + ex.Message);
+                AppendJournalEntry("Ошибка расчета: " + ex.Message, Color.Firebrick);
+                labelCalculationStatus.ForeColor = Color.Firebrick;
                 MessageBox.Show(
                     string.Format("Ошибка расчета: {0}", ex.Message),
                     "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
             finally
             {
-                SetCalculationBusy(false, "Готово");
+                if (ReferenceEquals(currentCalculationCancellation, cancellationSource))
+                    currentCalculationCancellation = null;
+                cancellationSource.Dispose();
+
+                string idleStatus = result == null && labelCalculationStatus.Text == "Расчет отменен"
+                    ? "Расчет отменен"
+                    : "Готово";
+                SetCalculationBusy(false, idleStatus);
             }
 
             if (result != null)
             {
                 PublishDiagnostics(result);
             }
+        }
+
+        private void cancelCalculationButton_Click(object sender, EventArgs e)
+        {
+            CancellationTokenSource cancellationSource = currentCalculationCancellation;
+            if (cancellationSource == null || cancellationSource.IsCancellationRequested)
+                return;
+
+            cancellationSource.Cancel();
+            cancelCalculationButton.Enabled = false;
+            labelCalculationStatus.Text = "Отмена расчета...";
+            labelCalculationStatus.ForeColor = Color.DarkGoldenrod;
+            AppendJournalEntry("Отправлен запрос на отмену расчета.", Color.DarkGoldenrod);
         }
 
         private class PlateCalculationInput
@@ -609,41 +667,54 @@ namespace Diffraction
             return true;
         }
 
-        private CalculationResult RunFullCalculation(PlateCalculationInput input, int imageWidth, int imageHeight, IProgress<string> progress)
+        private CalculationResult RunFullCalculation(
+            PlateCalculationInput input,
+            int imageWidth,
+            int imageHeight,
+            IProgress<string> progress,
+            CancellationToken cancellationToken)
         {
             Stopwatch totalWatch = Stopwatch.StartNew();
             CalculationResult result = new CalculationResult();
 
-            SolveCaseResult noSkinCase = SolveCase(input, 0, "без скин-слоя", progress);
+            cancellationToken.ThrowIfCancellationRequested();
+            SolveCaseResult noSkinCase = SolveCase(input, 0, "без скин-слоя", progress, cancellationToken);
             DifrOnLenta qNoSkin = noSkinCase.Solver;
             result.NoSkinSolved = noSkinCase.Solved;
 
-            SolveCaseResult skinCase = SolveCase(input, input.SkinDepth, "со скин-слоем", progress);
+            cancellationToken.ThrowIfCancellationRequested();
+            SolveCaseResult skinCase = SolveCase(input, input.SkinDepth, "со скин-слоем", progress, cancellationToken);
             DifrOnLenta qSkin = skinCase.Solver;
             result.SkinSolved = skinCase.Solved;
             if (!result.SkinSolved)
                 throw new InvalidOperationException("Ошибка решения задачи с учетом скин-слоя");
 
             progress.Report("Подготовка графика...");
+            cancellationToken.ThrowIfCancellationRequested();
             result.XValues = BuildPlotXValues(input.PlotLeft, input.PlotRight, 1000);
             double zPlot = input.Len / 10.0;
             if (result.NoSkinSolved)
-                result.NoSkinReal = SampleRealPart(qNoSkin, result.XValues, zPlot);
-            result.SkinReal = SampleRealPart(qSkin, result.XValues, zPlot);
+                result.NoSkinReal = SampleRealPart(qNoSkin, result.XValues, zPlot, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            result.SkinReal = SampleRealPart(qSkin, result.XValues, zPlot, cancellationToken);
 
             progress.Report("Подготовка коэффициентов...");
+            cancellationToken.ThrowIfCancellationRequested();
             result.CoefficientsText = BuildCoefficientText(input, qNoSkin, qSkin, result.NoSkinSolved);
             BuildConductivityStatus(input, qSkin, out result.ConductivityText, out result.ConductivityColor);
 
             progress.Report("Расчет проверок точности...");
+            cancellationToken.ThrowIfCancellationRequested();
             if (result.NoSkinSolved)
                 result.NoSkinReport = BuildAccuracyReport(qNoSkin, skinDepth: 0, caseName: "БЕЗ СКИН-СЛОЯ (идеальный проводник)");
+            cancellationToken.ThrowIfCancellationRequested();
             result.SkinReport = BuildAccuracyReport(qSkin, input.SkinDepth, caseName: "СО СКИН-СЛОЕМ");
 
             if (imageWidth > 0 && imageHeight > 0 && result.NoSkinSolved && result.SkinSolved)
             {
                 progress.Report("Построение поля...");
-                result.Images = CreateGraphImages(input, imageWidth, imageHeight, qNoSkin, qSkin, progress);
+                cancellationToken.ThrowIfCancellationRequested();
+                result.Images = CreateGraphImages(input, imageWidth, imageHeight, qNoSkin, qSkin, progress, cancellationToken);
             }
 
             totalWatch.Stop();
@@ -655,7 +726,12 @@ namespace Diffraction
             return result;
         }
 
-        private SolveCaseResult SolveCase(PlateCalculationInput input, double skinDepth, string caseName, IProgress<string> progress)
+        private SolveCaseResult SolveCase(
+            PlateCalculationInput input,
+            double skinDepth,
+            string caseName,
+            IProgress<string> progress,
+            CancellationToken cancellationToken)
         {
             DifrOnLenta solver = new DifrOnLenta(
                 input.Alpha1,
@@ -672,7 +748,7 @@ namespace Diffraction
             if (input.UseCuda)
             {
                 progress.Report("Решение " + caseName + " через CUDA...");
-                CudaSolverBridge.SolveResponse cudaResponse = CudaSolverBridge.Solve(solver);
+                CudaSolverBridge.SolveResponse cudaResponse = CudaSolverBridge.Solve(solver, cancellationToken);
                 if (cudaResponse.Success)
                 {
                     solver.ApplySolvedCoefficients(
@@ -694,7 +770,7 @@ namespace Diffraction
             }
 
             progress.Report("Решение " + caseName + " на CPU...");
-            bool solved = solver.SolveDifr() == 1;
+            bool solved = solver.SolveDifr(cancellationToken) == 1;
             return new SolveCaseResult
             {
                 Solver = solver,
@@ -712,11 +788,12 @@ namespace Diffraction
             return values;
         }
 
-        private static double[] SampleRealPart(DifrOnLenta solver, double[] xValues, double z)
+        private static double[] SampleRealPart(DifrOnLenta solver, double[] xValues, double z, CancellationToken cancellationToken)
         {
             double[] values = new double[xValues.Length];
-            Parallel.For(0, xValues.Length, i =>
+            Parallel.For(0, xValues.Length, new ParallelOptions { CancellationToken = cancellationToken }, i =>
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 values[i] = solver.u(xValues[i], z).Re;
             });
             return values;
@@ -789,16 +866,19 @@ namespace Diffraction
             textBoxChebPolynomial.Text = result.CoefficientsText ?? string.Empty;
             lblConductivity.Text = result.ConductivityText;
             lblConductivity.ForeColor = result.ConductivityColor;
-            labelExecutionTime.Text = result.ExecutionSummaryText ?? "Время решения: н/д";
-            labelExecutionTime.ForeColor = result.ExecutionSummaryColor;
+            labelCalculationStatus.Text = "Расчет завершен";
+            labelCalculationStatus.ForeColor = result.ExecutionSummaryColor;
             SetPictureBoxImage(pictureBoxFieldNoSkin, result.Images == null ? null : result.Images.ImageNoSkin);
             SetPictureBoxImage(pictureBoxFieldSkin, result.Images == null ? null : result.Images.ImageSkin);
             AppendJournalEntry("Расчет завершен. Результаты обновлены на вкладках.");
+            if (!string.IsNullOrWhiteSpace(result.ExecutionSummaryText))
+                AppendJournalEntry(result.ExecutionSummaryText, result.ExecutionSummaryColor);
         }
 
         private void SetCalculationBusy(bool busy, string status)
         {
             CalculateButton.Enabled = !busy;
+            cancelCalculationButton.Enabled = busy && currentCalculationCancellation != null && !currentCalculationCancellation.IsCancellationRequested;
             buttonGraphic.Enabled = !busy;
             groupBox1.Enabled = !busy;
             groupBox2.Enabled = !busy;
@@ -810,6 +890,14 @@ namespace Diffraction
             progressCalculation.Visible = busy;
             progressCalculation.Style = busy ? ProgressBarStyle.Marquee : ProgressBarStyle.Blocks;
             progressCalculation.MarqueeAnimationSpeed = busy ? 30 : 0;
+            if (busy)
+            {
+                labelCalculationStatus.ForeColor = Color.DarkBlue;
+            }
+            else if (labelCalculationStatus.ForeColor == Color.DarkBlue)
+            {
+                labelCalculationStatus.ForeColor = SystemColors.ControlText;
+            }
             UpdateCalculationStatus(status);
         }
 
@@ -862,7 +950,9 @@ namespace Diffraction
             if (hasWarning)
             {
                 detailsTabControl.SelectedTab = tabPageDiagnostics;
-                AppendJournalEntry("Диагностика содержит предупреждения. Подробности открыты на вкладке \"Диагностика\".");
+                labelCalculationStatus.Text = "Расчет завершен с предупреждениями";
+                labelCalculationStatus.ForeColor = Color.DarkGoldenrod;
+                AppendJournalEntry("Диагностика содержит предупреждения. Подробности открыты на вкладке \"Диагностика\".", Color.DarkGoldenrod);
                 MessageBox.Show(
                     "Расчет завершен с предупреждениями. Полный отчет перенесен на вкладку \"Диагностика\".",
                     "Предупреждение расчета",
@@ -871,7 +961,9 @@ namespace Diffraction
             }
             else
             {
-                AppendJournalEntry("Диагностика обновлена без предупреждений.");
+                labelCalculationStatus.Text = "Расчет завершен успешно";
+                labelCalculationStatus.ForeColor = Color.DarkGreen;
+                AppendJournalEntry("Диагностика обновлена без предупреждений.", Color.DarkGreen);
             }
         }
 
@@ -1104,17 +1196,24 @@ namespace Diffraction
             public Bitmap ImageSkin;
         }
 
-        private GraphImagePair CreateGraphImages(PlateCalculationInput input, int width, int height, IProgress<string> progress)
+        private GraphImagePair CreateGraphImages(
+            PlateCalculationInput input,
+            int width,
+            int height,
+            IProgress<string> progress,
+            CancellationToken cancellationToken)
         {
-            SolveCaseResult noSkinCase = SolveCase(input, 0, "поля без скин-слоя", progress);
+            cancellationToken.ThrowIfCancellationRequested();
+            SolveCaseResult noSkinCase = SolveCase(input, 0, "поля без скин-слоя", progress, cancellationToken);
             if (!noSkinCase.Solved)
                 return null;
 
-            SolveCaseResult skinCase = SolveCase(input, input.SkinDepth, "поля со скин-слоем", progress);
+            cancellationToken.ThrowIfCancellationRequested();
+            SolveCaseResult skinCase = SolveCase(input, input.SkinDepth, "поля со скин-слоем", progress, cancellationToken);
             if (!skinCase.Solved)
                 return null;
 
-            return CreateGraphImages(input, width, height, noSkinCase.Solver, skinCase.Solver, progress);
+            return CreateGraphImages(input, width, height, noSkinCase.Solver, skinCase.Solver, progress, cancellationToken);
         }
 
         private GraphImagePair CreateGraphImages(
@@ -1123,7 +1222,8 @@ namespace Diffraction
             int height,
             DifrOnLenta qNoSkin,
             DifrOnLenta qSkin,
-            IProgress<string> progress)
+            IProgress<string> progress,
+            CancellationToken cancellationToken)
         {
             progress.Report("Расчет значений поля...");
             int pixelCount = width * height;
@@ -1132,11 +1232,13 @@ namespace Diffraction
 
             double zEps = input.Len / 1000.0;
 
-            Parallel.For(0, width, i =>
+            Parallel.For(0, width, new ParallelOptions { CancellationToken = cancellationToken }, i =>
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 double x = input.X1 + i / (double)width * (input.X2 - input.X1);
                 for (int j = 0; j < height; j++)
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
                     double y = input.Y1 + j / (double)height * (input.Y2 - input.Y1);
                     double ySafe = y;
                     if (Math.Abs(y) < zEps && IsPointOnAnyPlate(x, input.Alpha1, input.Beta1, input.Alpha2, input.Beta2))
@@ -1152,8 +1254,10 @@ namespace Diffraction
             double uMaxSkin = FindMax(uSkin);
 
             progress.Report("Формирование изображений...");
-            Bitmap imageNoSkin = CreateGrayscaleBitmap(uNoSkin, width, height, uMaxNoSkin);
-            Bitmap imageSkin = CreateGrayscaleBitmap(uSkin, width, height, uMaxSkin);
+            cancellationToken.ThrowIfCancellationRequested();
+            Bitmap imageNoSkin = CreateGrayscaleBitmap(uNoSkin, width, height, uMaxNoSkin, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            Bitmap imageSkin = CreateGrayscaleBitmap(uSkin, width, height, uMaxSkin, cancellationToken);
 
             int yC = height / 2;
             DrawPlateMarker(imageNoSkin, input.Alpha1, input.Beta1, input.X1, input.X2, yC);
@@ -1175,7 +1279,12 @@ namespace Diffraction
             return max > 0 ? max : 1.0;
         }
 
-        private static Bitmap CreateGrayscaleBitmap(double[] values, int width, int height, double maxValue)
+        private static Bitmap CreateGrayscaleBitmap(
+            double[] values,
+            int width,
+            int height,
+            double maxValue,
+            CancellationToken cancellationToken)
         {
             Bitmap image = new Bitmap(width, height, PixelFormat.Format24bppRgb);
             BitmapData data = image.LockBits(
@@ -1188,8 +1297,9 @@ namespace Diffraction
                 int stride = data.Stride;
                 byte[] bytes = new byte[stride * height];
 
-                Parallel.For(0, height, y =>
+                Parallel.For(0, height, new ParallelOptions { CancellationToken = cancellationToken }, y =>
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
                     int rowOffset = y * stride;
                     for (int x = 0; x < width; x++)
                     {

@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Diffraction.Core
@@ -129,7 +130,7 @@ namespace Diffraction.Core
             }
         }
 
-        public static int Gauss(CMatr A, CVect b, CVect x)
+        public static int Gauss(CMatr A, CVect b, CVect x, CancellationToken cancellationToken = default(CancellationToken))
         {
             Compl s, s1;
             double max, ss;
@@ -138,6 +139,7 @@ namespace Diffraction.Core
 
             for (int i = 0; i < N - 1; i++)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 max = Compl.Abs(A[i][i]);
                 maxN = i;
                 for (int k = i + 1; k < N; k++)
@@ -163,6 +165,7 @@ namespace Diffraction.Core
             x[N - 1] = b[N - 1] / A[N - 1][N - 1];
             for (int i = N - 2; i >= 0; i--)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 s = b[i];
                 for (int j = N - 1; j > i; j--) s = s - A[i][j] * x[j];
                 x[i] = s / A[i][i];
@@ -624,9 +627,10 @@ namespace Diffraction.Core
                 }
             }
 
-            public int SolveDifr()
+            public int SolveDifr(CancellationToken cancellationToken = default(CancellationToken))
             {
                 Stopwatch totalWatch = Stopwatch.StartNew();
+                cancellationToken.ThrowIfCancellationRequested();
                 EnsurePreparedState();
 
                 double k_wave = 2 * Math.PI / lambda;
@@ -635,8 +639,9 @@ namespace Diffraction.Core
                 CVect B_vec = new CVect(totalUnknowns);
                 Stopwatch assemblyWatch = Stopwatch.StartNew();
 
-                Parallel.For(0, totalUnknowns, row =>
+                Parallel.For(0, totalUnknowns, new ParallelOptions { CancellationToken = cancellationToken }, row =>
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
                     int targetPlate = row / N;
                     int ik = row % N;
                     double targetHalfL = HalfLength(targetPlate);
@@ -697,7 +702,8 @@ namespace Diffraction.Core
 
                 CVect w = new CVect(totalUnknowns);
                 Stopwatch solveWatch = Stopwatch.StartNew();
-                int output = Gauss(A_mat, B_vec, w);
+                cancellationToken.ThrowIfCancellationRequested();
+                int output = Gauss(A_mat, B_vec, w, cancellationToken);
                 solveWatch.Stop();
                 for (int ik = 0; ik < totalUnknowns; ik++) y[ik] = w[ik];
 
