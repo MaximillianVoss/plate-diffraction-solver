@@ -68,6 +68,8 @@ namespace Diffraction
             this.chartRealPart = new System.Windows.Forms.DataVisualization.Charting.Chart();
             this.progressCalculation = new System.Windows.Forms.ProgressBar();
             this.labelCalculationStatus = new System.Windows.Forms.Label();
+            this.checkBoxUseCuda = new System.Windows.Forms.CheckBox();
+            this.labelExecutionTime = new System.Windows.Forms.Label();
             ((System.ComponentModel.ISupportInitialize)(this.xL)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.yDn)).BeginInit();
             this.groupBox1.SuspendLayout();
@@ -565,6 +567,18 @@ namespace Diffraction
             this.buttonGraphic.Text = "Графики";
             this.buttonGraphic.UseVisualStyleBackColor = true;
             this.buttonGraphic.Click += new System.EventHandler(this.button2_Click);
+            //
+            // checkBoxUseCuda
+            //
+            this.checkBoxUseCuda.AutoSize = true;
+            this.checkBoxUseCuda.Checked = true;
+            this.checkBoxUseCuda.CheckState = System.Windows.Forms.CheckState.Checked;
+            this.checkBoxUseCuda.Location = new System.Drawing.Point(236, 10);
+            this.checkBoxUseCuda.Name = "checkBoxUseCuda";
+            this.checkBoxUseCuda.Size = new System.Drawing.Size(135, 20);
+            this.checkBoxUseCuda.TabIndex = 18;
+            this.checkBoxUseCuda.Text = "Использовать CUDA";
+            this.checkBoxUseCuda.UseVisualStyleBackColor = true;
             // 
             // chartRealPart
             // 
@@ -650,6 +664,15 @@ namespace Diffraction
             this.labelCalculationStatus.Size = new System.Drawing.Size(45, 16);
             this.labelCalculationStatus.TabIndex = 20;
             this.labelCalculationStatus.Text = "Готово";
+            //
+            // labelExecutionTime
+            //
+            this.labelExecutionTime.AutoSize = true;
+            this.labelExecutionTime.Location = new System.Drawing.Point(280, 604);
+            this.labelExecutionTime.Name = "labelExecutionTime";
+            this.labelExecutionTime.Size = new System.Drawing.Size(121, 16);
+            this.labelExecutionTime.TabIndex = 21;
+            this.labelExecutionTime.Text = "Время решения: н/д";
 
             // 
             // MainForm
@@ -657,6 +680,8 @@ namespace Diffraction
             this.AutoScaleDimensions = new System.Drawing.SizeF(8F, 16F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(1171, 650);
+            this.Controls.Add(this.labelExecutionTime);
+            this.Controls.Add(this.checkBoxUseCuda);
             this.Controls.Add(this.labelCalculationStatus);
             this.Controls.Add(this.progressCalculation);
             this.Controls.Add(this.chartRealPart);
@@ -735,5 +760,7 @@ namespace Diffraction
         private System.Windows.Forms.Label lblConductivity;
         private System.Windows.Forms.ProgressBar progressCalculation;
         private System.Windows.Forms.Label labelCalculationStatus;
+        private System.Windows.Forms.CheckBox checkBoxUseCuda;
+        private System.Windows.Forms.Label labelExecutionTime;
     }
 }

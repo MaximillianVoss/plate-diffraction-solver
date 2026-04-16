@@ -74,6 +74,28 @@ namespace Diffraction.Tests
         }
 
         [TestMethod]
+        public void ExternalCoefficientInjection_ReproducesCpuSolution()
+        {
+            DifrOnLenta cpu = CreateTwoPlateSolver(n: 20, skinDepth: 0.001, angleDeg: 30);
+            Assert.AreEqual(1, cpu.SolveDifr(), "cpu solver failed");
+
+            Compl[] copied = new Compl[cpu.y.Length];
+            for (int i = 0; i < cpu.y.Length; i++)
+                copied[i] = new Compl(cpu.y[i].Re, cpu.y[i].Im);
+
+            DifrOnLenta injected = CreateTwoPlateSolver(n: 20, skinDepth: 0.001, angleDeg: 30);
+            injected.ApplySolvedCoefficients(copied, "test-backend", 1.0, 2.0, 3.0, usedCuda: true);
+
+            Assert.AreEqual(cpu.VerifyBoundaryConditions(), injected.VerifyBoundaryConditions(), 1e-12, "boundary error mismatch");
+            Assert.AreEqual(3.0, injected.LastSolvePerformance.TotalMilliseconds, 1e-12, "timing mismatch");
+            Assert.IsTrue(injected.LastSolvePerformance.UsedCuda, "backend flag mismatch");
+
+            Compl cpuField = cpu.u(0.25, 0.1);
+            Compl injectedField = injected.u(0.25, 0.1);
+            Assert.AreEqual(0.0, Compl.Abs(cpuField - injectedField), 1e-12, "field mismatch");
+        }
+
+        [TestMethod]
         public void BoundaryError_ImprovesWhenNIncreases()
         {
             DifrOnLenta coarse = CreateTwoPlateSolver(n: 10, skinDepth: 0.001);

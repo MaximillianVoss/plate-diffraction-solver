@@ -6,6 +6,8 @@ using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
+using System.Diagnostics;
+using Diffraction.Core;
 using DifrOnLenta = Diffraction.Core.DiffractionMath.DifrOnLenta;
 using Compl = Diffraction.Core.DiffractionMath.Compl;
 
@@ -47,6 +49,7 @@ namespace Diffraction
             
             // Автоматический запуск формы с графиками при загрузке
             this.Shown += MainForm_Shown;
+            labelExecutionTime.Text = "Время решения: н/д";
         }
 
         // Обработчик события Shown для автоматического открытия Form2
@@ -304,6 +307,7 @@ namespace Diffraction
             public double PlotLeft, PlotRight;
             public double X1, X2, Y1, Y2;
             public double Angle, Len, SkinDepth;
+            public bool UseCuda;
         }
 
         private class CalculationResult
@@ -319,6 +323,15 @@ namespace Diffraction
             public AccuracyReport NoSkinReport;
             public AccuracyReport SkinReport;
             public GraphImagePair Images;
+            public string ExecutionSummaryText;
+            public Color ExecutionSummaryColor;
+        }
+
+        private class SolveCaseResult
+        {
+            public DifrOnLenta Solver;
+            public bool Solved;
+            public string WarningMessage;
         }
 
         private class AccuracyReport
@@ -351,22 +364,24 @@ namespace Diffraction
                 Y2 = (double)yUp.Value,
                 Angle = (double)angleInDegrees.Value / 180 * Math.PI,
                 Len = (double)wavelength.Value,
-                SkinDepth = (double)skinDepthInput.Value
+                SkinDepth = (double)skinDepthInput.Value,
+                UseCuda = checkBoxUseCuda.Checked
             };
             return true;
         }
 
         private CalculationResult RunFullCalculation(PlateCalculationInput input, int imageWidth, int imageHeight, IProgress<string> progress)
         {
+            Stopwatch totalWatch = Stopwatch.StartNew();
             CalculationResult result = new CalculationResult();
 
-            progress.Report("Решение без скин-слоя...");
-            DifrOnLenta qNoSkin = new DifrOnLenta(input.Alpha1, input.Beta1, input.Alpha2, input.Beta2, input.Len, input.Angle, input.Param, 0);
-            result.NoSkinSolved = qNoSkin.SolveDifr() == 1;
+            SolveCaseResult noSkinCase = SolveCase(input, 0, "без скин-слоя", progress);
+            DifrOnLenta qNoSkin = noSkinCase.Solver;
+            result.NoSkinSolved = noSkinCase.Solved;
 
-            progress.Report("Решение со скин-слоем...");
-            DifrOnLenta qSkin = new DifrOnLenta(input.Alpha1, input.Beta1, input.Alpha2, input.Beta2, input.Len, input.Angle, input.Param, input.SkinDepth);
-            result.SkinSolved = qSkin.SolveDifr() == 1;
+            SolveCaseResult skinCase = SolveCase(input, input.SkinDepth, "со скин-слоем", progress);
+            DifrOnLenta qSkin = skinCase.Solver;
+            result.SkinSolved = skinCase.Solved;
             if (!result.SkinSolved)
                 throw new InvalidOperationException("Ошибка решения задачи с учетом скин-слоя");
 
@@ -392,7 +407,61 @@ namespace Diffraction
                 result.Images = CreateGraphImages(input, imageWidth, imageHeight, qNoSkin, qSkin, progress);
             }
 
+            totalWatch.Stop();
+            result.ExecutionSummaryText = BuildExecutionSummary(qNoSkin, qSkin, totalWatch.Elapsed, noSkinCase.WarningMessage, skinCase.WarningMessage);
+            result.ExecutionSummaryColor = string.IsNullOrWhiteSpace(noSkinCase.WarningMessage) && string.IsNullOrWhiteSpace(skinCase.WarningMessage)
+                ? Color.DarkGreen
+                : Color.DarkGoldenrod;
+
             return result;
+        }
+
+        private SolveCaseResult SolveCase(PlateCalculationInput input, double skinDepth, string caseName, IProgress<string> progress)
+        {
+            DifrOnLenta solver = new DifrOnLenta(
+                input.Alpha1,
+                input.Beta1,
+                input.Alpha2,
+                input.Beta2,
+                input.Len,
+                input.Angle,
+                input.Param,
+                skinDepth);
+
+            string warningMessage = null;
+
+            if (input.UseCuda)
+            {
+                progress.Report("Решение " + caseName + " через CUDA...");
+                CudaSolverBridge.SolveResponse cudaResponse = CudaSolverBridge.Solve(solver);
+                if (cudaResponse.Success)
+                {
+                    solver.ApplySolvedCoefficients(
+                        cudaResponse.Coefficients,
+                        cudaResponse.BackendName,
+                        cudaResponse.AssemblyMilliseconds,
+                        cudaResponse.LinearSolveMilliseconds,
+                        cudaResponse.TotalMilliseconds,
+                        usedCuda: true);
+
+                    return new SolveCaseResult
+                    {
+                        Solver = solver,
+                        Solved = true
+                    };
+                }
+
+                warningMessage = "CUDA недоступна для случая " + caseName + ", использован CPU: " + cudaResponse.ErrorMessage;
+            }
+
+            progress.Report("Решение " + caseName + " на CPU...");
+            bool solved = solver.SolveDifr() == 1;
+            return new SolveCaseResult
+            {
+                Solver = solver,
+                Solved = solved,
+                WarningMessage = warningMessage
+            };
         }
 
         private static double[] BuildPlotXValues(double left, double right, int segments)
@@ -481,6 +550,8 @@ namespace Diffraction
             textBoxChebPolynomial.Text = result.CoefficientsText ?? string.Empty;
             lblConductivity.Text = result.ConductivityText;
             lblConductivity.ForeColor = result.ConductivityColor;
+            labelExecutionTime.Text = result.ExecutionSummaryText ?? "Время решения: н/д";
+            labelExecutionTime.ForeColor = result.ExecutionSummaryColor;
 
             if (updateGraphics && result.Images != null && currentForm2 != null && !currentForm2.IsDisposed)
             {
@@ -499,6 +570,7 @@ namespace Diffraction
             groupBox3.Enabled = !busy;
             groupBox4.Enabled = !busy;
             groupBoxSkin.Enabled = !busy;
+            checkBoxUseCuda.Enabled = !busy;
             Cursor = busy ? Cursors.WaitCursor : Cursors.Default;
             progressCalculation.Visible = busy;
             progressCalculation.Style = busy ? ProgressBarStyle.Marquee : ProgressBarStyle.Blocks;
@@ -731,17 +803,15 @@ namespace Diffraction
 
         private GraphImagePair CreateGraphImages(PlateCalculationInput input, int width, int height, IProgress<string> progress)
         {
-            progress.Report("Решение поля без скин-слоя...");
-            DifrOnLenta qNoSkin = new DifrOnLenta(input.Alpha1, input.Beta1, input.Alpha2, input.Beta2, input.Len, input.Angle, input.Param, 0);
-            if (qNoSkin.SolveDifr() != 1)
+            SolveCaseResult noSkinCase = SolveCase(input, 0, "поля без скин-слоя", progress);
+            if (!noSkinCase.Solved)
                 return null;
 
-            progress.Report("Решение поля со скин-слоем...");
-            DifrOnLenta qSkin = new DifrOnLenta(input.Alpha1, input.Beta1, input.Alpha2, input.Beta2, input.Len, input.Angle, input.Param, input.SkinDepth);
-            if (qSkin.SolveDifr() != 1)
+            SolveCaseResult skinCase = SolveCase(input, input.SkinDepth, "поля со скин-слоем", progress);
+            if (!skinCase.Solved)
                 return null;
 
-            return CreateGraphImages(input, width, height, qNoSkin, qSkin, progress);
+            return CreateGraphImages(input, width, height, noSkinCase.Solver, skinCase.Solver, progress);
         }
 
         private GraphImagePair CreateGraphImages(
@@ -847,6 +917,48 @@ namespace Diffraction
             if (color < 0) return 0;
             if (color > 255) return 255;
             return color;
+        }
+
+        private static string BuildExecutionSummary(
+            DifrOnLenta noSkinSolver,
+            DifrOnLenta skinSolver,
+            TimeSpan totalTime,
+            string noSkinWarning,
+            string skinWarning)
+        {
+            StringBuilder builder = new StringBuilder();
+            builder.Append("Время решения: ");
+            bool hasSolveInfo = false;
+
+            if (noSkinSolver != null && noSkinSolver.LastSolvePerformance != null)
+            {
+                builder.AppendFormat(
+                    "без скин-слоя {0} {1:F1} мс",
+                    noSkinSolver.LastSolvePerformance.BackendName,
+                    noSkinSolver.LastSolvePerformance.TotalMilliseconds);
+                hasSolveInfo = true;
+            }
+
+            if (skinSolver != null && skinSolver.LastSolvePerformance != null)
+            {
+                if (hasSolveInfo) builder.Append("; ");
+                builder.AppendFormat(
+                    "со скин-слоем {0} {1:F1} мс",
+                    skinSolver.LastSolvePerformance.BackendName,
+                    skinSolver.LastSolvePerformance.TotalMilliseconds);
+                hasSolveInfo = true;
+            }
+
+            if (hasSolveInfo) builder.Append("; ");
+            builder.AppendFormat("всего {0:F1} мс", totalTime.TotalMilliseconds);
+
+            if (!string.IsNullOrWhiteSpace(noSkinWarning) || !string.IsNullOrWhiteSpace(skinWarning))
+            {
+                builder.Append(" | ");
+                builder.Append(!string.IsNullOrWhiteSpace(noSkinWarning) ? noSkinWarning : skinWarning);
+            }
+
+            return builder.ToString();
         }
 
         private static bool IsPointOnAnyPlate(double x, double alpha1, double beta1, double alpha2, double beta2)

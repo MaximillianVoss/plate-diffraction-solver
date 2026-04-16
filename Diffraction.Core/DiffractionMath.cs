@@ -299,6 +299,15 @@ namespace Diffraction.Core
         }
         // ===== Конец методов обусловленности =====
 
+        public class SolvePerformance
+        {
+            public string BackendName;
+            public double AssemblyMilliseconds;
+            public double LinearSolveMilliseconds;
+            public double TotalMilliseconds;
+            public bool UsedCuda;
+        }
+
         public class DifrOnLenta
         {
             public double a, b;
@@ -312,6 +321,8 @@ namespace Diffraction.Core
             public int PlateCount { get; private set; }
             public double[] alpha;
             public double[] beta;
+            public SolvePerformance LastSolvePerformance { get; private set; }
+            public int TotalUnknowns => N * PlateCount;
 
             public DifrOnLenta(double _a, double _b, double _lambda, double _teta, int _N, double _skinDepth = 0)
             {
@@ -365,9 +376,9 @@ namespace Diffraction.Core
                 y = new Compl[N * PlateCount];
                 for (int i = 0; i < y.Length; i++) y[i] = new Compl(0, 0);
                 skinDepth = _skinDepth;
-                M_quad = 0; tau_q = null; t_q = null; w_q = null; tau_c = null; x_c = null;
-                useSingularWeight = true;
+                ResetPreparedState();
                 chi = CalculateChi();
+                LastSolvePerformance = null;
             }
 
             private Compl CalculateChi()
@@ -489,6 +500,88 @@ namespace Diffraction.Core
             private double[][] tau_c, x_c;
             private bool useSingularWeight;
 
+            private void ResetPreparedState()
+            {
+                M_quad = 0;
+                tau_q = null;
+                t_q = null;
+                w_q = null;
+                tau_c = null;
+                x_c = null;
+                useSingularWeight = true;
+            }
+
+            private void EnsurePreparedState()
+            {
+                if (M_quad > 0 &&
+                    tau_q != null &&
+                    t_q != null &&
+                    w_q != null &&
+                    tau_c != null &&
+                    x_c != null)
+                    return;
+
+                useSingularWeight = true;
+                M_quad = Math.Max(8 * N, 80);
+
+                tau_q = new double[PlateCount][];
+                t_q = new double[PlateCount][];
+                w_q = new double[PlateCount][];
+                tau_c = new double[PlateCount][];
+                x_c = new double[PlateCount][];
+
+                for (int p = 0; p < PlateCount; p++)
+                {
+                    double halfL = HalfLength(p);
+                    tau_q[p] = new double[M_quad];
+                    t_q[p] = new double[M_quad];
+                    w_q[p] = new double[M_quad];
+                    for (int m = 0; m < M_quad; m++)
+                    {
+                        tau_q[p][m] = Math.Cos((2.0 * m + 1.0) / (2.0 * M_quad) * Math.PI);
+                        t_q[p][m] = TauToX(p, tau_q[p][m]);
+                        w_q[p][m] = Math.PI / M_quad * halfL;
+                    }
+
+                    tau_c[p] = new double[N];
+                    x_c[p] = new double[N];
+                    for (int ik = 0; ik < N; ik++)
+                    {
+                        tau_c[p][ik] = Math.Cos((ik + 0.5) / N * Math.PI);
+                        x_c[p][ik] = TauToX(p, tau_c[p][ik]);
+                    }
+                }
+            }
+
+            public void ApplySolvedCoefficients(
+                Compl[] coefficients,
+                string backendName,
+                double assemblyMilliseconds,
+                double linearSolveMilliseconds,
+                double totalMilliseconds,
+                bool usedCuda)
+            {
+                if (coefficients == null)
+                    throw new ArgumentNullException(nameof(coefficients));
+                if (coefficients.Length != TotalUnknowns)
+                    throw new ArgumentException("Некорректная длина массива коэффициентов", nameof(coefficients));
+
+                EnsurePreparedState();
+
+                for (int i = 0; i < coefficients.Length; i++)
+                    y[i] = new Compl(coefficients[i].Re, coefficients[i].Im);
+
+                LastMatrixA = null;
+                LastSolvePerformance = new SolvePerformance
+                {
+                    BackendName = backendName,
+                    AssemblyMilliseconds = assemblyMilliseconds,
+                    LinearSolveMilliseconds = linearSolveMilliseconds,
+                    TotalMilliseconds = totalMilliseconds,
+                    UsedCuda = usedCuda
+                };
+            }
+
             private int CoeffIndex(int plateIndex, int localIndex) => plateIndex * N + localIndex;
             private double HalfLength(int plateIndex) => (beta[plateIndex] - alpha[plateIndex]) / 2.0;
             private double Midpoint(int plateIndex) => (beta[plateIndex] + alpha[plateIndex]) / 2.0;
@@ -533,43 +626,14 @@ namespace Diffraction.Core
 
             public int SolveDifr()
             {
-                var sw = Stopwatch.StartNew(); // Замер времени
+                Stopwatch totalWatch = Stopwatch.StartNew();
+                EnsurePreparedState();
 
                 double k_wave = 2 * Math.PI / lambda;
-                useSingularWeight = true;
-                M_quad = Math.Max(8 * N, 80);
-
-                tau_q = new double[PlateCount][];
-                t_q = new double[PlateCount][];
-                w_q = new double[PlateCount][];
-                tau_c = new double[PlateCount][];
-                x_c = new double[PlateCount][];
-
-                for (int p = 0; p < PlateCount; p++)
-                {
-                    double halfL = HalfLength(p);
-                    tau_q[p] = new double[M_quad];
-                    t_q[p] = new double[M_quad];
-                    w_q[p] = new double[M_quad];
-                    for (int m = 0; m < M_quad; m++)
-                    {
-                        tau_q[p][m] = Math.Cos((2.0 * m + 1.0) / (2.0 * M_quad) * Math.PI);
-                        t_q[p][m] = TauToX(p, tau_q[p][m]);
-                        w_q[p][m] = Math.PI / M_quad * halfL;
-                    }
-
-                    tau_c[p] = new double[N];
-                    x_c[p] = new double[N];
-                    for (int ik = 0; ik < N; ik++)
-                    {
-                        tau_c[p][ik] = Math.Cos((ik + 0.5) / N * Math.PI);
-                        x_c[p][ik] = TauToX(p, tau_c[p][ik]);
-                    }
-                }
-
-                int totalUnknowns = N * PlateCount;
+                int totalUnknowns = TotalUnknowns;
                 CMatr A_mat = new CMatr(totalUnknowns);
                 CVect B_vec = new CVect(totalUnknowns);
+                Stopwatch assemblyWatch = Stopwatch.StartNew();
 
                 Parallel.For(0, totalUnknowns, row =>
                 {
@@ -629,9 +693,12 @@ namespace Diffraction.Core
                     }
                     else { B_vec[row] = -1.0 * u0(xk, 0); }
                 });
+                assemblyWatch.Stop();
 
                 CVect w = new CVect(totalUnknowns);
+                Stopwatch solveWatch = Stopwatch.StartNew();
                 int output = Gauss(A_mat, B_vec, w);
+                solveWatch.Stop();
                 for (int ik = 0; ik < totalUnknowns; ik++) y[ik] = w[ik];
 
                 // Сохраняем матрицу для расчёта обусловленности
@@ -640,9 +707,15 @@ namespace Diffraction.Core
                     for (int c = 0; c < totalUnknowns; c++)
                         LastMatrixA[r][c] = A_mat[r][c];
 
-                sw.Stop();
-                // Можно добавить логирование времени, если нужно:
-                // Console.WriteLine($"  SolveDifr (N={N}): {sw.ElapsedMilliseconds} ms");
+                totalWatch.Stop();
+                LastSolvePerformance = new SolvePerformance
+                {
+                    BackendName = "CPU (C#)",
+                    AssemblyMilliseconds = assemblyWatch.Elapsed.TotalMilliseconds,
+                    LinearSolveMilliseconds = solveWatch.Elapsed.TotalMilliseconds,
+                    TotalMilliseconds = totalWatch.Elapsed.TotalMilliseconds,
+                    UsedCuda = false
+                };
 
                 return output;
             }
