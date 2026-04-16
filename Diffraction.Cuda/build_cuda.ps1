@@ -35,7 +35,7 @@ $cudaArch = if ($args.Length -gt 0 -and -not [string]::IsNullOrWhiteSpace($args[
 $outputFile = Join-Path $buildDir 'DiffractionCuda.exe'
 
 $command = @"
-call "$vcvars" && nvcc -allow-unsupported-compiler -std=c++17 -O3 -arch=sm_$cudaArch -Xcompiler="/utf-8 /EHsc /MD" "$tempSourceFile" -o "$tempOutputFile"
+call "$vcvars" && nvcc -allow-unsupported-compiler -std=c++17 -O3 -arch=sm_$cudaArch -Xcompiler="/utf-8 /EHsc /MD" "$tempSourceFile" -lcusolver -lcublas -o "$tempOutputFile"
 "@
 
 cmd.exe /c $command

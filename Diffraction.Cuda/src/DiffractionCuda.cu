@@ -1,4 +1,6 @@
 #include <cuda_runtime.h>
+#include <cusolverDn.h>
+#include <cuComplex.h>
 
 #include <chrono>
 #include <cmath>
@@ -246,7 +248,7 @@ namespace
     };
 
     __global__ void assemble_matrix_kernel(
-        ComplexValue* matrix,
+        cuDoubleComplex* matrix,
         const double* alpha,
         const double* beta,
         const double* tau_q,
@@ -319,11 +321,11 @@ namespace
             result = sum_cross * ComplexValue(0.0, 0.25);
         }
 
-        matrix[index] = result;
+        matrix[col * total_unknowns + row] = make_cuDoubleComplex(result.re, result.im);
     }
 
     __global__ void assemble_rhs_kernel(
-        ComplexValue* rhs,
+        cuDoubleComplex* rhs,
         const double* x_c,
         int n,
         int plate_count,
@@ -344,11 +346,12 @@ namespace
         if (chi.re != 0.0 || chi.im != 0.0)
         {
             ComplexValue du0_dz = ci * (k_wave * sin(theta)) * u0;
-            rhs[row] = -u0 - chi * du0_dz;
+            ComplexValue rhs_value = -u0 - chi * du0_dz;
+            rhs[row] = make_cuDoubleComplex(rhs_value.re, rhs_value.im);
         }
         else
         {
-            rhs[row] = -u0;
+            rhs[row] = make_cuDoubleComplex(-u0.re, -u0.im);
         }
     }
 
@@ -362,57 +365,13 @@ namespace
         }
     }
 
-    void solve_gauss(std::vector<ComplexValue>& matrix, std::vector<ComplexValue>& rhs, std::vector<ComplexValue>& solution)
+    void check_cusolver(cusolverStatus_t status, const char* message)
     {
-        int n = static_cast<int>(rhs.size());
-
-        for (int i = 0; i < n - 1; ++i)
+        if (status != CUSOLVER_STATUS_SUCCESS)
         {
-            double max_value = abs_complex(matrix[i * n + i]);
-            int max_index = i;
-
-            for (int k = i + 1; k < n; ++k)
-            {
-                double current = abs_complex(matrix[k * n + i]);
-                if (current > max_value)
-                {
-                    max_value = current;
-                    max_index = k;
-                }
-            }
-
-            if (max_index != i)
-            {
-                for (int k = 0; k < n; ++k)
-                    std::swap(matrix[i * n + k], matrix[max_index * n + k]);
-                std::swap(rhs[i], rhs[max_index]);
-            }
-
-            if (abs_complex(matrix[i * n + i]) < 1e-12)
-                throw std::runtime_error("СЛАУ вырожденная: нулевой ведущий элемент");
-
-            ComplexValue inv_pivot = ComplexValue(1.0) / matrix[i * n + i];
-            for (int j = i + 1; j < n; ++j)
-            {
-                ComplexValue factor = matrix[j * n + i] * inv_pivot;
-                for (int k = i + 1; k < n; ++k)
-                    matrix[j * n + k] = matrix[j * n + k] - factor * matrix[i * n + k];
-                rhs[j] = rhs[j] - rhs[i] * factor;
-            }
-        }
-
-        if (abs_complex(matrix[(n - 1) * n + (n - 1)]) < 1e-12)
-            throw std::runtime_error("СЛАУ вырожденная: нулевой последний диагональный элемент");
-
-        solution.assign(n, ComplexValue());
-        solution[n - 1] = rhs[n - 1] / matrix[(n - 1) * n + (n - 1)];
-
-        for (int i = n - 2; i >= 0; --i)
-        {
-            ComplexValue sum = rhs[i];
-            for (int j = n - 1; j > i; --j)
-                sum = sum - matrix[i * n + j] * solution[j];
-            solution[i] = sum / matrix[i * n + i];
+            std::ostringstream stream;
+            stream << message << ": status=" << static_cast<int>(status);
+            throw std::runtime_error(stream.str());
         }
     }
 
@@ -539,15 +498,17 @@ int main(int argc, char** argv)
         std::vector<double> w_q = build_w_q(params, m_quad);
         std::vector<double> x_c = build_x_c(params, tau_c);
 
-        std::vector<ComplexValue> matrix(total_unknowns * total_unknowns);
-        std::vector<ComplexValue> rhs(total_unknowns);
-        std::vector<ComplexValue> solution;
+        std::vector<cuDoubleComplex> solution(total_unknowns);
 
         auto total_start = std::chrono::high_resolution_clock::now();
 
         double *d_alpha = nullptr, *d_beta = nullptr, *d_tau_q = nullptr, *d_t_q = nullptr, *d_w_q = nullptr, *d_tau_c = nullptr, *d_x_c = nullptr;
-        ComplexValue* d_matrix = nullptr;
-        ComplexValue* d_rhs = nullptr;
+        cuDoubleComplex* d_matrix = nullptr;
+        cuDoubleComplex* d_rhs = nullptr;
+        cuDoubleComplex* d_work = nullptr;
+        int* d_pivots = nullptr;
+        int* d_info = nullptr;
+        cusolverDnHandle_t solver_handle = nullptr;
 
         check_cuda(cudaMalloc(&d_alpha, sizeof(double) * params.plate_count), "cudaMalloc(alpha)");
         check_cuda(cudaMalloc(&d_beta, sizeof(double) * params.plate_count), "cudaMalloc(beta)");
@@ -556,8 +517,10 @@ int main(int argc, char** argv)
         check_cuda(cudaMalloc(&d_w_q, sizeof(double) * w_q.size()), "cudaMalloc(w_q)");
         check_cuda(cudaMalloc(&d_tau_c, sizeof(double) * tau_c.size()), "cudaMalloc(tau_c)");
         check_cuda(cudaMalloc(&d_x_c, sizeof(double) * x_c.size()), "cudaMalloc(x_c)");
-        check_cuda(cudaMalloc(&d_matrix, sizeof(ComplexValue) * matrix.size()), "cudaMalloc(matrix)");
-        check_cuda(cudaMalloc(&d_rhs, sizeof(ComplexValue) * rhs.size()), "cudaMalloc(rhs)");
+        check_cuda(cudaMalloc(&d_matrix, sizeof(cuDoubleComplex) * total_unknowns * total_unknowns), "cudaMalloc(matrix)");
+        check_cuda(cudaMalloc(&d_rhs, sizeof(cuDoubleComplex) * total_unknowns), "cudaMalloc(rhs)");
+        check_cuda(cudaMalloc(&d_pivots, sizeof(int) * total_unknowns), "cudaMalloc(pivots)");
+        check_cuda(cudaMalloc(&d_info, sizeof(int)), "cudaMalloc(info)");
 
         check_cuda(cudaMemcpy(d_alpha, params.alpha, sizeof(double) * params.plate_count, cudaMemcpyHostToDevice), "cudaMemcpy(alpha)");
         check_cuda(cudaMemcpy(d_beta, params.beta, sizeof(double) * params.plate_count, cudaMemcpyHostToDevice), "cudaMemcpy(beta)");
@@ -574,7 +537,7 @@ int main(int argc, char** argv)
         check_cuda(cudaEventRecord(assembly_start), "cudaEventRecord(start)");
 
         int matrix_threads = 256;
-        int matrix_blocks = (static_cast<int>(matrix.size()) + matrix_threads - 1) / matrix_threads;
+        int matrix_blocks = (total_unknowns * total_unknowns + matrix_threads - 1) / matrix_threads;
         assemble_matrix_kernel<<<matrix_blocks, matrix_threads>>>(
             d_matrix,
             d_alpha,
@@ -609,19 +572,73 @@ int main(int argc, char** argv)
         float assembly_ms = 0.0f;
         check_cuda(cudaEventElapsedTime(&assembly_ms, assembly_start, assembly_stop), "cudaEventElapsedTime");
 
-        check_cuda(cudaMemcpy(matrix.data(), d_matrix, sizeof(ComplexValue) * matrix.size(), cudaMemcpyDeviceToHost), "cudaMemcpy(matrix)");
-        check_cuda(cudaMemcpy(rhs.data(), d_rhs, sizeof(ComplexValue) * rhs.size(), cudaMemcpyDeviceToHost), "cudaMemcpy(rhs)");
+        check_cusolver(cusolverDnCreate(&solver_handle), "cusolverDnCreate");
+        int lwork = 0;
+        check_cusolver(
+            cusolverDnZgetrf_bufferSize(
+                solver_handle,
+                total_unknowns,
+                total_unknowns,
+                d_matrix,
+                total_unknowns,
+                &lwork),
+            "cusolverDnZgetrf_bufferSize");
+        check_cuda(cudaMalloc(&d_work, sizeof(cuDoubleComplex) * lwork), "cudaMalloc(work)");
 
-        auto solve_start = std::chrono::high_resolution_clock::now();
-        solve_gauss(matrix, rhs, solution);
-        auto solve_stop = std::chrono::high_resolution_clock::now();
+        cudaEvent_t solve_start_event = nullptr;
+        cudaEvent_t solve_stop_event = nullptr;
+        check_cuda(cudaEventCreate(&solve_start_event), "cudaEventCreate(solve_start)");
+        check_cuda(cudaEventCreate(&solve_stop_event), "cudaEventCreate(solve_stop)");
+        check_cuda(cudaEventRecord(solve_start_event), "cudaEventRecord(solve_start)");
+        check_cusolver(
+            cusolverDnZgetrf(
+                solver_handle,
+                total_unknowns,
+                total_unknowns,
+                d_matrix,
+                total_unknowns,
+                d_work,
+                d_pivots,
+                d_info),
+            "cusolverDnZgetrf");
+        check_cusolver(
+            cusolverDnZgetrs(
+                solver_handle,
+                CUBLAS_OP_N,
+                total_unknowns,
+                1,
+                d_matrix,
+                total_unknowns,
+                d_pivots,
+                d_rhs,
+                total_unknowns,
+                d_info),
+            "cusolverDnZgetrs");
+        check_cuda(cudaEventRecord(solve_stop_event), "cudaEventRecord(solve_stop)");
+        check_cuda(cudaEventSynchronize(solve_stop_event), "cudaEventSynchronize(solve_stop)");
         auto total_stop = std::chrono::high_resolution_clock::now();
 
-        double solve_ms = std::chrono::duration<double, std::milli>(solve_stop - solve_start).count();
+        int info_value = 0;
+        check_cuda(cudaMemcpy(&info_value, d_info, sizeof(int), cudaMemcpyDeviceToHost), "cudaMemcpy(info)");
+        if (info_value != 0)
+        {
+            std::ostringstream stream;
+            stream << "cuSOLVER returned info=" << info_value;
+            throw std::runtime_error(stream.str());
+        }
+
+        check_cuda(cudaMemcpy(solution.data(), d_rhs, sizeof(cuDoubleComplex) * total_unknowns, cudaMemcpyDeviceToHost), "cudaMemcpy(solution)");
+
+        float solve_ms_gpu = 0.0f;
+        check_cuda(cudaEventElapsedTime(&solve_ms_gpu, solve_start_event, solve_stop_event), "cudaEventElapsedTime(solve)");
+        double solve_ms = static_cast<double>(solve_ms_gpu);
         double total_ms = std::chrono::duration<double, std::milli>(total_stop - total_start).count();
 
         cudaEventDestroy(assembly_start);
         cudaEventDestroy(assembly_stop);
+        cudaEventDestroy(solve_start_event);
+        cudaEventDestroy(solve_stop_event);
+        if (solver_handle != nullptr) cusolverDnDestroy(solver_handle);
         cudaFree(d_alpha);
         cudaFree(d_beta);
         cudaFree(d_tau_q);
@@ -631,15 +648,18 @@ int main(int argc, char** argv)
         cudaFree(d_x_c);
         cudaFree(d_matrix);
         cudaFree(d_rhs);
+        cudaFree(d_work);
+        cudaFree(d_pivots);
+        cudaFree(d_info);
 
         std::cout << std::setprecision(17);
         std::cout << "status=ok\n";
-        std::cout << "backend=CUDA (matrix) + CPU Gauss\n";
+        std::cout << "backend=CUDA (matrix + solve)\n";
         std::cout << "assembly_ms=" << static_cast<double>(assembly_ms) << "\n";
         std::cout << "solve_ms=" << solve_ms << "\n";
         std::cout << "total_ms=" << total_ms << "\n";
         for (int i = 0; i < static_cast<int>(solution.size()); ++i)
-            std::cout << "coeff_" << i << "=" << solution[i].re << "," << solution[i].im << "\n";
+            std::cout << "coeff_" << i << "=" << cuCreal(solution[i]) << "," << cuCimag(solution[i]) << "\n";
         return 0;
     }
     catch (const std::exception& ex)
