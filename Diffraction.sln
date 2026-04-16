@@ -9,6 +9,13 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Diffraction.Core", "Diffrac
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Diffraction.Tests", "Diffraction.Tests\Diffraction.Tests.csproj", "{97C99A01-3536-4191-9D63-C375D3A90DCC}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Diffraction.Cuda", "Diffraction.Cuda", "{51A404E1-9C65-4B8A-B75D-383D85128D39}"
+	ProjectSection(SolutionItems) = preProject
+		Diffraction.Cuda\build_cuda.bat = Diffraction.Cuda\build_cuda.bat
+		Diffraction.Cuda\build_cuda.ps1 = Diffraction.Cuda\build_cuda.ps1
+		Diffraction.Cuda\src\DiffractionCuda.cu = Diffraction.Cuda\src\DiffractionCuda.cu
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
