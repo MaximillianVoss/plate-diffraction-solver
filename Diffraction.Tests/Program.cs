@@ -1,4 +1,8 @@
 using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Globalization;
+using System.IO;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Compl = Diffraction.Core.DiffractionMath.Compl;
 using DifrOnLenta = Diffraction.Core.DiffractionMath.DifrOnLenta;
@@ -259,6 +263,76 @@ namespace Diffraction.Tests
             Assert.IsTrue(residual < 0.005, "Helmholtz residual is unexpectedly high");
         }
 
+        [TestMethod]
+        public void NativeCpuBackend_MatchesManagedSolver_ForSameParameters()
+        {
+            DifrOnLenta managed = new DifrOnLenta(-1.5, -0.5, 0.5, 1.5, 10.0, 10.0 * Math.PI / 180.0, 10, 0.001);
+            Assert.AreEqual(1, managed.SolveDifr(), "managed solver failed");
+
+            NativeRunResult native = RunNativeCpu(
+                "--alpha1", "-1.5",
+                "--beta1", "-0.5",
+                "--alpha2", "0.5",
+                "--beta2", "1.5",
+                "--lambda", "10",
+                "--theta", (10.0 * Math.PI / 180.0).ToString("R", CultureInfo.InvariantCulture),
+                "--n", "10",
+                "--skin-depth", "0.001");
+
+            Assert.IsTrue(native.Success, native.Output);
+            Assert.AreEqual(managed.y.Length, native.Coefficients.Count, "coefficient count mismatch");
+
+            for (int i = 0; i < managed.y.Length; i++)
+            {
+                Assert.AreEqual(managed.y[i].Re, native.Coefficients[i].Re, 1e-12, $"real mismatch at coeff_{i}");
+                Assert.AreEqual(managed.y[i].Im, native.Coefficients[i].Im, 1e-12, $"imag mismatch at coeff_{i}");
+            }
+        }
+
+        [TestMethod]
+        public void NativeCpuBackend_ThetaDegreesFlagMatchesManagedSolver()
+        {
+            DifrOnLenta managed = new DifrOnLenta(-1.5, -0.5, 0.5, 1.5, 10.0, 10.0 * Math.PI / 180.0, 10, 0.001);
+            Assert.AreEqual(1, managed.SolveDifr(), "managed solver failed");
+
+            NativeRunResult native = RunNativeCpu(
+                "--alpha1", "-1.5",
+                "--beta1", "-0.5",
+                "--alpha2", "0.5",
+                "--beta2", "1.5",
+                "--lambda", "10",
+                "--theta-deg", "10",
+                "--n", "10",
+                "--skin-depth", "0.001");
+
+            Assert.IsTrue(native.Success, native.Output);
+            Assert.IsTrue(native.ThetaDegrees.HasValue && Math.Abs(native.ThetaDegrees.Value - 10.0) < 1e-12, "theta in degrees");
+            Assert.IsTrue(native.ThetaRadians.HasValue && Math.Abs(native.ThetaRadians.Value - 10.0 * Math.PI / 180.0) < 1e-12, "theta in radians");
+
+            for (int i = 0; i < managed.y.Length; i++)
+            {
+                Assert.AreEqual(managed.y[i].Re, native.Coefficients[i].Re, 1e-12, $"real mismatch at coeff_{i}");
+                Assert.AreEqual(managed.y[i].Im, native.Coefficients[i].Im, 1e-12, $"imag mismatch at coeff_{i}");
+            }
+        }
+
+        [TestMethod]
+        public void NativeCpuBackend_RejectsSuspiciousDegreeValuePassedAsRadians()
+        {
+            NativeRunResult native = RunNativeCpu(
+                "--alpha1", "-1.5",
+                "--beta1", "-0.5",
+                "--alpha2", "0.5",
+                "--beta2", "1.5",
+                "--lambda", "10",
+                "--theta", "10",
+                "--n", "10",
+                "--skin-depth", "0.001");
+
+            Assert.IsFalse(native.Success, "native run must fail for suspicious degree input");
+            StringAssert.Contains(native.Output, "--theta-deg", "error must explicitly suggest the degrees flag");
+        }
+
         private static DifrOnLenta CreateTwoPlateSolver(int n, double skinDepth, double angleDeg = 10.0)
         {
             double theta = angleDeg * Math.PI / 180.0;
@@ -275,6 +349,104 @@ namespace Diffraction.Tests
         private static void AssertEnergyFractionsClose(double expected, double actual, double tolerance, string message)
         {
             Assert.IsTrue(Math.Abs(expected - actual) < tolerance, message + " differs too much");
+        }
+
+        private sealed class NativeRunResult
+        {
+            public bool Success { get; set; }
+            public string Output { get; set; }
+            public Dictionary<int, Compl> Coefficients { get; } = new Dictionary<int, Compl>();
+            public double? ThetaRadians { get; set; }
+            public double? ThetaDegrees { get; set; }
+        }
+
+        private static NativeRunResult RunNativeCpu(params string[] arguments)
+        {
+            string repoRoot = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", ".."));
+            string buildScript = Path.Combine(repoRoot, "Diffraction.Cpp", "build_cpu.bat");
+            string exePath = Path.Combine(repoRoot, "Diffraction.Cpp", "build", "DiffractionCpu.exe");
+            string sourcePath = Path.Combine(repoRoot, "Diffraction.Cpp", "src", "DiffractionCpu.cpp");
+
+            bool rebuildRequired = !File.Exists(exePath) || File.GetLastWriteTimeUtc(exePath) < File.GetLastWriteTimeUtc(sourcePath);
+            if (rebuildRequired)
+            {
+                ProcessStartInfo buildStartInfo = new ProcessStartInfo
+                {
+                    FileName = "cmd.exe",
+                    Arguments = $"/c \"{buildScript}\"",
+                    WorkingDirectory = repoRoot,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+
+                using (Process build = Process.Start(buildStartInfo))
+                {
+                    string buildOutput = build.StandardOutput.ReadToEnd() + build.StandardError.ReadToEnd();
+                    build.WaitForExit();
+                    if (build.ExitCode != 0 || !File.Exists(exePath))
+                        Assert.Inconclusive("Native CPU backend is not available: " + buildOutput);
+                }
+            }
+
+            string joinedArgs = string.Join(" ", Array.ConvertAll(arguments, QuoteArgument));
+            ProcessStartInfo startInfo = new ProcessStartInfo
+            {
+                FileName = exePath,
+                Arguments = joinedArgs,
+                WorkingDirectory = repoRoot,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using (Process process = Process.Start(startInfo))
+            {
+                string stdout = process.StandardOutput.ReadToEnd();
+                string stderr = process.StandardError.ReadToEnd();
+                process.WaitForExit();
+
+                string output = string.IsNullOrWhiteSpace(stderr) ? stdout : stdout + Environment.NewLine + stderr;
+                NativeRunResult result = new NativeRunResult
+                {
+                    Success = process.ExitCode == 0 && output.Contains("status=ok"),
+                    Output = output
+                };
+
+                using (StringReader reader = new StringReader(output))
+                {
+                    string line;
+                    while ((line = reader.ReadLine()) != null)
+                    {
+                        if (line.StartsWith("coeff_", StringComparison.Ordinal))
+                        {
+                            int equalsIndex = line.IndexOf('=');
+                            int commaIndex = line.IndexOf(',', equalsIndex + 1);
+                            int index = int.Parse(line.Substring(6, equalsIndex - 6), CultureInfo.InvariantCulture);
+                            double re = double.Parse(line.Substring(equalsIndex + 1, commaIndex - equalsIndex - 1), CultureInfo.InvariantCulture);
+                            double im = double.Parse(line.Substring(commaIndex + 1), CultureInfo.InvariantCulture);
+                            result.Coefficients[index] = new Compl(re, im);
+                        }
+                        else if (line.StartsWith("theta_rad=", StringComparison.Ordinal))
+                        {
+                            result.ThetaRadians = double.Parse(line.Substring("theta_rad=".Length), CultureInfo.InvariantCulture);
+                        }
+                        else if (line.StartsWith("theta_deg=", StringComparison.Ordinal))
+                        {
+                            result.ThetaDegrees = double.Parse(line.Substring("theta_deg=".Length), CultureInfo.InvariantCulture);
+                        }
+                    }
+                }
+
+                return result;
+            }
+        }
+
+        private static string QuoteArgument(string value)
+        {
+            return value.IndexOf(' ') >= 0 ? "\"" + value + "\"" : value;
         }
     }
 }

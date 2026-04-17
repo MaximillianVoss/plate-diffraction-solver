@@ -221,6 +221,7 @@ namespace
         double skin_depth;
         int n;
         int plate_count;
+        bool theta_set_in_degrees;
     };
 
     double half_length(const SolverParameters& params, int plate_index)
@@ -250,6 +251,7 @@ namespace
         params.skin_depth = 0.0;
         params.n = 10;
         params.plate_count = 2;
+        params.theta_set_in_degrees = false;
 
         for (int i = 1; i < argc; ++i)
         {
@@ -265,6 +267,11 @@ namespace
             else if (key == "--beta2") params.beta[1] = std::stod(value);
             else if (key == "--lambda") params.lambda = std::stod(value);
             else if (key == "--theta") params.theta = std::stod(value);
+            else if (key == "--theta-deg")
+            {
+                params.theta = std::stod(value) * PI / 180.0;
+                params.theta_set_in_degrees = true;
+            }
             else if (key == "--skin-depth") params.skin_depth = std::stod(value);
             else if (key == "--n") params.n = std::stoi(value);
             else throw std::runtime_error("Неизвестный аргумент: " + key);
@@ -282,6 +289,8 @@ namespace
             throw std::runtime_error("Для каждой пластины должно выполняться alpha < beta");
         if (std::max(params.alpha[0], params.alpha[1]) < std::min(params.beta[0], params.beta[1]))
             throw std::runtime_error("Пластины не должны накладываться друг на друга");
+        if (!params.theta_set_in_degrees && std::fabs(params.theta) > 2.0 * PI + 1e-12)
+            throw std::runtime_error("Параметр --theta ожидается в радианах. Если угол задан в градусах, используйте --theta-deg.");
     }
 
     std::vector<double> build_tau_q(int plate_count, int m_quad)
@@ -551,6 +560,15 @@ int main(int argc, char** argv)
         std::cout << std::setprecision(17);
         std::cout << "status=ok\n";
         std::cout << "backend=CPU C++ (matrix + solve)\n";
+        std::cout << "alpha1=" << params.alpha[0] << "\n";
+        std::cout << "beta1=" << params.beta[0] << "\n";
+        std::cout << "alpha2=" << params.alpha[1] << "\n";
+        std::cout << "beta2=" << params.beta[1] << "\n";
+        std::cout << "lambda=" << params.lambda << "\n";
+        std::cout << "theta_rad=" << params.theta << "\n";
+        std::cout << "theta_deg=" << (params.theta * 180.0 / PI) << "\n";
+        std::cout << "skin_depth=" << params.skin_depth << "\n";
+        std::cout << "n=" << params.n << "\n";
         std::cout << "assembly_ms=" << assembly_ms << "\n";
         std::cout << "solve_ms=" << solve_ms << "\n";
         std::cout << "total_ms=" << total_ms << "\n";
