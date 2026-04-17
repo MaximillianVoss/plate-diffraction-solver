@@ -548,15 +548,17 @@ namespace Diffraction
             try
             {
                 result = await Task.Run(
-                    () => RunFullCalculation(input, imageWidth, imageHeight, progress, cancellationSource.Token),
-                    cancellationSource.Token);
-                ApplyCalculationResult(result);
-            }
-            catch (OperationCanceledException)
-            {
-                labelCalculationStatus.Text = "Расчет отменен";
-                labelCalculationStatus.ForeColor = Color.DarkGoldenrod;
-                AppendJournalEntry("Расчет отменен пользователем.", Color.DarkGoldenrod);
+                    () => RunFullCalculation(input, imageWidth, imageHeight, progress, cancellationSource.Token));
+                if (result != null && result.Cancelled)
+                {
+                    labelCalculationStatus.Text = "Расчет отменен";
+                    labelCalculationStatus.ForeColor = Color.DarkGoldenrod;
+                    AppendJournalEntry("Расчет отменен пользователем.", Color.DarkGoldenrod);
+                }
+                else
+                {
+                    ApplyCalculationResult(result);
+                }
             }
             catch (Exception ex)
             {
@@ -572,13 +574,13 @@ namespace Diffraction
                     currentCalculationCancellation = null;
                 cancellationSource.Dispose();
 
-                string idleStatus = result == null && labelCalculationStatus.Text == "Расчет отменен"
+                string idleStatus = result != null && result.Cancelled
                     ? "Расчет отменен"
                     : "Готово";
                 SetCalculationBusy(false, idleStatus);
             }
 
-            if (result != null)
+            if (result != null && !result.Cancelled)
             {
                 PublishDiagnostics(result);
             }
@@ -609,6 +611,7 @@ namespace Diffraction
 
         private class CalculationResult
         {
+            public bool Cancelled;
             public bool NoSkinSolved;
             public bool SkinSolved;
             public double[] XValues;
@@ -626,6 +629,7 @@ namespace Diffraction
 
         private class SolveCaseResult
         {
+            public bool Cancelled;
             public DifrOnLenta Solver;
             public bool Solved;
             public string WarningMessage;
@@ -677,44 +681,56 @@ namespace Diffraction
             Stopwatch totalWatch = Stopwatch.StartNew();
             CalculationResult result = new CalculationResult();
 
-            cancellationToken.ThrowIfCancellationRequested();
+            if (cancellationToken.IsCancellationRequested)
+                return CreateCancelledResult();
             SolveCaseResult noSkinCase = SolveCase(input, 0, "без скин-слоя", progress, cancellationToken);
+            if (noSkinCase.Cancelled || cancellationToken.IsCancellationRequested)
+                return CreateCancelledResult();
             DifrOnLenta qNoSkin = noSkinCase.Solver;
             result.NoSkinSolved = noSkinCase.Solved;
 
-            cancellationToken.ThrowIfCancellationRequested();
             SolveCaseResult skinCase = SolveCase(input, input.SkinDepth, "со скин-слоем", progress, cancellationToken);
+            if (skinCase.Cancelled || cancellationToken.IsCancellationRequested)
+                return CreateCancelledResult();
             DifrOnLenta qSkin = skinCase.Solver;
             result.SkinSolved = skinCase.Solved;
             if (!result.SkinSolved)
                 throw new InvalidOperationException("Ошибка решения задачи с учетом скин-слоя");
 
             progress.Report("Подготовка графика...");
-            cancellationToken.ThrowIfCancellationRequested();
+            if (cancellationToken.IsCancellationRequested)
+                return CreateCancelledResult();
             result.XValues = BuildPlotXValues(input.PlotLeft, input.PlotRight, 1000);
             double zPlot = input.Len / 10.0;
             if (result.NoSkinSolved)
                 result.NoSkinReal = SampleRealPart(qNoSkin, result.XValues, zPlot, cancellationToken);
-            cancellationToken.ThrowIfCancellationRequested();
+            if (cancellationToken.IsCancellationRequested)
+                return CreateCancelledResult();
             result.SkinReal = SampleRealPart(qSkin, result.XValues, zPlot, cancellationToken);
+            if (cancellationToken.IsCancellationRequested)
+                return CreateCancelledResult();
 
             progress.Report("Подготовка коэффициентов...");
-            cancellationToken.ThrowIfCancellationRequested();
+            if (cancellationToken.IsCancellationRequested)
+                return CreateCancelledResult();
             result.CoefficientsText = BuildCoefficientText(input, qNoSkin, qSkin, result.NoSkinSolved);
             BuildConductivityStatus(input, qSkin, out result.ConductivityText, out result.ConductivityColor);
 
             progress.Report("Расчет проверок точности...");
-            cancellationToken.ThrowIfCancellationRequested();
+            if (cancellationToken.IsCancellationRequested)
+                return CreateCancelledResult();
             if (result.NoSkinSolved)
                 result.NoSkinReport = BuildAccuracyReport(qNoSkin, skinDepth: 0, caseName: "БЕЗ СКИН-СЛОЯ (идеальный проводник)");
-            cancellationToken.ThrowIfCancellationRequested();
+            if (cancellationToken.IsCancellationRequested)
+                return CreateCancelledResult();
             result.SkinReport = BuildAccuracyReport(qSkin, input.SkinDepth, caseName: "СО СКИН-СЛОЕМ");
 
             if (imageWidth > 0 && imageHeight > 0 && result.NoSkinSolved && result.SkinSolved)
             {
                 progress.Report("Построение поля...");
-                cancellationToken.ThrowIfCancellationRequested();
                 result.Images = CreateGraphImages(input, imageWidth, imageHeight, qNoSkin, qSkin, progress, cancellationToken);
+                if (cancellationToken.IsCancellationRequested)
+                    return CreateCancelledResult();
             }
 
             totalWatch.Stop();
@@ -724,6 +740,14 @@ namespace Diffraction
                 : Color.DarkGoldenrod;
 
             return result;
+        }
+
+        private static CalculationResult CreateCancelledResult()
+        {
+            return new CalculationResult
+            {
+                Cancelled = true
+            };
         }
 
         private SolveCaseResult SolveCase(
@@ -744,13 +768,15 @@ namespace Diffraction
                 skinDepth);
 
             string warningMessage = null;
+            if (cancellationToken.IsCancellationRequested)
+                return new SolveCaseResult { Solver = solver, Cancelled = true };
 
             if (input.UseCuda)
             {
                 progress.Report("Решение " + caseName + " через CUDA...");
                 CudaSolverBridge.SolveResponse cudaResponse = CudaSolverBridge.Solve(solver, cancellationToken);
                 if (cudaResponse.Cancelled)
-                    throw new OperationCanceledException();
+                    return new SolveCaseResult { Solver = solver, Cancelled = true };
 
                 if (cudaResponse.Success)
                 {
@@ -775,7 +801,7 @@ namespace Diffraction
             progress.Report("Решение " + caseName + " на CPU...");
             bool solved = solver.SolveDifr(cancellationToken) == 1;
             if (solver.LastSolveCancelled)
-                throw new OperationCanceledException();
+                return new SolveCaseResult { Solver = solver, Cancelled = true };
 
             return new SolveCaseResult
             {
@@ -797,9 +823,13 @@ namespace Diffraction
         private static double[] SampleRealPart(DifrOnLenta solver, double[] xValues, double z, CancellationToken cancellationToken)
         {
             double[] values = new double[xValues.Length];
-            Parallel.For(0, xValues.Length, new ParallelOptions { CancellationToken = cancellationToken }, i =>
+            Parallel.For(0, xValues.Length, (i, loopState) =>
             {
-                cancellationToken.ThrowIfCancellationRequested();
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    loopState.Stop();
+                    return;
+                }
                 values[i] = solver.u(xValues[i], z).Re;
             });
             return values;
@@ -1209,14 +1239,16 @@ namespace Diffraction
             IProgress<string> progress,
             CancellationToken cancellationToken)
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            if (cancellationToken.IsCancellationRequested)
+                return null;
             SolveCaseResult noSkinCase = SolveCase(input, 0, "поля без скин-слоя", progress, cancellationToken);
-            if (!noSkinCase.Solved)
+            if (noSkinCase.Cancelled || !noSkinCase.Solved)
                 return null;
 
-            cancellationToken.ThrowIfCancellationRequested();
+            if (cancellationToken.IsCancellationRequested)
+                return null;
             SolveCaseResult skinCase = SolveCase(input, input.SkinDepth, "поля со скин-слоем", progress, cancellationToken);
-            if (!skinCase.Solved)
+            if (skinCase.Cancelled || !skinCase.Solved)
                 return null;
 
             return CreateGraphImages(input, width, height, noSkinCase.Solver, skinCase.Solver, progress, cancellationToken);
@@ -1238,13 +1270,21 @@ namespace Diffraction
 
             double zEps = input.Len / 1000.0;
 
-            Parallel.For(0, width, new ParallelOptions { CancellationToken = cancellationToken }, i =>
+            Parallel.For(0, width, (i, loopState) =>
             {
-                cancellationToken.ThrowIfCancellationRequested();
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    loopState.Stop();
+                    return;
+                }
                 double x = input.X1 + i / (double)width * (input.X2 - input.X1);
                 for (int j = 0; j < height; j++)
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        loopState.Stop();
+                        return;
+                    }
                     double y = input.Y1 + j / (double)height * (input.Y2 - input.Y1);
                     double ySafe = y;
                     if (Math.Abs(y) < zEps && IsPointOnAnyPlate(x, input.Alpha1, input.Beta1, input.Alpha2, input.Beta2))
@@ -1260,10 +1300,28 @@ namespace Diffraction
             double uMaxSkin = FindMax(uSkin);
 
             progress.Report("Формирование изображений...");
-            cancellationToken.ThrowIfCancellationRequested();
+            if (cancellationToken.IsCancellationRequested)
+                return null;
             Bitmap imageNoSkin = CreateGrayscaleBitmap(uNoSkin, width, height, uMaxNoSkin, cancellationToken);
-            cancellationToken.ThrowIfCancellationRequested();
+            if (cancellationToken.IsCancellationRequested)
+            {
+                imageNoSkin?.Dispose();
+                return null;
+            }
             Bitmap imageSkin = CreateGrayscaleBitmap(uSkin, width, height, uMaxSkin, cancellationToken);
+            if (cancellationToken.IsCancellationRequested)
+            {
+                imageNoSkin?.Dispose();
+                imageSkin?.Dispose();
+                return null;
+            }
+
+            if (imageNoSkin == null || imageSkin == null)
+            {
+                imageNoSkin?.Dispose();
+                imageSkin?.Dispose();
+                return null;
+            }
 
             int yC = height / 2;
             DrawPlateMarker(imageNoSkin, input.Alpha1, input.Beta1, input.X1, input.X2, yC);
@@ -1303,9 +1361,13 @@ namespace Diffraction
                 int stride = data.Stride;
                 byte[] bytes = new byte[stride * height];
 
-                Parallel.For(0, height, new ParallelOptions { CancellationToken = cancellationToken }, y =>
+                Parallel.For(0, height, (y, loopState) =>
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        loopState.Stop();
+                        return;
+                    }
                     int rowOffset = y * stride;
                     for (int x = 0; x < width; x++)
                     {
@@ -1323,6 +1385,12 @@ namespace Diffraction
             finally
             {
                 image.UnlockBits(data);
+            }
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                image.Dispose();
+                return null;
             }
 
             return image;
