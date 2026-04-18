@@ -220,6 +220,7 @@ namespace
         double theta;
         double skin_depth;
         int n;
+        int m_quad;
         int plate_count;
         bool theta_set_in_degrees;
     };
@@ -250,6 +251,7 @@ namespace
         params.theta = 0.0;
         params.skin_depth = 0.0;
         params.n = 10;
+        params.m_quad = 0;
         params.plate_count = 2;
         params.theta_set_in_degrees = false;
 
@@ -274,6 +276,7 @@ namespace
             }
             else if (key == "--skin-depth") params.skin_depth = std::stod(value);
             else if (key == "--n") params.n = std::stoi(value);
+            else if (key == "--m-quad") params.m_quad = std::stoi(value);
             else throw std::runtime_error("Неизвестный аргумент: " + key);
         }
 
@@ -283,6 +286,7 @@ namespace
     void validate_parameters(const SolverParameters& params)
     {
         if (params.n <= 0) throw std::runtime_error("N должен быть положительным");
+        if (params.m_quad != 0 && params.m_quad <= 0) throw std::runtime_error("M должен быть положительным");
         if (params.lambda <= 0.0) throw std::runtime_error("Длина волны должна быть положительной");
         if (params.skin_depth < 0.0) throw std::runtime_error("Толщина скин-слоя не может быть отрицательной");
         if (params.alpha[0] >= params.beta[0] || params.alpha[1] >= params.beta[1])
@@ -525,7 +529,7 @@ int main(int argc, char** argv)
         SolverParameters params = parse_arguments(argc, argv);
         validate_parameters(params);
 
-        int m_quad = std::max(8 * params.n, 80);
+        int m_quad = params.m_quad > 0 ? params.m_quad : std::max(8 * params.n, 80);
         int total_unknowns = params.n * params.plate_count;
         double k_wave = 2.0 * PI / params.lambda;
         ComplexValue chi = params.skin_depth > 0.0
@@ -569,6 +573,9 @@ int main(int argc, char** argv)
         std::cout << "theta_deg=" << (params.theta * 180.0 / PI) << "\n";
         std::cout << "skin_depth=" << params.skin_depth << "\n";
         std::cout << "n=" << params.n << "\n";
+        std::cout << "m_quad=" << m_quad << "\n";
+        std::cout << "chi_re=" << chi.re << "\n";
+        std::cout << "chi_im=" << chi.im << "\n";
         std::cout << "assembly_ms=" << assembly_ms << "\n";
         std::cout << "solve_ms=" << solve_ms << "\n";
         std::cout << "total_ms=" << total_ms << "\n";

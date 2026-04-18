@@ -244,7 +244,9 @@ namespace
         double theta;
         double skin_depth;
         int n;
+        int m_quad;
         int plate_count;
+        bool theta_set_in_degrees;
     };
 
     __global__ void assemble_matrix_kernel(
@@ -386,7 +388,9 @@ namespace
         params.theta = 0.0;
         params.skin_depth = 0.0;
         params.n = 10;
+        params.m_quad = 0;
         params.plate_count = 2;
+        params.theta_set_in_degrees = false;
 
         for (int i = 1; i < argc; ++i)
         {
@@ -402,8 +406,14 @@ namespace
             else if (key == "--beta2") params.beta[1] = std::stod(value);
             else if (key == "--lambda") params.lambda = std::stod(value);
             else if (key == "--theta") params.theta = std::stod(value);
+            else if (key == "--theta-deg")
+            {
+                params.theta = std::stod(value) * PI / 180.0;
+                params.theta_set_in_degrees = true;
+            }
             else if (key == "--skin-depth") params.skin_depth = std::stod(value);
             else if (key == "--n") params.n = std::stoi(value);
+            else if (key == "--m-quad") params.m_quad = std::stoi(value);
             else throw std::runtime_error("Неизвестный аргумент: " + key);
         }
 
@@ -413,12 +423,15 @@ namespace
     void validate_parameters(const SolverParameters& params)
     {
         if (params.n <= 0) throw std::runtime_error("N должен быть положительным");
+        if (params.m_quad != 0 && params.m_quad <= 0) throw std::runtime_error("M должен быть положительным");
         if (params.lambda <= 0.0) throw std::runtime_error("Длина волны должна быть положительной");
         if (params.skin_depth < 0.0) throw std::runtime_error("Толщина скин-слоя не может быть отрицательной");
         if (params.alpha[0] >= params.beta[0] || params.alpha[1] >= params.beta[1])
             throw std::runtime_error("Для каждой пластины должно выполняться alpha < beta");
         if (fmax(params.alpha[0], params.alpha[1]) < fmin(params.beta[0], params.beta[1]))
             throw std::runtime_error("Пластины не должны накладываться друг на друга");
+        if (!params.theta_set_in_degrees && std::fabs(params.theta) > 2.0 * PI + 1e-12)
+            throw std::runtime_error("Параметр --theta ожидается в радианах. Если угол задан в градусах, используйте --theta-deg.");
     }
 
     std::vector<double> build_tau_q(int plate_count, int m_quad)
@@ -485,7 +498,7 @@ int main(int argc, char** argv)
         SolverParameters params = parse_arguments(argc, argv);
         validate_parameters(params);
 
-        int m_quad = std::max(8 * params.n, 80);
+        int m_quad = params.m_quad > 0 ? params.m_quad : std::max(8 * params.n, 80);
         int total_unknowns = params.n * params.plate_count;
         double k_wave = 2.0 * PI / params.lambda;
         ComplexValue chi = params.skin_depth > 0.0
@@ -655,6 +668,18 @@ int main(int argc, char** argv)
         std::cout << std::setprecision(17);
         std::cout << "status=ok\n";
         std::cout << "backend=CUDA (matrix + solve)\n";
+        std::cout << "alpha1=" << params.alpha[0] << "\n";
+        std::cout << "beta1=" << params.beta[0] << "\n";
+        std::cout << "alpha2=" << params.alpha[1] << "\n";
+        std::cout << "beta2=" << params.beta[1] << "\n";
+        std::cout << "lambda=" << params.lambda << "\n";
+        std::cout << "theta_rad=" << params.theta << "\n";
+        std::cout << "theta_deg=" << (params.theta * 180.0 / PI) << "\n";
+        std::cout << "skin_depth=" << params.skin_depth << "\n";
+        std::cout << "n=" << params.n << "\n";
+        std::cout << "m_quad=" << m_quad << "\n";
+        std::cout << "chi_re=" << chi.re << "\n";
+        std::cout << "chi_im=" << chi.im << "\n";
         std::cout << "assembly_ms=" << static_cast<double>(assembly_ms) << "\n";
         std::cout << "solve_ms=" << solve_ms << "\n";
         std::cout << "total_ms=" << total_ms << "\n";

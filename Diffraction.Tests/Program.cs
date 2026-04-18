@@ -333,6 +333,42 @@ namespace Diffraction.Tests
             StringAssert.Contains(native.Output, "--theta-deg", "error must explicitly suggest the degrees flag");
         }
 
+        [TestMethod]
+        public void NativeCpuBackend_MQuadFlag_IsReportedInOutput()
+        {
+            NativeRunResult native = RunNativeCpu(
+                "--alpha1", "-1.5",
+                "--beta1", "-0.5",
+                "--alpha2", "0.5",
+                "--beta2", "1.5",
+                "--lambda", "10",
+                "--theta-deg", "10",
+                "--n", "10",
+                "--m-quad", "40",
+                "--skin-depth", "0.001");
+
+            Assert.IsTrue(native.Success, native.Output);
+            Assert.AreEqual(40, native.MQuad, "custom M must be reported back");
+        }
+
+        [TestMethod]
+        public void NativeCpuBackend_RejectsInvalidMQuad()
+        {
+            NativeRunResult native = RunNativeCpu(
+                "--alpha1", "-1.5",
+                "--beta1", "-0.5",
+                "--alpha2", "0.5",
+                "--beta2", "1.5",
+                "--lambda", "10",
+                "--theta-deg", "10",
+                "--n", "10",
+                "--m-quad", "-1",
+                "--skin-depth", "0.001");
+
+            Assert.IsFalse(native.Success, "native run must fail for invalid M");
+            StringAssert.Contains(native.Output, "M", "error must mention M");
+        }
+
         private static DifrOnLenta CreateTwoPlateSolver(int n, double skinDepth, double angleDeg = 10.0)
         {
             double theta = angleDeg * Math.PI / 180.0;
@@ -358,6 +394,7 @@ namespace Diffraction.Tests
             public Dictionary<int, Compl> Coefficients { get; } = new Dictionary<int, Compl>();
             public double? ThetaRadians { get; set; }
             public double? ThetaDegrees { get; set; }
+            public int? MQuad { get; set; }
         }
 
         private static NativeRunResult RunNativeCpu(params string[] arguments)
@@ -436,6 +473,10 @@ namespace Diffraction.Tests
                         else if (line.StartsWith("theta_deg=", StringComparison.Ordinal))
                         {
                             result.ThetaDegrees = double.Parse(line.Substring("theta_deg=".Length), CultureInfo.InvariantCulture);
+                        }
+                        else if (line.StartsWith("m_quad=", StringComparison.Ordinal))
+                        {
+                            result.MQuad = int.Parse(line.Substring("m_quad=".Length), CultureInfo.InvariantCulture);
                         }
                     }
                 }
