@@ -330,7 +330,7 @@ namespace Diffraction
             // Сравнение: без скин-эффекта и с различными значениями скин-слоя
             Console.WriteLine("\n=== СРАВНЕНИЕ: БЕЗ СКИНА vs СО СКИНОМ ===");
             Console.WriteLine(string.Format("{0,-10} {1,-10} {2,-10} {3,-10} {4,-10} {5,-10} {6,-10} {7,-12}",
-                "delta", "|chi|", "BC err%", "Refl%", "Absorb%", "Trans%", "TransStrip", "Cond#"));
+                "delta", "|Zs| Ohm", "BC err%", "Refl%", "Absorb%", "Trans%", "TransStrip", "Cond#"));
 
             // Без скина
             {
@@ -458,9 +458,10 @@ namespace Diffraction
                     double x = -1.0 + i * dx;
                     Compl u_val = solver.u_on_strip(x);
                     Compl Jx = solver.GetJphys(x);
+                    Compl incident = solver.BoundaryIncidentField(x, 0);
                     Compl du_dn = new Compl(0, 1) * kWave * Math.Sin(Math.PI / 4) * solver.u0(x, 0) - Jx / 2.0;
-                    Compl bc_val = u_val + solver.chi * du_dn;
-                    double ref_scale = Compl.Abs(solver.u0(x, 0));
+                    Compl bc_val = u_val + solver.BoundaryCoefficient * du_dn;
+                    double ref_scale = Compl.Abs(incident);
                     if (ref_scale < 1e-10) ref_scale = 1.0;
                     double err = Compl.Abs(bc_val) / ref_scale * 100.0;
 
@@ -478,10 +479,11 @@ namespace Diffraction
                         double x_save = -1.0 + j * dx_save;
                         Compl u_val_save = solver.u_on_strip(x_save);
                         Compl Jx_save = solver.GetJphys(x_save);
+                        Compl incident_save = solver.BoundaryIncidentField(x_save, 0);
                         Compl du_dn_save = new Compl(0, 1) * kWave_save * Math.Sin(solver.teta) * solver.u0(x_save, 0) - Jx_save / 2.0;
-                        Compl bc_val_save = u_val_save + solver.chi * du_dn_save;
+                        Compl bc_val_save = u_val_save + solver.BoundaryCoefficient * du_dn_save;
 
-                        double ref_scale_save = Compl.Abs(solver.u0(x_save, 0));
+                        double ref_scale_save = Compl.Abs(incident_save);
                         if (ref_scale_save < 1e-10) ref_scale_save = 1.0;
                         double err_save = Compl.Abs(bc_val_save) / ref_scale_save * 100.0;
 
@@ -522,12 +524,15 @@ namespace Diffraction
 
             double[] skinDepths = { 0.05, 0.1, 0.2, 0.5 };
             double lambda = 1.0;
-            double k = 2 * Math.PI / lambda;
+            const double mu0 = 4 * Math.PI * 1e-7;
+            const double c = 299792458.0;
+            double frequency = c / lambda;
 
             foreach (double delta in skinDepths)
             {
                 var solver = new DifrOnLenta(-1, 1, lambda, Math.PI / 4, 5, delta);
-                Console.WriteLine(string.Format("  skinDepth={0:F2}: χ = {1:F4} + {2:F4}i  (expected k*δ = {3:F4})", delta, solver.chi.Re, solver.chi.Im, k * delta));
+                double expected = Math.PI * mu0 * frequency * delta;
+                Console.WriteLine(string.Format("  skinDepth={0:F2}: χ = {1:F4} + {2:F4}i Ом  (expected Zs = {3:F4}+{3:F4}i Ом)", delta, solver.chi.Re, solver.chi.Im, expected));
             }
         }
 

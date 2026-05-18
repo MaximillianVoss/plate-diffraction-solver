@@ -71,6 +71,10 @@ namespace Diffraction.Core
         }
 
         public static readonly Compl ci = new Compl(0, 1);
+        private const double Mu0 = 4 * Math.PI * 1e-7;
+        private const double Epsilon0 = 8.854187817e-12;
+        private const double SpeedOfLight = 299792458.0;
+        private const double VacuumImpedance = Mu0 * SpeedOfLight;
 
         public class CVect
         {
@@ -320,6 +324,8 @@ namespace Diffraction.Core
             public Compl[] y;
             public double skinDepth;
             public Compl chi;
+            private Compl boundaryChi;
+            private Compl incidentBoundaryScale;
             public CMatr LastMatrixA; // Сохранение матрицы для расчёта обусловленности
             public int PlateCount { get; private set; }
             public double[] alpha;
@@ -382,6 +388,8 @@ namespace Diffraction.Core
                 skinDepth = _skinDepth;
                 ResetPreparedState();
                 chi = CalculateChi();
+                boundaryChi = CalculateBoundaryCoefficient();
+                incidentBoundaryScale = CalculateIncidentBoundaryScale();
                 LastSolvePerformance = null;
                 LastSolveCancelled = false;
             }
@@ -389,8 +397,32 @@ namespace Diffraction.Core
             private Compl CalculateChi()
             {
                 if (skinDepth <= 0) return new Compl(0, 0);
-                double k = 2 * Math.PI / lambda;
-                return new Compl(k * skinDepth, k * skinDepth);
+                double frequency = SpeedOfLight / lambda;
+                double surfaceResistance = Math.PI * Mu0 * frequency * skinDepth;
+                return new Compl(surfaceResistance, surfaceResistance);
+            }
+
+            public Compl BoundaryCoefficient
+            {
+                get { return new Compl(boundaryChi.Re, boundaryChi.Im); }
+            }
+
+            public Compl IncidentBoundaryScale
+            {
+                get { return new Compl(incidentBoundaryScale.Re, incidentBoundaryScale.Im); }
+            }
+
+            private Compl CalculateBoundaryCoefficient()
+            {
+                if (skinDepth <= 0) return new Compl(0, 0);
+                return 2.0 * chi / VacuumImpedance;
+            }
+
+            private Compl CalculateIncidentBoundaryScale()
+            {
+                if (skinDepth <= 0 || PlateCount != 1) return new Compl(1, 0);
+                double omega = 2.0 * Math.PI * SpeedOfLight / lambda;
+                return 1.0 / (1.0 - ci * omega * Epsilon0 * chi);
             }
 
             public double ChebAB(int n, double x)
@@ -403,9 +435,8 @@ namespace Diffraction.Core
             public double CalculateConductivity(double skinDepth, double wavelength)
             {
                 if (skinDepth <= 0) throw new ArgumentException("Толщина скин-слоя должна быть положительной");
-                const double mu0 = 4 * Math.PI * 1e-7, c = 299792458;
-                double frequency = c / wavelength;
-                return 1.0 / (Math.PI * mu0 * frequency * skinDepth * skinDepth);
+                double frequency = SpeedOfLight / wavelength;
+                return 1.0 / (Math.PI * Mu0 * frequency * skinDepth * skinDepth);
             }
 
             public Compl dr_dn(double t, double x)
@@ -430,13 +461,23 @@ namespace Diffraction.Core
                     g = -(Math.PI * ci / 2.0 * J0(kd) + (J0(kd) - 1.0) * Math.Log(kd / 2.0) + Math.Log(k / 2.0) + _Y0(kd));
                 }
                 Compl dg = dr_dn(t, x);
-                return g + chi * dg;
+                return g + boundaryChi * dg;
             }
 
             public Compl u0(double x, double z)
             {
                 double k = 2 * Math.PI / lambda;
                 return Compl.Exp(k * Math.Cos(teta) * ci * x + k * Math.Sin(teta) * ci * z);
+            }
+
+            private Compl BoundaryIncident(double x, double z)
+            {
+                return incidentBoundaryScale * u0(x, z);
+            }
+
+            public Compl BoundaryIncidentField(double x, double z)
+            {
+                return BoundaryIncident(x, z);
             }
 
             public Compl u(double x, double z)
@@ -495,7 +536,7 @@ namespace Diffraction.Core
                     }
                 }
 
-                return (sum_reg + ci * sum_log + sum_cross) * ci / 4.0 + u0(x, 0);
+                return (sum_reg + ci * sum_log + sum_cross) * ci / 4.0 + BoundaryIncident(x, 0);
             }
 
             public Compl f(double x) => -2 * Math.PI * u0(x, 0);
@@ -679,7 +720,7 @@ namespace Diffraction.Core
                                     {
                                         double Tj_k = Cheb(j, tau_c[targetPlate][ik]);
                                         double sqrt_w = Math.Sqrt(1.0 - tau_c[targetPlate][ik] * tau_c[targetPlate][ik]);
-                                        A_mat[row][col] = A_mat[row][col] - chi / (2.0 * targetHalfL) * Tj_k / sqrt_w;
+                                        A_mat[row][col] = A_mat[row][col] - boundaryChi / (2.0 * targetHalfL) * Tj_k / sqrt_w;
                                     }
                                 }
                                 else
@@ -699,8 +740,9 @@ namespace Diffraction.Core
 
                         if (skinDepth > 0)
                         {
+                            Compl u0Boundary = BoundaryIncident(xk, 0);
                             Compl du0_dz = ci * k_wave * Math.Sin(teta) * u0(xk, 0);
-                            B_vec[row] = -1.0 * u0(xk, 0) - chi * du0_dz;
+                            B_vec[row] = -1.0 * u0Boundary - boundaryChi * du0_dz;
                         }
                         else { B_vec[row] = -1.0 * u0(xk, 0); }
                     });
@@ -991,9 +1033,10 @@ namespace Diffraction.Core
                     for (int i = 1; i < M; i++)
                     {
                         double x = alpha[plateIndex] + i * dx;
+                        Compl u0Boundary = BoundaryIncident(x, 0);
                         Compl u_val = u(x, 0), du0_dz = ci * k_wave * Math.Sin(teta) * u0(x, 0), J_val = CurrentDensity(x);
-                        Compl du_total = du0_dz - J_val / 2.0, bc_val = u_val + chi * du_total;
-                        double scale = Compl.Abs(u0(x, 0)); if (scale < 0.01) scale = 0.01;
+                        Compl du_total = du0_dz - J_val / 2.0, bc_val = u_val + boundaryChi * du_total;
+                        double scale = Compl.Abs(u0Boundary); if (scale < 0.01) scale = 0.01;
                         sumErr += Compl.Abs(bc_val) / scale; count++;
                     }
                 }
@@ -1022,7 +1065,7 @@ namespace Diffraction.Core
                         double x = alpha[plateIndex] + m * dx;
                         Compl Jx = CurrentDensity(x), du_dn = ci * k * Math.Sin(teta) * u0(x, 0) - Jx / 2.0;
                         double du_dn_abs2 = du_dn.Re * du_dn.Re + du_dn.Im * du_dn.Im;
-                        sum += 0.5 * chi.Re * du_dn_abs2 * dx;
+                        sum += 0.5 * boundaryChi.Re * du_dn_abs2 * dx;
                     }
                 }
                 return sum * k / (2.0 * Math.PI);

@@ -68,6 +68,30 @@ namespace Diffraction.Tests
         }
 
         [TestMethod]
+        public void SinglePlateSkin_StoresChiAsSurfaceImpedanceInOhms()
+        {
+            const double mu0 = 4 * Math.PI * 1e-7;
+            const double epsilon0 = 8.854187817e-12;
+            const double c = 299792458.0;
+            double lambda = 1.0;
+            double skinDepth = 0.001;
+            double frequency = c / lambda;
+            double expectedSurfaceResistance = Math.PI * mu0 * frequency * skinDepth;
+            double expectedBoundaryCoefficient = 2.0 * expectedSurfaceResistance / (mu0 * c);
+
+            DifrOnLenta solver = new DifrOnLenta(-1.0, 1.0, lambda, 10.0 * Math.PI / 180.0, 20, skinDepth);
+
+            Assert.AreEqual(expectedSurfaceResistance, solver.chi.Re, expectedSurfaceResistance * 1e-12, "chi real part in ohms");
+            Assert.AreEqual(expectedSurfaceResistance, solver.chi.Im, expectedSurfaceResistance * 1e-12, "chi imaginary part in ohms");
+            Assert.AreEqual(expectedBoundaryCoefficient, solver.BoundaryCoefficient.Re, expectedBoundaryCoefficient * 1e-12, "boundary coefficient real part");
+            Assert.AreEqual(expectedBoundaryCoefficient, solver.BoundaryCoefficient.Im, expectedBoundaryCoefficient * 1e-12, "boundary coefficient imaginary part");
+
+            Compl expectedScale = 1.0 / (1.0 - new Compl(0, 1) * (2.0 * Math.PI * frequency) * epsilon0 * solver.chi);
+            Assert.AreEqual(expectedScale.Re, solver.IncidentBoundaryScale.Re, 1e-12, "incident scale real part");
+            Assert.AreEqual(expectedScale.Im, solver.IncidentBoundaryScale.Im, 1e-12, "incident scale imaginary part");
+        }
+
+        [TestMethod]
         public void SinglePlateSolver_RemainsSupportedAfterLibraryExtraction()
         {
             DifrOnLenta solver = new DifrOnLenta(-1.0, 1.0, 1.0, 10.0 * Math.PI / 180.0, 20, 0.001);

@@ -838,8 +838,9 @@ namespace Diffraction
         private string BuildCoefficientText(PlateCalculationInput input, DifrOnLenta qNoSkin, DifrOnLenta qSkin, bool noSkinSolved)
         {
             StringBuilder builder = new StringBuilder();
-            builder.AppendLine("Импедансный коэффициент χ:");
-            builder.AppendFormat("χ = {0:F6} + {1:F6}i{2}", qSkin.chi.Re, qSkin.chi.Im, Environment.NewLine);
+            builder.AppendLine("Поверхностный импеданс χ:");
+            builder.AppendFormat("χ = {0:F6} + {1:F6}i Ом{2}", qSkin.chi.Re, qSkin.chi.Im, Environment.NewLine);
+            builder.AppendFormat("Коэффициент ГУ = {0:F6} + {1:F6}i{2}", qSkin.BoundaryCoefficient.Re, qSkin.BoundaryCoefficient.Im, Environment.NewLine);
             builder.AppendLine();
 
             int totalCoefficients = input.Param * qSkin.PlateCount;
