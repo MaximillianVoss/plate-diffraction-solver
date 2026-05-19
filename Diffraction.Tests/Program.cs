@@ -86,9 +86,29 @@ namespace Diffraction.Tests
             Assert.AreEqual(expectedBoundaryCoefficient, solver.BoundaryCoefficient.Re, expectedBoundaryCoefficient * 1e-12, "boundary coefficient real part");
             Assert.AreEqual(expectedBoundaryCoefficient, solver.BoundaryCoefficient.Im, expectedBoundaryCoefficient * 1e-12, "boundary coefficient imaginary part");
 
-            Compl expectedScale = 1.0 / (1.0 - new Compl(0, 1) * (2.0 * Math.PI * frequency) * epsilon0 * solver.chi);
+            double plateLength = 2.0;
+            Compl expectedScale = 1.0 / (1.0 - new Compl(0, 1) * (2.0 * Math.PI * frequency) * epsilon0 * solver.chi * plateLength);
             Assert.AreEqual(expectedScale.Re, solver.IncidentBoundaryScale.Re, 1e-12, "incident scale real part");
             Assert.AreEqual(expectedScale.Im, solver.IncidentBoundaryScale.Im, 1e-12, "incident scale imaginary part");
+        }
+
+        [TestMethod]
+        public void TwoPlateSkin_UsesPlateLengthInIncidentScale()
+        {
+            const double epsilon0 = 8.854187817e-12;
+            const double c = 299792458.0;
+            double lambda = 1.0;
+            double skinDepth = 0.001;
+            double frequency = c / lambda;
+            DifrOnLenta solver = new DifrOnLenta(-1.5, -0.5, 0.25, 1.75, lambda, 10.0 * Math.PI / 180.0, 20, skinDepth);
+
+            Compl expectedFirst = 1.0 / (1.0 - new Compl(0, 1) * (2.0 * Math.PI * frequency) * epsilon0 * solver.chi * 1.0);
+            Compl expectedSecond = 1.0 / (1.0 - new Compl(0, 1) * (2.0 * Math.PI * frequency) * epsilon0 * solver.chi * 1.5);
+
+            Assert.AreEqual(expectedFirst.Re, solver.IncidentBoundaryScaleForPlate(0).Re, 1e-12, "first plate scale real part");
+            Assert.AreEqual(expectedFirst.Im, solver.IncidentBoundaryScaleForPlate(0).Im, 1e-12, "first plate scale imaginary part");
+            Assert.AreEqual(expectedSecond.Re, solver.IncidentBoundaryScaleForPlate(1).Re, 1e-12, "second plate scale real part");
+            Assert.AreEqual(expectedSecond.Im, solver.IncidentBoundaryScaleForPlate(1).Im, 1e-12, "second plate scale imaginary part");
         }
 
         [TestMethod]

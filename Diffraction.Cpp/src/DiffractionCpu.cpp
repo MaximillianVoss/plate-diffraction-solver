@@ -12,6 +12,10 @@ namespace
 {
     constexpr double PI = 3.1415926535897932384626433832795;
     constexpr double GAMMA_E = 0.5772156649015328606065120900824;
+    constexpr double MU0 = 4.0 * PI * 1e-7;
+    constexpr double EPSILON0 = 8.854187817e-12;
+    constexpr double SPEED_OF_LIGHT = 299792458.0;
+    constexpr double VACUUM_IMPEDANCE = MU0 * SPEED_OF_LIGHT;
 
     struct ComplexValue
     {
@@ -212,6 +216,20 @@ namespace
         return exp_i(k * std::cos(theta) * x + k * std::sin(theta) * z);
     }
 
+    ComplexValue surface_impedance(double skin_depth, double lambda)
+    {
+        if (skin_depth <= 0.0) return ComplexValue();
+        double frequency = SPEED_OF_LIGHT / lambda;
+        double surface_resistance = PI * MU0 * frequency * skin_depth;
+        return ComplexValue(surface_resistance, surface_resistance);
+    }
+
+    ComplexValue boundary_coefficient(const ComplexValue& chi)
+    {
+        if (chi.re == 0.0 && chi.im == 0.0) return ComplexValue();
+        return 2.0 * chi / VACUUM_IMPEDANCE;
+    }
+
     struct SolverParameters
     {
         double alpha[2];
@@ -224,6 +242,23 @@ namespace
         int plate_count;
         bool theta_set_in_degrees;
     };
+
+    ComplexValue incident_boundary_scale(const SolverParameters& params, int plate_index, const ComplexValue& chi)
+    {
+        if (params.skin_depth <= 0.0) return ComplexValue(1.0, 0.0);
+        ComplexValue ci(0.0, 1.0);
+        double omega = 2.0 * PI * SPEED_OF_LIGHT / params.lambda;
+        double plate_length = params.beta[plate_index] - params.alpha[plate_index];
+        return ComplexValue(1.0, 0.0) / (ComplexValue(1.0, 0.0) - ci * omega * EPSILON0 * chi * plate_length);
+    }
+
+    std::vector<ComplexValue> build_incident_scales(const SolverParameters& params, const ComplexValue& chi)
+    {
+        std::vector<ComplexValue> scales(params.plate_count);
+        for (int p = 0; p < params.plate_count; ++p)
+            scales[p] = incident_boundary_scale(params, p, chi);
+        return scales;
+    }
 
     double half_length(const SolverParameters& params, int plate_index)
     {
@@ -363,7 +398,7 @@ namespace
         const std::vector<double>& x_c,
         int m_quad,
         double k_wave,
-        ComplexValue chi)
+        ComplexValue boundary_chi)
     {
         int total_unknowns = params.n * params.plate_count;
         matrix.assign(total_unknowns * total_unknowns, ComplexValue());
@@ -402,11 +437,11 @@ namespace
                         ComplexValue s_log = ci * ((-2.0 / PI) * target_half_length * (ln_const * i_ortho + i_log));
                         result = (sum_reg + s_log) * ComplexValue(0.0, 0.25);
 
-                        if (chi.re != 0.0 || chi.im != 0.0)
+                        if (boundary_chi.re != 0.0 || boundary_chi.im != 0.0)
                         {
                             double tj_k = cheb(j, tau_k);
                             double sqrt_w = std::sqrt(1.0 - tau_k * tau_k);
-                            result = result - chi / (2.0 * target_half_length) * (tj_k / sqrt_w);
+                            result = result - boundary_chi / (2.0 * target_half_length) * (tj_k / sqrt_w);
                         }
                     }
                     else
@@ -434,7 +469,8 @@ namespace
         const SolverParameters& params,
         const std::vector<double>& x_c,
         double k_wave,
-        ComplexValue chi)
+        ComplexValue boundary_chi,
+        const std::vector<ComplexValue>& incident_scales)
     {
         int total_unknowns = params.n * params.plate_count;
         std::vector<ComplexValue> rhs(total_unknowns);
@@ -445,12 +481,13 @@ namespace
             int target_plate = row / params.n;
             int ik = row % params.n;
             double xk = x_c[target_plate * params.n + ik];
-            ComplexValue u0 = incident_field(xk, 0.0, k_wave, params.theta);
+            ComplexValue u0_raw = incident_field(xk, 0.0, k_wave, params.theta);
+            ComplexValue u0 = incident_scales[target_plate] * u0_raw;
 
-            if (chi.re != 0.0 || chi.im != 0.0)
+            if (boundary_chi.re != 0.0 || boundary_chi.im != 0.0)
             {
-                ComplexValue du0_dz = ci * (k_wave * std::sin(params.theta)) * u0;
-                rhs[row] = -u0 - chi * du0_dz;
+                ComplexValue du0_dz = ci * (k_wave * std::sin(params.theta)) * u0_raw;
+                rhs[row] = -u0 - boundary_chi * du0_dz;
             }
             else
             {
@@ -532,9 +569,9 @@ int main(int argc, char** argv)
         int m_quad = params.m_quad > 0 ? params.m_quad : std::max(8 * params.n, 80);
         int total_unknowns = params.n * params.plate_count;
         double k_wave = 2.0 * PI / params.lambda;
-        ComplexValue chi = params.skin_depth > 0.0
-            ? ComplexValue(k_wave * params.skin_depth, k_wave * params.skin_depth)
-            : ComplexValue();
+        ComplexValue chi = surface_impedance(params.skin_depth, params.lambda);
+        ComplexValue boundary_chi = boundary_coefficient(chi);
+        std::vector<ComplexValue> incident_scales = build_incident_scales(params, chi);
 
         std::vector<double> tau_q = build_tau_q(params.plate_count, m_quad);
         std::vector<double> tau_c = build_tau_c(params.plate_count, params.n);
@@ -546,8 +583,8 @@ int main(int argc, char** argv)
 
         auto assembly_start = std::chrono::high_resolution_clock::now();
         std::vector<ComplexValue> matrix;
-        assemble_matrix_cpu(matrix, params, tau_q, t_q, w_q, tau_c, x_c, m_quad, k_wave, chi);
-        std::vector<ComplexValue> rhs = assemble_rhs_cpu(params, x_c, k_wave, chi);
+        assemble_matrix_cpu(matrix, params, tau_q, t_q, w_q, tau_c, x_c, m_quad, k_wave, boundary_chi);
+        std::vector<ComplexValue> rhs = assemble_rhs_cpu(params, x_c, k_wave, boundary_chi, incident_scales);
         auto assembly_stop = std::chrono::high_resolution_clock::now();
 
         auto solve_start = std::chrono::high_resolution_clock::now();

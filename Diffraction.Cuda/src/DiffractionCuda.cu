@@ -16,6 +16,10 @@ namespace
 {
     constexpr double PI = 3.1415926535897932384626433832795;
     constexpr double GAMMA_E = 0.5772156649015328606065120900824;
+    constexpr double MU0 = 4.0 * PI * 1e-7;
+    constexpr double EPSILON0 = 8.854187817e-12;
+    constexpr double SPEED_OF_LIGHT = 299792458.0;
+    constexpr double VACUUM_IMPEDANCE = MU0 * SPEED_OF_LIGHT;
 
     struct ComplexValue
     {
@@ -221,6 +225,34 @@ namespace
         return exp_i(k * cos(theta) * x + k * sin(theta) * z);
     }
 
+    ComplexValue surface_impedance(double skin_depth, double lambda)
+    {
+        if (skin_depth <= 0.0) return ComplexValue();
+        double frequency = SPEED_OF_LIGHT / lambda;
+        double surface_resistance = PI * MU0 * frequency * skin_depth;
+        return ComplexValue(surface_resistance, surface_resistance);
+    }
+
+    ComplexValue boundary_coefficient(const ComplexValue& chi)
+    {
+        if (chi.re == 0.0 && chi.im == 0.0) return ComplexValue();
+        return 2.0 * chi / VACUUM_IMPEDANCE;
+    }
+
+    __host__ __device__ ComplexValue incident_boundary_scale(
+        const double* alpha,
+        const double* beta,
+        int plate_index,
+        double k_wave,
+        const ComplexValue& chi)
+    {
+        if (chi.re == 0.0 && chi.im == 0.0) return ComplexValue(1.0, 0.0);
+        ComplexValue ci(0.0, 1.0);
+        double omega = SPEED_OF_LIGHT * k_wave;
+        double plate_length = beta[plate_index] - alpha[plate_index];
+        return ComplexValue(1.0, 0.0) / (ComplexValue(1.0, 0.0) - ci * omega * EPSILON0 * chi * plate_length);
+    }
+
     __host__ __device__ double half_length(const double* alpha, const double* beta, int plate_index)
     {
         return (beta[plate_index] - alpha[plate_index]) / 2.0;
@@ -262,7 +294,7 @@ namespace
         int plate_count,
         int m_quad,
         double k_wave,
-        ComplexValue chi)
+        ComplexValue boundary_chi)
     {
         int total_unknowns = n * plate_count;
         int index = blockIdx.x * blockDim.x + threadIdx.x;
@@ -301,11 +333,11 @@ namespace
             ComplexValue s_log = ci * ((-2.0 / PI) * target_half_length * (ln_const * i_ortho + i_log));
             result = (sum_reg + s_log) * ComplexValue(0.0, 0.25);
 
-            if (chi.re != 0.0 || chi.im != 0.0)
+            if (boundary_chi.re != 0.0 || boundary_chi.im != 0.0)
             {
                 double tj_k = cheb(j, tau_k);
                 double sqrt_w = sqrt(1.0 - tau_k * tau_k);
-                result = result - chi / (2.0 * target_half_length) * (tj_k / sqrt_w);
+                result = result - boundary_chi / (2.0 * target_half_length) * (tj_k / sqrt_w);
             }
         }
         else
@@ -328,11 +360,14 @@ namespace
 
     __global__ void assemble_rhs_kernel(
         cuDoubleComplex* rhs,
+        const double* alpha,
+        const double* beta,
         const double* x_c,
         int n,
         int plate_count,
         double theta,
         double k_wave,
+        ComplexValue boundary_chi,
         ComplexValue chi)
     {
         int total_unknowns = n * plate_count;
@@ -342,13 +377,14 @@ namespace
         int target_plate = row / n;
         int ik = row % n;
         double xk = x_c[target_plate * n + ik];
-        ComplexValue u0 = incident_field(xk, 0.0, k_wave, theta);
+        ComplexValue u0_raw = incident_field(xk, 0.0, k_wave, theta);
+        ComplexValue u0 = incident_boundary_scale(alpha, beta, target_plate, k_wave, chi) * u0_raw;
         ComplexValue ci(0.0, 1.0);
 
-        if (chi.re != 0.0 || chi.im != 0.0)
+        if (boundary_chi.re != 0.0 || boundary_chi.im != 0.0)
         {
-            ComplexValue du0_dz = ci * (k_wave * sin(theta)) * u0;
-            ComplexValue rhs_value = -u0 - chi * du0_dz;
+            ComplexValue du0_dz = ci * (k_wave * sin(theta)) * u0_raw;
+            ComplexValue rhs_value = -u0 - boundary_chi * du0_dz;
             rhs[row] = make_cuDoubleComplex(rhs_value.re, rhs_value.im);
         }
         else
@@ -501,9 +537,8 @@ int main(int argc, char** argv)
         int m_quad = params.m_quad > 0 ? params.m_quad : std::max(8 * params.n, 80);
         int total_unknowns = params.n * params.plate_count;
         double k_wave = 2.0 * PI / params.lambda;
-        ComplexValue chi = params.skin_depth > 0.0
-            ? ComplexValue(k_wave * params.skin_depth, k_wave * params.skin_depth)
-            : ComplexValue();
+        ComplexValue chi = surface_impedance(params.skin_depth, params.lambda);
+        ComplexValue boundary_chi = boundary_coefficient(chi);
 
         std::vector<double> tau_q = build_tau_q(params.plate_count, m_quad);
         std::vector<double> tau_c = build_tau_c(params.plate_count, params.n);
@@ -564,18 +599,21 @@ int main(int argc, char** argv)
             params.plate_count,
             m_quad,
             k_wave,
-            chi);
+            boundary_chi);
         check_cuda(cudaGetLastError(), "assemble_matrix_kernel launch");
 
         int rhs_threads = 256;
         int rhs_blocks = (total_unknowns + rhs_threads - 1) / rhs_threads;
         assemble_rhs_kernel<<<rhs_blocks, rhs_threads>>>(
             d_rhs,
+            d_alpha,
+            d_beta,
             d_x_c,
             params.n,
             params.plate_count,
             params.theta,
             k_wave,
+            boundary_chi,
             chi);
         check_cuda(cudaGetLastError(), "assemble_rhs_kernel launch");
 

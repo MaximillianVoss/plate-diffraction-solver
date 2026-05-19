@@ -325,7 +325,7 @@ namespace Diffraction.Core
             public double skinDepth;
             public Compl chi;
             private Compl boundaryChi;
-            private Compl incidentBoundaryScale;
+            private Compl[] incidentBoundaryScaleByPlate;
             public CMatr LastMatrixA; // Сохранение матрицы для расчёта обусловленности
             public int PlateCount { get; private set; }
             public double[] alpha;
@@ -389,7 +389,7 @@ namespace Diffraction.Core
                 ResetPreparedState();
                 chi = CalculateChi();
                 boundaryChi = CalculateBoundaryCoefficient();
-                incidentBoundaryScale = CalculateIncidentBoundaryScale();
+                incidentBoundaryScaleByPlate = CalculateIncidentBoundaryScales();
                 LastSolvePerformance = null;
                 LastSolveCancelled = false;
             }
@@ -409,7 +409,7 @@ namespace Diffraction.Core
 
             public Compl IncidentBoundaryScale
             {
-                get { return new Compl(incidentBoundaryScale.Re, incidentBoundaryScale.Im); }
+                get { return IncidentBoundaryScaleForPlate(0); }
             }
 
             private Compl CalculateBoundaryCoefficient()
@@ -418,11 +418,28 @@ namespace Diffraction.Core
                 return 2.0 * chi / VacuumImpedance;
             }
 
-            private Compl CalculateIncidentBoundaryScale()
+            public Compl IncidentBoundaryScaleForPlate(int plateIndex)
             {
-                if (skinDepth <= 0 || PlateCount != 1) return new Compl(1, 0);
+                if (plateIndex < 0 || plateIndex >= PlateCount)
+                    throw new ArgumentOutOfRangeException(nameof(plateIndex));
+                Compl scale = incidentBoundaryScaleByPlate[plateIndex];
+                return new Compl(scale.Re, scale.Im);
+            }
+
+            private Compl[] CalculateIncidentBoundaryScales()
+            {
+                Compl[] scales = new Compl[PlateCount];
+                for (int p = 0; p < PlateCount; p++)
+                    scales[p] = CalculateIncidentBoundaryScale(p);
+                return scales;
+            }
+
+            private Compl CalculateIncidentBoundaryScale(int plateIndex)
+            {
+                if (skinDepth <= 0) return new Compl(1, 0);
                 double omega = 2.0 * Math.PI * SpeedOfLight / lambda;
-                return 1.0 / (1.0 - ci * omega * Epsilon0 * chi);
+                double plateLength = beta[plateIndex] - alpha[plateIndex];
+                return 1.0 / (1.0 - ci * omega * Epsilon0 * chi * plateLength);
             }
 
             public double ChebAB(int n, double x)
@@ -470,9 +487,15 @@ namespace Diffraction.Core
                 return Compl.Exp(k * Math.Cos(teta) * ci * x + k * Math.Sin(teta) * ci * z);
             }
 
+            private Compl BoundaryIncident(int plateIndex, double x, double z)
+            {
+                return incidentBoundaryScaleByPlate[plateIndex] * u0(x, z);
+            }
+
             private Compl BoundaryIncident(double x, double z)
             {
-                return incidentBoundaryScale * u0(x, z);
+                int plateIndex = GetPlateIndex(x);
+                return plateIndex < 0 ? u0(x, z) : BoundaryIncident(plateIndex, x, z);
             }
 
             public Compl BoundaryIncidentField(double x, double z)
@@ -536,7 +559,7 @@ namespace Diffraction.Core
                     }
                 }
 
-                return (sum_reg + ci * sum_log + sum_cross) * ci / 4.0 + BoundaryIncident(x, 0);
+                return (sum_reg + ci * sum_log + sum_cross) * ci / 4.0 + BoundaryIncident(targetPlate, x, 0);
             }
 
             public Compl f(double x) => -2 * Math.PI * u0(x, 0);
@@ -740,7 +763,7 @@ namespace Diffraction.Core
 
                         if (skinDepth > 0)
                         {
-                            Compl u0Boundary = BoundaryIncident(xk, 0);
+                            Compl u0Boundary = BoundaryIncident(targetPlate, xk, 0);
                             Compl du0_dz = ci * k_wave * Math.Sin(teta) * u0(xk, 0);
                             B_vec[row] = -1.0 * u0Boundary - boundaryChi * du0_dz;
                         }
@@ -1033,7 +1056,7 @@ namespace Diffraction.Core
                     for (int i = 1; i < M; i++)
                     {
                         double x = alpha[plateIndex] + i * dx;
-                        Compl u0Boundary = BoundaryIncident(x, 0);
+                        Compl u0Boundary = BoundaryIncident(plateIndex, x, 0);
                         Compl u_val = u(x, 0), du0_dz = ci * k_wave * Math.Sin(teta) * u0(x, 0), J_val = CurrentDensity(x);
                         Compl du_total = du0_dz - J_val / 2.0, bc_val = u_val + boundaryChi * du_total;
                         double scale = Compl.Abs(u0Boundary); if (scale < 0.01) scale = 0.01;
