@@ -7,6 +7,7 @@ CSV-файлы в этой папке получены после исправл
 - `accuracy_sweep_angle10_fixed_compare.csv` - сравнение тех же расчетов со случаем `skinDepth = 0`.
 - `accuracy_sweep_quick_fixed.csv` - быстрый прогон для углов `0, 30, 60, 90`, `N = 5, 10, 20, 30, 60`.
 - `accuracy_sweep_quick_fixed_compare.csv` - сравнение быстрого прогона со случаем `skinDepth = 0`.
+- `skin_method_compare.csv` и `skin_method_compare.png` - сравнение решения со скин-слоем методом коллокации и галеркинской проекцией на одной пластине.
 
 Повторить быстрый прогон:
 
@@ -19,6 +20,12 @@ Start-Process -FilePath ".\bin\Debug\Diffraction.exe" -WorkingDirectory (Get-Loc
 
 ```powershell
 Start-Process -FilePath ".\bin\Debug\Diffraction.exe" -WorkingDirectory (Get-Location) -ArgumentList "--accuracy-sweep --output .\diagnostics\accuracy_sweep_angle10_fixed.csv --angles 10 --n-values 5,10,20,30,60 --skins 0,0.1,0.01,0.001" -Wait
+```
+
+Повторить сравнение методов для одной пластины со скин-слоем:
+
+```powershell
+Start-Process -FilePath ".\bin\Debug\Diffraction.exe" -WorkingDirectory (Get-Location) -ArgumentList "--skin-method-compare --skin-depth 0.1 --n 30 --theta-deg 45 --output .\diagnostics\skin_method_compare.csv --image .\diagnostics\skin_method_compare.png" -Wait
 ```
 
 Важно: отраженная энергия теперь оценивается по рассеянному потоку через контрольный контур вокруг пластин. Прошедшая энергия восстанавливается из баланса `I - R - A`, чтобы отчет не показывал нефизичные огромные значения из локальной контрольной вертикали.

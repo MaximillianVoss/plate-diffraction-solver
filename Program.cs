@@ -7,6 +7,9 @@ using System.Windows.Forms;
 using System.IO;
 using System.Globalization;
 using System.Diagnostics; // Для Stopwatch
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
 
 using System.Text;
 using static Diffraction.Core.DiffractionMath;
@@ -36,6 +39,12 @@ namespace Diffraction
                     int[] ns = ParseIntListArg(args, "--n-values");
                     double[] skinDepths = ParseDoubleListArg(args, "--skins");
                     RunAccuracySweep(outputFile, quick, angles, ns, skinDepths);
+                    return;
+                }
+
+                if (HasArg(args, "--skin-method-compare"))
+                {
+                    RunSkinMethodCompare(args);
                     return;
                 }
             }
@@ -80,6 +89,22 @@ namespace Diffraction
                 .Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries)
                 .Select(item => int.Parse(item.Trim(), CultureInfo.InvariantCulture))
                 .ToArray();
+        }
+
+        private static double GetDoubleArg(string[] args, string name, double fallback)
+        {
+            string value = GetArgValue(args, name);
+            return string.IsNullOrWhiteSpace(value)
+                ? fallback
+                : double.Parse(value.Trim(), CultureInfo.InvariantCulture);
+        }
+
+        private static int GetIntArg(string[] args, string name, int fallback)
+        {
+            string value = GetArgValue(args, name);
+            return string.IsNullOrWhiteSpace(value)
+                ? fallback
+                : int.Parse(value.Trim(), CultureInfo.InvariantCulture);
         }
 
         private class AccuracySweepRow
@@ -245,6 +270,385 @@ namespace Diffraction
 
             Console.WriteLine("Accuracy sweep saved to: " + Path.GetFullPath(outputFilePath));
             Console.WriteLine("Comparison sweep saved to: " + Path.GetFullPath(compareFilePath));
+        }
+
+        private class MethodComparisonSample
+        {
+            public double X;
+            public Compl Collocation;
+            public Compl Galerkin;
+            public double CollocationAbs;
+            public double GalerkinAbs;
+            public double DifferenceAbs;
+        }
+
+        private static void RunSkinMethodCompare(string[] args)
+        {
+            double alpha = GetDoubleArg(args, "--alpha", -1.0);
+            double beta = GetDoubleArg(args, "--beta", 1.0);
+            double lambda = GetDoubleArg(args, "--lambda", 1.0);
+            double thetaDeg = GetDoubleArg(args, "--theta-deg", GetDoubleArg(args, "--theta", 45.0));
+            double skinDepth = GetDoubleArg(args, "--skin-depth", GetDoubleArg(args, "--skin", 0.1));
+            int n = GetIntArg(args, "--n", 30);
+            int samples = GetIntArg(args, "--samples", 400);
+            string outputFile = GetArgValue(args, "--output") ?? Path.Combine("diagnostics", "skin_method_compare.csv");
+            string imageFile = GetArgValue(args, "--image") ?? Path.Combine("diagnostics", "skin_method_compare.png");
+
+            if (alpha >= beta) throw new ArgumentException("--alpha must be less than --beta");
+            if (lambda <= 0) throw new ArgumentException("--lambda must be positive");
+            if (skinDepth <= 0) throw new ArgumentException("--skin-depth must be positive for skin method comparison");
+            if (n <= 0) throw new ArgumentException("--n must be positive");
+            if (samples < 20) throw new ArgumentException("--samples must be at least 20");
+
+            double theta = thetaDeg * Math.PI / 180.0;
+
+            DifrOnLenta collocation = new DifrOnLenta(alpha, beta, lambda, theta, n, skinDepth);
+            int collocationStatus = collocation.SolveDifr();
+            if (collocationStatus != 1)
+                throw new InvalidOperationException("Collocation solve failed with status " + collocationStatus);
+
+            DifrOnLenta galerkin = SolveGalerkinProjectionSinglePlate(alpha, beta, lambda, theta, n, skinDepth);
+
+            MethodComparisonSample[] rows = new MethodComparisonSample[samples];
+            double maxDifference = 0.0;
+            double meanDifference = 0.0;
+            double maxCoeffDifference = 0.0;
+
+            for (int i = 0; i < samples; i++)
+            {
+                double x = alpha + (i + 0.5) / samples * (beta - alpha);
+                Compl uc = collocation.u_on_strip(x);
+                Compl ug = galerkin.u_on_strip(x);
+                double diff = Compl.Abs(uc - ug);
+                rows[i] = new MethodComparisonSample
+                {
+                    X = x,
+                    Collocation = uc,
+                    Galerkin = ug,
+                    CollocationAbs = Compl.Abs(uc),
+                    GalerkinAbs = Compl.Abs(ug),
+                    DifferenceAbs = diff
+                };
+                if (diff > maxDifference) maxDifference = diff;
+                meanDifference += diff;
+            }
+            meanDifference /= samples;
+
+            int coeffCount = Math.Min(collocation.y.Length, galerkin.y.Length);
+            for (int i = 0; i < coeffCount; i++)
+            {
+                double coeffDifference = Compl.Abs(collocation.y[i] - galerkin.y[i]);
+                if (coeffDifference > maxCoeffDifference) maxCoeffDifference = coeffDifference;
+            }
+
+            WriteMethodComparisonCsv(outputFile, rows);
+            SaveMethodComparisonPlot(imageFile, rows, alpha, beta, thetaDeg, skinDepth, n);
+
+            Console.WriteLine("Skin method comparison saved to: " + Path.GetFullPath(outputFile));
+            Console.WriteLine("Skin method comparison plot saved to: " + Path.GetFullPath(imageFile));
+            Console.WriteLine("Collocation BC error, %: " + F(collocation.VerifyBoundaryConditions() * 100.0));
+            Console.WriteLine("Galerkin projection BC error, %: " + F(galerkin.VerifyBoundaryConditions() * 100.0));
+            Console.WriteLine("Max |u_collocation - u_galerkin|: " + F(maxDifference));
+            Console.WriteLine("Mean |u_collocation - u_galerkin|: " + F(meanDifference));
+            Console.WriteLine("Max coefficient absolute difference: " + F(maxCoeffDifference));
+        }
+
+        private static DifrOnLenta SolveGalerkinProjectionSinglePlate(
+            double alpha,
+            double beta,
+            double lambda,
+            double theta,
+            int n,
+            double skinDepth)
+        {
+            const double mu0 = 4 * Math.PI * 1e-7;
+            const double epsilon0 = 8.854187817e-12;
+            const double speedOfLight = 299792458.0;
+            double frequency = speedOfLight / lambda;
+            Compl chi = new Compl(Math.PI * mu0 * frequency * skinDepth, Math.PI * mu0 * frequency * skinDepth);
+            Compl boundaryChi = 2.0 * chi / (mu0 * speedOfLight);
+            double plateLength = beta - alpha;
+            Compl incidentScale = 1.0 / (1.0 - ci * (2.0 * Math.PI * frequency) * epsilon0 * chi * plateLength);
+            double halfL = plateLength / 2.0;
+            double mid = (alpha + beta) / 2.0;
+            double kWave = 2.0 * Math.PI / lambda;
+            int mQuad = Math.Max(8 * n, 80);
+
+            double[] tau = new double[mQuad];
+            double[] x = new double[mQuad];
+            double[] weights = new double[mQuad];
+            for (int m = 0; m < mQuad; m++)
+            {
+                tau[m] = Math.Cos((2.0 * m + 1.0) / (2.0 * mQuad) * Math.PI);
+                x[m] = halfL * tau[m] + mid;
+                weights[m] = Math.PI / mQuad * halfL;
+            }
+
+            CMatr matrix = new CMatr(n);
+            CVect rhs = new CVect(n);
+            double projectionWeight = Math.PI / mQuad;
+            double lnConst = Math.Log(kWave * halfL / 2.0);
+
+            for (int k = 0; k < n; k++)
+            {
+                for (int j = 0; j < n; j++)
+                {
+                    Compl projected = new Compl(0, 0);
+                    for (int m = 0; m < mQuad; m++)
+                    {
+                        Compl op = BoundaryOperatorBasisAtTau(tau[m], j, tau, weights, halfL, kWave, lnConst, boundaryChi);
+                        projected += op * Cheb(k, tau[m]);
+                    }
+                    matrix[k][j] = projected * projectionWeight;
+                }
+
+                Compl rhsProjected = new Compl(0, 0);
+                for (int m = 0; m < mQuad; m++)
+                {
+                    Compl u0Raw = IncidentField(x[m], 0, kWave, theta);
+                    Compl du0Dz = ci * kWave * Math.Sin(theta) * u0Raw;
+                    Compl boundaryRhs = -1.0 * incidentScale * u0Raw - boundaryChi * du0Dz;
+                    rhsProjected += boundaryRhs * Cheb(k, tau[m]);
+                }
+                rhs[k] = rhsProjected * projectionWeight;
+            }
+
+            CVect coefficients = new CVect(n);
+            int status = Gauss(matrix, rhs, coefficients);
+            if (status != 1)
+                throw new InvalidOperationException("Galerkin projection solve failed with status " + status);
+
+            Compl[] y = new Compl[n];
+            for (int i = 0; i < n; i++)
+                y[i] = new Compl(coefficients[i].Re, coefficients[i].Im);
+
+            DifrOnLenta solver = new DifrOnLenta(alpha, beta, lambda, theta, n, skinDepth);
+            solver.ApplySolvedCoefficients(y, "Galerkin projection", 0, 0, 0, usedCuda: false);
+            return solver;
+        }
+
+        private static Compl BoundaryOperatorBasisAtTau(
+            double targetTau,
+            int basisIndex,
+            double[] tau,
+            double[] weights,
+            double halfL,
+            double kWave,
+            double lnConst,
+            Compl boundaryChi)
+        {
+            Compl sumReg = new Compl(0, 0);
+            for (int m = 0; m < tau.Length; m++)
+            {
+                double kd = kWave * halfL * Math.Abs(targetTau - tau[m]);
+                sumReg += R_H0(kd) * Cheb(basisIndex, tau[m]) * weights[m];
+            }
+
+            double iOrtho = basisIndex == 0 ? Math.PI : 0.0;
+            double iLog = basisIndex == 0
+                ? -Math.PI * Math.Log(2.0)
+                : -(Math.PI / basisIndex) * Cheb(basisIndex, targetTau);
+            Compl sLog = ci * (-2.0 / Math.PI) * halfL * (lnConst * iOrtho + iLog);
+            Compl value = ci / 4.0 * (sumReg + sLog);
+
+            double sqrtWeight = Math.Sqrt(Math.Max(1.0 - targetTau * targetTau, 1e-10));
+            value -= boundaryChi / (2.0 * halfL) * Cheb(basisIndex, targetTau) / sqrtWeight;
+            return value;
+        }
+
+        private static Compl IncidentField(double x, double z, double kWave, double theta)
+        {
+            return Compl.Exp(kWave * Math.Cos(theta) * ci * x + kWave * Math.Sin(theta) * ci * z);
+        }
+
+        private static void WriteMethodComparisonCsv(string outputFilePath, MethodComparisonSample[] rows)
+        {
+            string directory = Path.GetDirectoryName(Path.GetFullPath(outputFilePath));
+            if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
+
+            using (var writer = new StreamWriter(outputFilePath, false, Encoding.UTF8))
+            {
+                writer.WriteLine("x;collocation_re;collocation_im;collocation_abs;galerkin_re;galerkin_im;galerkin_abs;abs_difference");
+                foreach (MethodComparisonSample row in rows)
+                {
+                    writer.WriteLine(string.Join(";",
+                        F(row.X),
+                        F(row.Collocation.Re),
+                        F(row.Collocation.Im),
+                        F(row.CollocationAbs),
+                        F(row.Galerkin.Re),
+                        F(row.Galerkin.Im),
+                        F(row.GalerkinAbs),
+                        F(row.DifferenceAbs)));
+                }
+            }
+        }
+
+        private static void SaveMethodComparisonPlot(
+            string imageFilePath,
+            MethodComparisonSample[] rows,
+            double alpha,
+            double beta,
+            double thetaDeg,
+            double skinDepth,
+            int n)
+        {
+            string directory = Path.GetDirectoryName(Path.GetFullPath(imageFilePath));
+            if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
+
+            using (Bitmap bitmap = new Bitmap(1100, 760))
+            using (Graphics graphics = Graphics.FromImage(bitmap))
+            using (Font titleFont = new Font("Arial", 14, FontStyle.Bold))
+            using (Font labelFont = new Font("Arial", 9))
+            using (Pen collocationPen = new Pen(Color.FromArgb(31, 119, 180), 2.0f))
+            using (Pen galerkinPen = new Pen(Color.FromArgb(214, 39, 40), 2.0f))
+            using (Pen diffPen = new Pen(Color.FromArgb(44, 160, 44), 2.0f))
+            {
+                graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                graphics.Clear(Color.White);
+                graphics.DrawString(
+                    string.Format(CultureInfo.InvariantCulture,
+                        "Skin solution comparison: theta={0:G4} deg, skinDepth={1:G4}, N={2}",
+                        thetaDeg,
+                        skinDepth,
+                        n),
+                    titleFont,
+                    Brushes.Black,
+                    new PointF(24, 18));
+
+                Rectangle upper = new Rectangle(72, 70, 980, 300);
+                Rectangle lower = new Rectangle(72, 430, 980, 240);
+
+                DrawLinePanel(
+                    graphics,
+                    upper,
+                    rows,
+                    row => row.CollocationAbs,
+                    row => row.GalerkinAbs,
+                    collocationPen,
+                    galerkinPen,
+                    "|u(x,0)|",
+                    "Collocation",
+                    "Galerkin projection",
+                    labelFont);
+
+                DrawDifferencePanel(
+                    graphics,
+                    lower,
+                    rows,
+                    diffPen,
+                    "|u_collocation - u_galerkin|",
+                    labelFont);
+
+                graphics.DrawString(
+                    string.Format(CultureInfo.InvariantCulture, "x in [{0:G4}, {1:G4}]", alpha, beta),
+                    labelFont,
+                    Brushes.Black,
+                    new PointF(upper.Left + upper.Width / 2 - 40, lower.Bottom + 30));
+
+                bitmap.Save(imageFilePath, ImageFormat.Png);
+            }
+        }
+
+        private static void DrawLinePanel(
+            Graphics graphics,
+            Rectangle bounds,
+            MethodComparisonSample[] rows,
+            Func<MethodComparisonSample, double> firstValue,
+            Func<MethodComparisonSample, double> secondValue,
+            Pen firstPen,
+            Pen secondPen,
+            string title,
+            string firstLabel,
+            string secondLabel,
+            Font labelFont)
+        {
+            double min = rows.Min(row => Math.Min(firstValue(row), secondValue(row)));
+            double max = rows.Max(row => Math.Max(firstValue(row), secondValue(row)));
+            DrawAxes(graphics, bounds, min, max, title, labelFont);
+            DrawSeries(graphics, bounds, rows, firstValue, min, max, firstPen);
+            DrawSeries(graphics, bounds, rows, secondValue, min, max, secondPen);
+            DrawLegend(graphics, bounds, firstPen.Color, secondPen.Color, firstLabel, secondLabel, labelFont);
+        }
+
+        private static void DrawDifferencePanel(
+            Graphics graphics,
+            Rectangle bounds,
+            MethodComparisonSample[] rows,
+            Pen pen,
+            string title,
+            Font labelFont)
+        {
+            double max = rows.Max(row => row.DifferenceAbs);
+            DrawAxes(graphics, bounds, 0.0, max, title, labelFont);
+            DrawSeries(graphics, bounds, rows, row => row.DifferenceAbs, 0.0, max, pen);
+        }
+
+        private static void DrawAxes(Graphics graphics, Rectangle bounds, double min, double max, string title, Font labelFont)
+        {
+            if (Math.Abs(max - min) < 1e-14)
+            {
+                max += 1.0;
+                min -= 1.0;
+            }
+
+            using (Pen axisPen = new Pen(Color.FromArgb(80, 80, 80), 1.0f))
+            using (Pen gridPen = new Pen(Color.FromArgb(225, 225, 225), 1.0f))
+            {
+                graphics.DrawRectangle(axisPen, bounds);
+                for (int i = 1; i < 5; i++)
+                {
+                    float y = bounds.Top + bounds.Height * i / 5.0f;
+                    graphics.DrawLine(gridPen, bounds.Left, y, bounds.Right, y);
+                }
+            }
+
+            graphics.DrawString(title, labelFont, Brushes.Black, new PointF(bounds.Left, bounds.Top - 22));
+            graphics.DrawString(max.ToString("G4", CultureInfo.InvariantCulture), labelFont, Brushes.Black, new PointF(bounds.Left - 64, bounds.Top - 6));
+            graphics.DrawString(min.ToString("G4", CultureInfo.InvariantCulture), labelFont, Brushes.Black, new PointF(bounds.Left - 64, bounds.Bottom - 10));
+        }
+
+        private static void DrawSeries(
+            Graphics graphics,
+            Rectangle bounds,
+            MethodComparisonSample[] rows,
+            Func<MethodComparisonSample, double> valueSelector,
+            double min,
+            double max,
+            Pen pen)
+        {
+            if (Math.Abs(max - min) < 1e-14) max = min + 1.0;
+            PointF[] points = new PointF[rows.Length];
+            for (int i = 0; i < rows.Length; i++)
+            {
+                double xNorm = i / (double)(rows.Length - 1);
+                double yNorm = (valueSelector(rows[i]) - min) / (max - min);
+                points[i] = new PointF(
+                    bounds.Left + (float)(xNorm * bounds.Width),
+                    bounds.Bottom - (float)(yNorm * bounds.Height));
+            }
+            if (points.Length > 1) graphics.DrawLines(pen, points);
+        }
+
+        private static void DrawLegend(
+            Graphics graphics,
+            Rectangle bounds,
+            Color firstColor,
+            Color secondColor,
+            string firstLabel,
+            string secondLabel,
+            Font labelFont)
+        {
+            int x = bounds.Right - 220;
+            int y = bounds.Top + 12;
+            using (Brush firstBrush = new SolidBrush(firstColor))
+            using (Brush secondBrush = new SolidBrush(secondColor))
+            {
+                graphics.FillRectangle(firstBrush, x, y + 4, 22, 4);
+                graphics.DrawString(firstLabel, labelFont, Brushes.Black, new PointF(x + 30, y - 3));
+                graphics.FillRectangle(secondBrush, x, y + 24, 22, 4);
+                graphics.DrawString(secondLabel, labelFont, Brushes.Black, new PointF(x + 30, y + 17));
+            }
         }
 
         static void RunDiagnostics()
