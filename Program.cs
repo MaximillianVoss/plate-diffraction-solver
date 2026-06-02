@@ -353,7 +353,7 @@ namespace Diffraction
             Console.WriteLine("Max coefficient absolute difference: " + F(maxCoeffDifference));
         }
 
-        private static DifrOnLenta SolveGalerkinProjectionSinglePlate(
+        internal static DifrOnLenta SolveGalerkinProjectionSinglePlate(
             double alpha,
             double beta,
             double lambda,

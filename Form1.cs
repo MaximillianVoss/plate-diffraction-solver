@@ -21,9 +21,11 @@ namespace Diffraction
         private TabControl resultsTabControl;
         private TabControl detailsTabControl;
         private TabPage tabPageField;
+        private TabPage tabPageMethodComparison;
         private TabPage tabPageDiagnostics;
         private PictureBox pictureBoxFieldNoSkin;
         private PictureBox pictureBoxFieldSkin;
+        private Chart chartMethodComparison;
         private RichTextBox textBoxDiagnostics;
         private RichTextBox textBoxJournal;
         private Button cancelCalculationButton;
@@ -100,6 +102,7 @@ namespace Diffraction
 
             pictureBoxFieldNoSkin = CreateFieldPictureBox();
             pictureBoxFieldSkin = CreateFieldPictureBox();
+            chartMethodComparison = CreateMethodComparisonChart();
             textBoxDiagnostics = CreateReadOnlyRichTextBox(monoFont);
             textBoxJournal = CreateReadOnlyRichTextBox(monoFont);
             textBoxDiagnostics.Text = "Подробная диагностика появится после расчета.";
@@ -150,8 +153,13 @@ namespace Diffraction
             tabPageField.Padding = new Padding(8);
             tabPageField.Controls.Add(BuildFieldLayout());
 
+            tabPageMethodComparison = new TabPage("Галеркин/коллокация");
+            tabPageMethodComparison.Padding = new Padding(8);
+            tabPageMethodComparison.Controls.Add(chartMethodComparison);
+
             resultsTabControl.TabPages.Add(tabPageSlice);
             resultsTabControl.TabPages.Add(tabPageField);
+            resultsTabControl.TabPages.Add(tabPageMethodComparison);
 
             detailsTabControl = new TabControl();
             detailsTabControl.Dock = DockStyle.Fill;
@@ -293,6 +301,69 @@ namespace Diffraction
             textBox.BackColor = SystemColors.Window;
             textBox.Font = font;
             return textBox;
+        }
+
+        private static Chart CreateMethodComparisonChart()
+        {
+            Chart chart = new Chart();
+            chart.Dock = DockStyle.Fill;
+            chart.BackColor = Color.White;
+
+            ChartArea fieldArea = new ChartArea("FieldArea");
+            fieldArea.Position = new ElementPosition(4, 9, 92, 45);
+            fieldArea.AxisX.Title = "x";
+            fieldArea.AxisY.Title = "|u(x,0)|";
+            fieldArea.AxisX.MajorGrid.LineColor = Color.Gainsboro;
+            fieldArea.AxisY.MajorGrid.LineColor = Color.Gainsboro;
+            fieldArea.AxisX.TitleFont = new Font("Arial", 9, FontStyle.Bold);
+            fieldArea.AxisY.TitleFont = new Font("Arial", 9, FontStyle.Bold);
+
+            ChartArea differenceArea = new ChartArea("DifferenceArea");
+            differenceArea.Position = new ElementPosition(4, 61, 92, 30);
+            differenceArea.AxisX.Title = "x";
+            differenceArea.AxisY.Title = "|Δu|";
+            differenceArea.AxisX.MajorGrid.LineColor = Color.Gainsboro;
+            differenceArea.AxisY.MajorGrid.LineColor = Color.Gainsboro;
+            differenceArea.AxisX.TitleFont = new Font("Arial", 9, FontStyle.Bold);
+            differenceArea.AxisY.TitleFont = new Font("Arial", 9, FontStyle.Bold);
+
+            chart.ChartAreas.Add(fieldArea);
+            chart.ChartAreas.Add(differenceArea);
+
+            Legend legend = new Legend("MethodLegend");
+            legend.Docking = Docking.Bottom;
+            legend.Alignment = StringAlignment.Center;
+            chart.Legends.Add(legend);
+
+            Series collocation = new Series("Коллокация |u|");
+            collocation.ChartType = SeriesChartType.Line;
+            collocation.ChartArea = "FieldArea";
+            collocation.Legend = "MethodLegend";
+            collocation.Color = Color.FromArgb(31, 119, 180);
+            collocation.BorderWidth = 2;
+
+            Series galerkin = new Series("Галеркин |u|");
+            galerkin.ChartType = SeriesChartType.Line;
+            galerkin.ChartArea = "FieldArea";
+            galerkin.Legend = "MethodLegend";
+            galerkin.Color = Color.FromArgb(214, 39, 40);
+            galerkin.BorderWidth = 2;
+
+            Series difference = new Series("|u_col-u_gal|");
+            difference.ChartType = SeriesChartType.Line;
+            difference.ChartArea = "DifferenceArea";
+            difference.Legend = "MethodLegend";
+            difference.Color = Color.FromArgb(44, 160, 44);
+            difference.BorderWidth = 2;
+
+            chart.Series.Add(collocation);
+            chart.Series.Add(galerkin);
+            chart.Series.Add(difference);
+            chart.Titles.Add(new Title("Сравнение со скин-слоем для первой пластины"));
+            chart.Titles.Add(new Title("Расчет появится после нажатия кнопки \"Рассчитать\""));
+            chart.Titles[0].Font = new Font("Arial", 11, FontStyle.Bold);
+            chart.Titles[1].Font = new Font("Arial", 9, FontStyle.Regular);
+            return chart;
         }
 
         private Control BuildFieldLayout()
@@ -623,8 +694,22 @@ namespace Diffraction
             public AccuracyReport NoSkinReport;
             public AccuracyReport SkinReport;
             public GraphImagePair Images;
+            public MethodComparisonResult MethodComparison;
             public string ExecutionSummaryText;
             public Color ExecutionSummaryColor;
+        }
+
+        private class MethodComparisonResult
+        {
+            public double[] XValues;
+            public double[] CollocationAbs;
+            public double[] GalerkinAbs;
+            public double[] DifferenceAbs;
+            public double CollocationBcError;
+            public double GalerkinBcError;
+            public double MaxDifference;
+            public double MeanDifference;
+            public double MaxCoefficientDifference;
         }
 
         private class SolveCaseResult
@@ -733,6 +818,14 @@ namespace Diffraction
                     return CreateCancelledResult();
             }
 
+            if (input.SkinDepth > 0 && result.SkinSolved)
+            {
+                progress.Report("Сравнение Галеркина и коллокации...");
+                result.MethodComparison = BuildMethodComparison(input, cancellationToken);
+                if (cancellationToken.IsCancellationRequested)
+                    return CreateCancelledResult();
+            }
+
             totalWatch.Stop();
             result.ExecutionSummaryText = BuildExecutionSummary(qNoSkin, qSkin, totalWatch.Elapsed, noSkinCase.WarningMessage, skinCase.WarningMessage);
             result.ExecutionSummaryColor = string.IsNullOrWhiteSpace(noSkinCase.WarningMessage) && string.IsNullOrWhiteSpace(skinCase.WarningMessage)
@@ -809,6 +902,71 @@ namespace Diffraction
                 Solved = solved,
                 WarningMessage = warningMessage
             };
+        }
+
+        private MethodComparisonResult BuildMethodComparison(
+            PlateCalculationInput input,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            DifrOnLenta collocationSolver = new DifrOnLenta(
+                input.Alpha1,
+                input.Beta1,
+                input.Len,
+                input.Angle,
+                input.Param,
+                input.SkinDepth);
+            if (collocationSolver.SolveDifr(cancellationToken) != 1)
+                throw new InvalidOperationException("Ошибка решения одной пластины методом коллокации");
+
+            DifrOnLenta galerkinSolver = Program.SolveGalerkinProjectionSinglePlate(
+                input.Alpha1,
+                input.Beta1,
+                input.Len,
+                input.Angle,
+                input.Param,
+                input.SkinDepth);
+
+            const int sampleCount = 400;
+            MethodComparisonResult result = new MethodComparisonResult
+            {
+                XValues = new double[sampleCount],
+                CollocationAbs = new double[sampleCount],
+                GalerkinAbs = new double[sampleCount],
+                DifferenceAbs = new double[sampleCount],
+                CollocationBcError = collocationSolver.VerifyBoundaryConditions(),
+                GalerkinBcError = galerkinSolver.VerifyBoundaryConditions()
+            };
+
+            double sumDifference = 0.0;
+            for (int i = 0; i < sampleCount; i++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                double x = input.Alpha1 + (i + 0.5) / sampleCount * (input.Beta1 - input.Alpha1);
+                Compl collocation = collocationSolver.u_on_strip(x);
+                Compl galerkin = galerkinSolver.u_on_strip(x);
+                double difference = Compl.Abs(collocation - galerkin);
+
+                result.XValues[i] = x;
+                result.CollocationAbs[i] = Compl.Abs(collocation);
+                result.GalerkinAbs[i] = Compl.Abs(galerkin);
+                result.DifferenceAbs[i] = difference;
+                sumDifference += difference;
+                if (difference > result.MaxDifference)
+                    result.MaxDifference = difference;
+            }
+
+            result.MeanDifference = sumDifference / sampleCount;
+            int coeffCount = Math.Min(collocationSolver.N, galerkinSolver.N);
+            for (int i = 0; i < coeffCount; i++)
+            {
+                double coefficientDifference = Compl.Abs(collocationSolver.y[i] - galerkinSolver.y[i]);
+                if (coefficientDifference > result.MaxCoefficientDifference)
+                    result.MaxCoefficientDifference = coefficientDifference;
+            }
+
+            return result;
         }
 
         private static double[] BuildPlotXValues(double left, double right, int segments)
@@ -907,9 +1065,38 @@ namespace Diffraction
             labelCalculationStatus.ForeColor = result.ExecutionSummaryColor;
             SetPictureBoxImage(pictureBoxFieldNoSkin, result.Images == null ? null : result.Images.ImageNoSkin);
             SetPictureBoxImage(pictureBoxFieldSkin, result.Images == null ? null : result.Images.ImageSkin);
+            ApplyMethodComparisonResult(result.MethodComparison);
             AppendJournalEntry("Расчет завершен. Результаты обновлены на вкладках.");
             if (!string.IsNullOrWhiteSpace(result.ExecutionSummaryText))
                 AppendJournalEntry(result.ExecutionSummaryText, result.ExecutionSummaryColor);
+        }
+
+        private void ApplyMethodComparisonResult(MethodComparisonResult comparison)
+        {
+            ClearMethodComparisonChart();
+            if (chartMethodComparison == null)
+                return;
+
+            if (comparison == null)
+            {
+                chartMethodComparison.Titles[1].Text = "Для сравнения методов задайте skinDepth > 0 и выполните расчет.";
+                return;
+            }
+
+            chartMethodComparison.Series[0].Points.DataBindXY(comparison.XValues, comparison.CollocationAbs);
+            chartMethodComparison.Series[1].Points.DataBindXY(comparison.XValues, comparison.GalerkinAbs);
+            chartMethodComparison.Series[2].Points.DataBindXY(comparison.XValues, comparison.DifferenceAbs);
+            chartMethodComparison.Titles[1].Text = string.Format(
+                "max |Δu| = {0:E3}; mean |Δu| = {1:E3}; max |Δa_n| = {2:E3}; BC col/gal = {3:E3}% / {4:E3}%",
+                comparison.MaxDifference,
+                comparison.MeanDifference,
+                comparison.MaxCoefficientDifference,
+                comparison.CollocationBcError * 100.0,
+                comparison.GalerkinBcError * 100.0);
+            chartMethodComparison.ChartAreas["FieldArea"].RecalculateAxesScale();
+            chartMethodComparison.ChartAreas["DifferenceArea"].RecalculateAxesScale();
+            if (resultsTabControl != null && tabPageMethodComparison != null)
+                resultsTabControl.SelectedTab = tabPageMethodComparison;
         }
 
         private void SetCalculationBusy(bool busy, string status)
@@ -959,6 +1146,18 @@ namespace Diffraction
 
             SetPictureBoxImage(pictureBoxFieldNoSkin, null);
             SetPictureBoxImage(pictureBoxFieldSkin, null);
+            ClearMethodComparisonChart();
+        }
+
+        private void ClearMethodComparisonChart()
+        {
+            if (chartMethodComparison == null)
+                return;
+
+            foreach (Series series in chartMethodComparison.Series)
+                series.Points.Clear();
+            if (chartMethodComparison.Titles.Count > 1)
+                chartMethodComparison.Titles[1].Text = "Расчет появится после нажатия кнопки \"Рассчитать\"";
         }
 
         private static void SetPictureBoxImage(PictureBox pictureBox, Image image)
