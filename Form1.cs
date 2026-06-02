@@ -734,6 +734,7 @@ namespace Diffraction
             public AccuracyReport SkinReport;
             public GraphImagePair Images;
             public MethodComparisonResult MethodComparison;
+            public GalerkinCoefficientResult GalerkinCoefficients;
             public string ExecutionSummaryText;
             public Color ExecutionSummaryColor;
         }
@@ -757,6 +758,12 @@ namespace Diffraction
             public DifrOnLenta Solver;
             public bool Solved;
             public string WarningMessage;
+        }
+
+        private class GalerkinCoefficientResult
+        {
+            public DifrOnLenta NoSkinSolver;
+            public DifrOnLenta SkinSolver;
         }
 
         private class AccuracyReport
@@ -839,7 +846,14 @@ namespace Diffraction
             progress.Report("Подготовка коэффициентов...");
             if (cancellationToken.IsCancellationRequested)
                 return CreateCancelledResult();
-            result.CoefficientsText = BuildCoefficientText(input, qNoSkin, qSkin, result.NoSkinSolved);
+            if (input.Mode == PlateCalculationMode.SinglePlate)
+            {
+                progress.Report("Расчет коэффициентов Галеркина...");
+                result.GalerkinCoefficients = BuildGalerkinCoefficientResult(input, cancellationToken);
+                if (cancellationToken.IsCancellationRequested)
+                    return CreateCancelledResult();
+            }
+            result.CoefficientsText = BuildCoefficientText(input, qNoSkin, qSkin, result.NoSkinSolved, result.GalerkinCoefficients);
             BuildConductivityStatus(input, qSkin, out result.ConductivityText, out result.ConductivityColor);
 
             progress.Report("Расчет проверок точности...");
@@ -964,6 +978,38 @@ namespace Diffraction
                 skinDepth);
         }
 
+        private static GalerkinCoefficientResult BuildGalerkinCoefficientResult(
+            PlateCalculationInput input,
+            CancellationToken cancellationToken)
+        {
+            if (input.Mode != PlateCalculationMode.SinglePlate)
+                return null;
+
+            cancellationToken.ThrowIfCancellationRequested();
+            DifrOnLenta noSkinSolver = Program.SolveGalerkinProjectionSinglePlate(
+                input.Alpha1,
+                input.Beta1,
+                input.Len,
+                input.Angle,
+                input.Param,
+                0.0);
+
+            cancellationToken.ThrowIfCancellationRequested();
+            DifrOnLenta skinSolver = Program.SolveGalerkinProjectionSinglePlate(
+                input.Alpha1,
+                input.Beta1,
+                input.Len,
+                input.Angle,
+                input.Param,
+                input.SkinDepth);
+
+            return new GalerkinCoefficientResult
+            {
+                NoSkinSolver = noSkinSolver,
+                SkinSolver = skinSolver
+            };
+        }
+
         private MethodComparisonResult BuildMethodComparison(
             PlateCalculationInput input,
             CancellationToken cancellationToken)
@@ -1054,7 +1100,12 @@ namespace Diffraction
             return values;
         }
 
-        private string BuildCoefficientText(PlateCalculationInput input, DifrOnLenta qNoSkin, DifrOnLenta qSkin, bool noSkinSolved)
+        private string BuildCoefficientText(
+            PlateCalculationInput input,
+            DifrOnLenta qNoSkin,
+            DifrOnLenta qSkin,
+            bool noSkinSolved,
+            GalerkinCoefficientResult galerkinCoefficients)
         {
             StringBuilder builder = new StringBuilder();
             builder.AppendFormat("Режим расчета: {0}{1}", GetPlateModeText(input.Mode), Environment.NewLine);
@@ -1065,28 +1116,62 @@ namespace Diffraction
             builder.AppendFormat("Коэффициент ГУ = {0:F6} + {1:F6}i{2}", qSkin.BoundaryCoefficient.Re, qSkin.BoundaryCoefficient.Im, Environment.NewLine);
             builder.AppendLine();
 
-            int totalCoefficients = input.Param * qSkin.PlateCount;
+            AppendCoefficientTable(builder, "МЕТОД КОЛЛОКАЦИИ", qNoSkin, qSkin, noSkinSolved);
+
+            builder.AppendLine();
+            if (galerkinCoefficients != null)
+            {
+                AppendCoefficientTable(
+                    builder,
+                    "МЕТОД ГАЛЕРКИНА",
+                    galerkinCoefficients.NoSkinSolver,
+                    galerkinCoefficients.SkinSolver,
+                    noSkinSolved: true);
+            }
+            else
+            {
+                builder.AppendLine("МЕТОД ГАЛЕРКИНА");
+                builder.AppendLine(new string('=', "МЕТОД ГАЛЕРКИНА".Length));
+                builder.AppendLine("Коэффициенты Галеркина сейчас выводятся только для режима одной пластины.");
+            }
+
+            return builder.ToString();
+        }
+
+        private static void AppendCoefficientTable(
+            StringBuilder builder,
+            string title,
+            DifrOnLenta noSkinSolver,
+            DifrOnLenta skinSolver,
+            bool noSkinSolved)
+        {
+            int totalCoefficients = skinSolver.N * skinSolver.PlateCount;
+            builder.AppendLine(title);
+            builder.AppendLine(new string('=', title.Length));
             builder.AppendFormat("Коэффициенты Чебышева (всего {0}, по {1} на пластину):{2}",
-                totalCoefficients, input.Param, Environment.NewLine);
+                totalCoefficients, skinSolver.N, Environment.NewLine);
             builder.AppendFormat("{0,-10} {1,-4} {2,-25} {3,-25}{4}",
                 "Пластина", "#", "БЕЗ скин-слоя", "СО скин-слоем", Environment.NewLine);
             builder.AppendLine(new string('.', 76));
 
-            for (int plateIndex = 0; plateIndex < qSkin.PlateCount; plateIndex++)
+            for (int plateIndex = 0; plateIndex < skinSolver.PlateCount; plateIndex++)
             {
-                for (int coeffIndex = 0; coeffIndex < input.Param; coeffIndex++)
+                for (int coeffIndex = 0; coeffIndex < skinSolver.N; coeffIndex++)
                 {
-                    int globalIndex = plateIndex * input.Param + coeffIndex;
-                    string noSkinCoeff = noSkinSolved
-                        ? string.Format("{0:F4}+{1:F4}i", qNoSkin.y[globalIndex].Re, qNoSkin.y[globalIndex].Im)
+                    int globalIndex = plateIndex * skinSolver.N + coeffIndex;
+                    string noSkinCoeff = noSkinSolved && noSkinSolver != null
+                        ? FormatComplexCoefficient(noSkinSolver.y[globalIndex])
                         : "нет решения";
-                    string skinCoeff = string.Format("{0:F4}+{1:F4}i", qSkin.y[globalIndex].Re, qSkin.y[globalIndex].Im);
+                    string skinCoeff = FormatComplexCoefficient(skinSolver.y[globalIndex]);
                     builder.AppendFormat("{0,-10} {1,-4} {2,-25} {3,-25}{4}",
                         plateIndex + 1, coeffIndex + 1, noSkinCoeff, skinCoeff, Environment.NewLine);
                 }
             }
+        }
 
-            return builder.ToString();
+        private static string FormatComplexCoefficient(Compl value)
+        {
+            return string.Format("{0:F4}+{1:F4}i", value.Re, value.Im);
         }
 
         private void BuildConductivityStatus(PlateCalculationInput input, DifrOnLenta qSkin, out string text, out Color color)
