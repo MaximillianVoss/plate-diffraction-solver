@@ -312,7 +312,7 @@ namespace Diffraction
             ChartArea fieldArea = new ChartArea("FieldArea");
             fieldArea.Position = new ElementPosition(4, 9, 92, 45);
             fieldArea.AxisX.Title = "x";
-            fieldArea.AxisY.Title = "|u(x,0)|";
+            fieldArea.AxisY.Title = "Re u(x, λ/10)";
             fieldArea.AxisX.MajorGrid.LineColor = Color.Gainsboro;
             fieldArea.AxisY.MajorGrid.LineColor = Color.Gainsboro;
             fieldArea.AxisX.TitleFont = new Font("Arial", 9, FontStyle.Bold);
@@ -335,14 +335,14 @@ namespace Diffraction
             legend.Alignment = StringAlignment.Center;
             chart.Legends.Add(legend);
 
-            Series collocation = new Series("Коллокация |u|");
+            Series collocation = new Series("Коллокация Re u");
             collocation.ChartType = SeriesChartType.Line;
             collocation.ChartArea = "FieldArea";
             collocation.Legend = "MethodLegend";
             collocation.Color = Color.FromArgb(31, 119, 180);
             collocation.BorderWidth = 2;
 
-            Series galerkin = new Series("Галеркин |u|");
+            Series galerkin = new Series("Галеркин Re u");
             galerkin.ChartType = SeriesChartType.Line;
             galerkin.ChartArea = "FieldArea";
             galerkin.Legend = "MethodLegend";
@@ -359,7 +359,7 @@ namespace Diffraction
             chart.Series.Add(collocation);
             chart.Series.Add(galerkin);
             chart.Series.Add(difference);
-            chart.Titles.Add(new Title("Сравнение со скин-слоем для первой пластины"));
+            chart.Titles.Add(new Title("Полное поле со скин-слоем: Галеркин и коллокация, первая пластина"));
             chart.Titles.Add(new Title("Расчет появится после нажатия кнопки \"Рассчитать\""));
             chart.Titles[0].Font = new Font("Arial", 11, FontStyle.Bold);
             chart.Titles[1].Font = new Font("Arial", 9, FontStyle.Regular);
@@ -702,8 +702,8 @@ namespace Diffraction
         private class MethodComparisonResult
         {
             public double[] XValues;
-            public double[] CollocationAbs;
-            public double[] GalerkinAbs;
+            public double[] CollocationField;
+            public double[] GalerkinField;
             public double[] DifferenceAbs;
             public double CollocationBcError;
             public double GalerkinBcError;
@@ -932,25 +932,26 @@ namespace Diffraction
             MethodComparisonResult result = new MethodComparisonResult
             {
                 XValues = new double[sampleCount],
-                CollocationAbs = new double[sampleCount],
-                GalerkinAbs = new double[sampleCount],
+                CollocationField = new double[sampleCount],
+                GalerkinField = new double[sampleCount],
                 DifferenceAbs = new double[sampleCount],
                 CollocationBcError = collocationSolver.VerifyBoundaryConditions(),
                 GalerkinBcError = galerkinSolver.VerifyBoundaryConditions()
             };
 
+            double fieldZ = input.Len / 10.0;
             double sumDifference = 0.0;
             for (int i = 0; i < sampleCount; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 double x = input.Alpha1 + (i + 0.5) / sampleCount * (input.Beta1 - input.Alpha1);
-                Compl collocation = collocationSolver.u_on_strip(x);
-                Compl galerkin = galerkinSolver.u_on_strip(x);
+                Compl collocation = collocationSolver.u(x, fieldZ);
+                Compl galerkin = galerkinSolver.u(x, fieldZ);
                 double difference = Compl.Abs(collocation - galerkin);
 
                 result.XValues[i] = x;
-                result.CollocationAbs[i] = Compl.Abs(collocation);
-                result.GalerkinAbs[i] = Compl.Abs(galerkin);
+                result.CollocationField[i] = collocation.Re;
+                result.GalerkinField[i] = galerkin.Re;
                 result.DifferenceAbs[i] = difference;
                 sumDifference += difference;
                 if (difference > result.MaxDifference)
@@ -1083,8 +1084,8 @@ namespace Diffraction
                 return;
             }
 
-            chartMethodComparison.Series[0].Points.DataBindXY(comparison.XValues, comparison.CollocationAbs);
-            chartMethodComparison.Series[1].Points.DataBindXY(comparison.XValues, comparison.GalerkinAbs);
+            chartMethodComparison.Series[0].Points.DataBindXY(comparison.XValues, comparison.CollocationField);
+            chartMethodComparison.Series[1].Points.DataBindXY(comparison.XValues, comparison.GalerkinField);
             chartMethodComparison.Series[2].Points.DataBindXY(comparison.XValues, comparison.DifferenceAbs);
             chartMethodComparison.Titles[1].Text = string.Format(
                 "max |Δu| = {0:E3}; mean |Δu| = {1:E3}; max |Δa_n| = {2:E3}; BC col/gal = {3:E3}% / {4:E3}%",
