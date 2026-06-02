@@ -16,6 +16,8 @@ namespace Diffraction
 {
     public partial class MainForm : Form
     {
+        private const PlateCalculationMode ActivePlateMode = PlateCalculationMode.SinglePlate;
+
         private Panel parameterHostPanel;
         private TableLayoutPanel parameterLayoutPanel;
         private TabControl resultsTabControl;
@@ -77,13 +79,14 @@ namespace Diffraction
         {
             SuspendLayout();
 
-            Text = "Решатель дифракции на двух пластинах";
+            Text = GetMainTitle();
             MinimumSize = new Size(1220, 780);
             ClientSize = new Size(1360, 860);
             StartPosition = FormStartPosition.CenterScreen;
             AcceptButton = CalculateButton;
 
             groupBox1.Text = "Область визуализации";
+            ConfigurePlateModeUi();
             buttonGraphic.Visible = false;
             buttonGraphic.Enabled = false;
             label10.Visible = false;
@@ -198,7 +201,7 @@ namespace Diffraction
             toolbarLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
             Label titleLabel = new Label();
-            titleLabel.Text = "Дифракция на двух пластинах";
+            titleLabel.Text = GetMainTitle();
             titleLabel.Dock = DockStyle.Fill;
             titleLabel.TextAlign = ContentAlignment.MiddleLeft;
             titleLabel.AutoSize = true;
@@ -407,6 +410,23 @@ namespace Diffraction
             control.Dock = DockStyle.Fill;
         }
 
+        private void ConfigurePlateModeUi()
+        {
+            bool useSecondPlate = ActivePlateMode == PlateCalculationMode.TwoPlates;
+            groupBox3.Text = useSecondPlate ? "Границы пластин" : "Границы пластины";
+            label13.Visible = useSecondPlate;
+            label12.Visible = useSecondPlate;
+            bandBoundaryA2.Visible = useSecondPlate;
+            bandBoundaryB2.Visible = useSecondPlate;
+        }
+
+        private static string GetMainTitle()
+        {
+            return ActivePlateMode == PlateCalculationMode.SinglePlate
+                ? "Решатель дифракции на одной пластине"
+                : "Решатель дифракции на двух пластинах";
+        }
+
         private void ResizeParameterGroups(object sender, EventArgs e)
         {
             if (parameterHostPanel == null || parameterLayoutPanel == null) return;
@@ -553,14 +573,25 @@ namespace Diffraction
             }
         }
 
-        private bool TryReadPlateParameters(out double alpha1, out double beta1, out double alpha2, out double beta2)
+        private enum PlateCalculationMode
+        {
+            SinglePlate,
+            TwoPlates
+        }
+
+        private bool TryReadPlateParameters(
+            PlateCalculationMode mode,
+            out double alpha1,
+            out double beta1,
+            out double alpha2,
+            out double beta2)
         {
             alpha1 = (double)bandBoundaryA.Value;
             beta1 = (double)bandBoundaryB.Value;
             alpha2 = (double)bandBoundaryA2.Value;
             beta2 = (double)bandBoundaryB2.Value;
 
-            string error = ValidatePlateGeometry(alpha1, beta1, alpha2, beta2);
+            string error = ValidatePlateGeometry(mode, alpha1, beta1, alpha2, beta2);
             if (error == null) return true;
 
             AppendJournalEntry("Ошибка геометрии пластин: " + error, Color.Firebrick);
@@ -568,10 +599,17 @@ namespace Diffraction
             return false;
         }
 
-        private static string ValidatePlateGeometry(double alpha1, double beta1, double alpha2, double beta2)
+        private static string ValidatePlateGeometry(
+            PlateCalculationMode mode,
+            double alpha1,
+            double beta1,
+            double alpha2,
+            double beta2)
         {
             if (alpha1 >= beta1)
                 return "Для пластины 1 должно выполняться alpha1 < beta1.";
+            if (mode == PlateCalculationMode.SinglePlate)
+                return null;
             if (alpha2 >= beta2)
                 return "Для пластины 2 должно выполняться alpha2 < beta2.";
             if (Math.Max(alpha1, alpha2) < Math.Min(beta1, beta2))
@@ -672,6 +710,7 @@ namespace Diffraction
 
         private class PlateCalculationInput
         {
+            public PlateCalculationMode Mode;
             public int Param;
             public double Alpha1, Beta1, Alpha2, Beta2;
             public double PlotLeft, PlotRight;
@@ -732,18 +771,20 @@ namespace Diffraction
             input = null;
 
             double alpha1, beta1, alpha2, beta2;
-            if (!TryReadPlateParameters(out alpha1, out beta1, out alpha2, out beta2))
+            PlateCalculationMode mode = ActivePlateMode;
+            if (!TryReadPlateParameters(mode, out alpha1, out beta1, out alpha2, out beta2))
                 return false;
 
             input = new PlateCalculationInput
             {
+                Mode = mode,
                 Param = (int)truncationParameterN.Value,
                 Alpha1 = alpha1,
                 Beta1 = beta1,
                 Alpha2 = alpha2,
                 Beta2 = beta2,
-                PlotLeft = Math.Min(alpha1, alpha2),
-                PlotRight = Math.Max(beta1, beta2),
+                PlotLeft = mode == PlateCalculationMode.SinglePlate ? alpha1 : Math.Min(alpha1, alpha2),
+                PlotRight = mode == PlateCalculationMode.SinglePlate ? beta1 : Math.Max(beta1, beta2),
                 X1 = (double)xL.Value,
                 X2 = (double)xR.Value,
                 Y1 = (double)yDn.Value,
@@ -818,7 +859,7 @@ namespace Diffraction
                     return CreateCancelledResult();
             }
 
-            if (input.SkinDepth > 0 && result.SkinSolved)
+            if (input.Mode == PlateCalculationMode.SinglePlate && input.SkinDepth > 0 && result.SkinSolved)
             {
                 progress.Report("Сравнение Галеркина и коллокации...");
                 result.MethodComparison = BuildMethodComparison(input, cancellationToken);
@@ -850,21 +891,16 @@ namespace Diffraction
             IProgress<string> progress,
             CancellationToken cancellationToken)
         {
-            DifrOnLenta solver = new DifrOnLenta(
-                input.Alpha1,
-                input.Beta1,
-                input.Alpha2,
-                input.Beta2,
-                input.Len,
-                input.Angle,
-                input.Param,
-                skinDepth);
+            DifrOnLenta solver = CreateSolver(input, skinDepth);
 
             string warningMessage = null;
             if (cancellationToken.IsCancellationRequested)
                 return new SolveCaseResult { Solver = solver, Cancelled = true };
 
-            if (input.UseCuda)
+            if (input.UseCuda && input.Mode == PlateCalculationMode.SinglePlate)
+                warningMessage = "CUDA недоступна для режима одной пластины, использован CPU.";
+
+            if (input.UseCuda && input.Mode == PlateCalculationMode.TwoPlates)
             {
                 progress.Report("Решение " + caseName + " через CUDA...");
                 CudaSolverBridge.SolveResponse cudaResponse = CudaSolverBridge.Solve(solver, cancellationToken);
@@ -902,6 +938,30 @@ namespace Diffraction
                 Solved = solved,
                 WarningMessage = warningMessage
             };
+        }
+
+        private static DifrOnLenta CreateSolver(PlateCalculationInput input, double skinDepth)
+        {
+            if (input.Mode == PlateCalculationMode.SinglePlate)
+            {
+                return new DifrOnLenta(
+                    input.Alpha1,
+                    input.Beta1,
+                    input.Len,
+                    input.Angle,
+                    input.Param,
+                    skinDepth);
+            }
+
+            return new DifrOnLenta(
+                input.Alpha1,
+                input.Beta1,
+                input.Alpha2,
+                input.Beta2,
+                input.Len,
+                input.Angle,
+                input.Param,
+                skinDepth);
         }
 
         private MethodComparisonResult BuildMethodComparison(
@@ -997,6 +1057,9 @@ namespace Diffraction
         private string BuildCoefficientText(PlateCalculationInput input, DifrOnLenta qNoSkin, DifrOnLenta qSkin, bool noSkinSolved)
         {
             StringBuilder builder = new StringBuilder();
+            builder.AppendFormat("Режим расчета: {0}{1}", GetPlateModeText(input.Mode), Environment.NewLine);
+            builder.AppendFormat("Активных пластин: {0}{1}", qSkin.PlateCount, Environment.NewLine);
+            builder.AppendLine();
             builder.AppendLine("Поверхностный импеданс χ:");
             builder.AppendFormat("χ = {0:F6} + {1:F6}i Ом{2}", qSkin.chi.Re, qSkin.chi.Im, Environment.NewLine);
             builder.AppendFormat("Коэффициент ГУ = {0:F6} + {1:F6}i{2}", qSkin.BoundaryCoefficient.Re, qSkin.BoundaryCoefficient.Im, Environment.NewLine);
@@ -1488,7 +1551,7 @@ namespace Diffraction
                     }
                     double y = input.Y1 + j / (double)height * (input.Y2 - input.Y1);
                     double ySafe = y;
-                    if (Math.Abs(y) < zEps && IsPointOnAnyPlate(x, input.Alpha1, input.Beta1, input.Alpha2, input.Beta2))
+                    if (Math.Abs(y) < zEps && IsPointOnActivePlate(input, x))
                         ySafe = (y >= 0) ? zEps : -zEps;
 
                     int index = j * width + i;
@@ -1525,10 +1588,8 @@ namespace Diffraction
             }
 
             int yC = height / 2;
-            DrawPlateMarker(imageNoSkin, input.Alpha1, input.Beta1, input.X1, input.X2, yC);
-            DrawPlateMarker(imageNoSkin, input.Alpha2, input.Beta2, input.X1, input.X2, yC);
-            DrawPlateMarker(imageSkin, input.Alpha1, input.Beta1, input.X1, input.X2, yC);
-            DrawPlateMarker(imageSkin, input.Alpha2, input.Beta2, input.X1, input.X2, yC);
+            DrawPlateMarkers(imageNoSkin, input, yC);
+            DrawPlateMarkers(imageSkin, input, yC);
 
             return new GraphImagePair { ImageNoSkin = imageNoSkin, ImageSkin = imageSkin };
         }
@@ -1649,9 +1710,23 @@ namespace Diffraction
             return builder.ToString();
         }
 
-        private static bool IsPointOnAnyPlate(double x, double alpha1, double beta1, double alpha2, double beta2)
+        private static bool IsPointOnActivePlate(PlateCalculationInput input, double x)
         {
-            return (x >= alpha1 && x <= beta1) || (x >= alpha2 && x <= beta2);
+            if (x >= input.Alpha1 && x <= input.Beta1)
+                return true;
+            return input.Mode == PlateCalculationMode.TwoPlates && x >= input.Alpha2 && x <= input.Beta2;
+        }
+
+        private static string GetPlateModeText(PlateCalculationMode mode)
+        {
+            return mode == PlateCalculationMode.SinglePlate ? "одна пластина" : "две пластины";
+        }
+
+        private void DrawPlateMarkers(Bitmap image, PlateCalculationInput input, int yCenter)
+        {
+            DrawPlateMarker(image, input.Alpha1, input.Beta1, input.X1, input.X2, yCenter);
+            if (input.Mode == PlateCalculationMode.TwoPlates)
+                DrawPlateMarker(image, input.Alpha2, input.Beta2, input.X1, input.X2, yCenter);
         }
 
         private void DrawPlateMarker(Bitmap image, double alphaValue, double betaValue, double xMin, double xMax, int yCenter)
