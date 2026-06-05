@@ -3,6 +3,8 @@ using System.Windows.Forms;
 using System.Windows.Forms.DataVisualization.Charting;
 using System.Drawing;
 using System.Drawing.Imaging;
+using System.Globalization;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
@@ -31,7 +33,10 @@ namespace Diffraction
         private RichTextBox textBoxDiagnostics;
         private RichTextBox textBoxJournal;
         private Button cancelCalculationButton;
+        private Button exportGraphDataButton;
         private CancellationTokenSource currentCalculationCancellation;
+        private CalculationResult lastCalculationResult;
+        private PlateCalculationInput lastCalculationInput;
         private string lastStatusMessage;
 
         public MainForm()
@@ -194,8 +199,9 @@ namespace Diffraction
             TableLayoutPanel toolbarLayout = new TableLayoutPanel();
             toolbarLayout.Dock = DockStyle.Fill;
             toolbarLayout.AutoSize = true;
-            toolbarLayout.ColumnCount = 4;
+            toolbarLayout.ColumnCount = 5;
             toolbarLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            toolbarLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             toolbarLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             toolbarLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             toolbarLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
@@ -209,6 +215,15 @@ namespace Diffraction
             titleLabel.Margin = new Padding(0, 6, 0, 6);
 
             checkBoxUseCuda.Margin = new Padding(0, 4, 12, 4);
+            exportGraphDataButton = new Button();
+            exportGraphDataButton.Text = "Экспорт данных";
+            exportGraphDataButton.AutoSize = true;
+            exportGraphDataButton.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            exportGraphDataButton.Padding = new Padding(10, 3, 10, 3);
+            exportGraphDataButton.Margin = new Padding(0, 0, 8, 0);
+            exportGraphDataButton.Enabled = false;
+            exportGraphDataButton.Click += exportGraphDataButton_Click;
+
             cancelCalculationButton = new Button();
             cancelCalculationButton.Text = "Отмена";
             cancelCalculationButton.AutoSize = true;
@@ -225,8 +240,9 @@ namespace Diffraction
 
             toolbarLayout.Controls.Add(titleLabel, 0, 0);
             toolbarLayout.Controls.Add(checkBoxUseCuda, 1, 0);
-            toolbarLayout.Controls.Add(cancelCalculationButton, 2, 0);
-            toolbarLayout.Controls.Add(CalculateButton, 3, 0);
+            toolbarLayout.Controls.Add(exportGraphDataButton, 2, 0);
+            toolbarLayout.Controls.Add(cancelCalculationButton, 3, 0);
+            toolbarLayout.Controls.Add(CalculateButton, 4, 0);
 
             progressCalculation.Dock = DockStyle.Fill;
             progressCalculation.Margin = new Padding(8, 4, 8, 4);
@@ -632,6 +648,10 @@ namespace Diffraction
         private async void button1_Click(object sender, EventArgs e)
         {
             ClearVisualOutputs();
+            lastCalculationResult = null;
+            lastCalculationInput = null;
+            if (exportGraphDataButton != null)
+                exportGraphDataButton.Enabled = false;
 
             PlateCalculationInput input;
             if (!TryReadCalculationInput(out input))
@@ -667,6 +687,10 @@ namespace Diffraction
                 else
                 {
                     ApplyCalculationResult(result);
+                    lastCalculationResult = result;
+                    lastCalculationInput = input;
+                    if (exportGraphDataButton != null)
+                        exportGraphDataButton.Enabled = true;
                 }
             }
             catch (Exception ex)
@@ -706,6 +730,50 @@ namespace Diffraction
             labelCalculationStatus.Text = "Отмена расчета...";
             labelCalculationStatus.ForeColor = Color.DarkGoldenrod;
             AppendJournalEntry("Отправлен запрос на отмену расчета.", Color.DarkGoldenrod);
+        }
+
+        private void exportGraphDataButton_Click(object sender, EventArgs e)
+        {
+            if (lastCalculationResult == null || lastCalculationInput == null)
+            {
+                MessageBox.Show(
+                    "Сначала выполните расчет. После этого можно сохранить данные текущих графиков.",
+                    "Нет данных для экспорта",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+                return;
+            }
+
+            using (SaveFileDialog dialog = new SaveFileDialog())
+            {
+                dialog.Title = "Сохранить данные графиков";
+                dialog.Filter = "CSV files (*.csv)|*.csv|All files (*.*)|*.*";
+                dialog.FileName = BuildGraphDataFileName(lastCalculationInput);
+                dialog.OverwritePrompt = true;
+
+                if (dialog.ShowDialog(this) != DialogResult.OK)
+                    return;
+
+                try
+                {
+                    WriteGraphDataCsv(dialog.FileName, lastCalculationInput, lastCalculationResult);
+                    AppendJournalEntry("Данные графиков сохранены: " + dialog.FileName, Color.DarkGreen);
+                    MessageBox.Show(
+                        "Данные графиков сохранены в CSV.",
+                        "Экспорт завершен",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
+                }
+                catch (Exception ex)
+                {
+                    AppendJournalEntry("Ошибка экспорта данных графиков: " + ex.Message, Color.Firebrick);
+                    MessageBox.Show(
+                        "Не удалось сохранить данные графиков: " + ex.Message,
+                        "Ошибка экспорта",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+                }
+            }
         }
 
         private class PlateCalculationInput
@@ -1100,6 +1168,78 @@ namespace Diffraction
             return values;
         }
 
+        private static string BuildGraphDataFileName(PlateCalculationInput input)
+        {
+            return string.Format(
+                CultureInfo.InvariantCulture,
+                "graph_data_N{0}_lambda{1:0.###}_angle{2:0.###}_skin{3:0.###}.csv",
+                input.Param,
+                input.Len,
+                input.Angle * 180.0 / Math.PI,
+                input.SkinDepth);
+        }
+
+        private static void WriteGraphDataCsv(string filePath, PlateCalculationInput input, CalculationResult result)
+        {
+            if (result == null)
+                throw new ArgumentNullException(nameof(result));
+
+            string directory = Path.GetDirectoryName(Path.GetFullPath(filePath));
+            if (!string.IsNullOrEmpty(directory))
+                Directory.CreateDirectory(directory);
+
+            MethodComparisonResult comparison = result.MethodComparison;
+            int sliceCount = result.XValues == null ? 0 : result.XValues.Length;
+            int comparisonCount = comparison == null || comparison.XValues == null ? 0 : comparison.XValues.Length;
+            int rowCount = Math.Max(sliceCount, comparisonCount);
+            if (rowCount == 0)
+                throw new InvalidOperationException("Нет данных графиков для сохранения.");
+
+            using (StreamWriter writer = new StreamWriter(filePath, false, Encoding.UTF8))
+            {
+                writer.WriteLine("# mode=" + GetPlateModeText(input.Mode));
+                writer.WriteLine("# N=" + Fcsv(input.Param));
+                writer.WriteLine("# lambda=" + Fcsv(input.Len));
+                writer.WriteLine("# angle_degrees=" + Fcsv(input.Angle * 180.0 / Math.PI));
+                writer.WriteLine("# skin_depth=" + Fcsv(input.SkinDepth));
+                writer.WriteLine("# alpha1=" + Fcsv(input.Alpha1));
+                writer.WriteLine("# beta1=" + Fcsv(input.Beta1));
+                writer.WriteLine("# field_z=" + Fcsv(input.Len / 10.0));
+                writer.WriteLine("slice_x;collocation_no_skin_re;collocation_skin_re;method_x;collocation_skin_re_method;galerkin_skin_re;abs_collocation_minus_galerkin");
+
+                for (int i = 0; i < rowCount; i++)
+                {
+                    string[] cells = new string[7];
+                    if (i < sliceCount)
+                    {
+                        cells[0] = Fcsv(result.XValues[i]);
+                        cells[1] = result.NoSkinReal != null && i < result.NoSkinReal.Length ? Fcsv(result.NoSkinReal[i]) : string.Empty;
+                        cells[2] = result.SkinReal != null && i < result.SkinReal.Length ? Fcsv(result.SkinReal[i]) : string.Empty;
+                    }
+
+                    if (comparison != null && i < comparisonCount)
+                    {
+                        cells[3] = Fcsv(comparison.XValues[i]);
+                        cells[4] = comparison.CollocationField != null && i < comparison.CollocationField.Length ? Fcsv(comparison.CollocationField[i]) : string.Empty;
+                        cells[5] = comparison.GalerkinField != null && i < comparison.GalerkinField.Length ? Fcsv(comparison.GalerkinField[i]) : string.Empty;
+                        cells[6] = comparison.DifferenceAbs != null && i < comparison.DifferenceAbs.Length ? Fcsv(comparison.DifferenceAbs[i]) : string.Empty;
+                    }
+
+                    writer.WriteLine(string.Join(";", cells));
+                }
+            }
+        }
+
+        private static string Fcsv(double value)
+        {
+            return value.ToString("G17", CultureInfo.InvariantCulture);
+        }
+
+        private static string Fcsv(int value)
+        {
+            return value.ToString(CultureInfo.InvariantCulture);
+        }
+
         private string BuildCoefficientText(
             PlateCalculationInput input,
             DifrOnLenta qNoSkin,
@@ -1259,6 +1399,8 @@ namespace Diffraction
             groupBox4.Enabled = !busy;
             groupBoxSkin.Enabled = !busy;
             checkBoxUseCuda.Enabled = !busy;
+            if (exportGraphDataButton != null)
+                exportGraphDataButton.Enabled = !busy && lastCalculationResult != null;
             Cursor = busy ? Cursors.WaitCursor : Cursors.Default;
             progressCalculation.Visible = busy;
             progressCalculation.Style = busy ? ProgressBarStyle.Marquee : ProgressBarStyle.Blocks;
