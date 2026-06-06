@@ -26,10 +26,13 @@ namespace Diffraction
         private TabControl detailsTabControl;
         private TabPage tabPageField;
         private TabPage tabPageMethodComparison;
+        private TabPage tabPageExportGraphs;
         private TabPage tabPageDiagnostics;
         private PictureBox pictureBoxFieldNoSkin;
         private PictureBox pictureBoxFieldSkin;
         private Chart chartMethodComparison;
+        private Chart chartExportSlice;
+        private Chart chartExportMethod;
         private RichTextBox textBoxDiagnostics;
         private RichTextBox textBoxJournal;
         private Button cancelCalculationButton;
@@ -111,6 +114,8 @@ namespace Diffraction
             pictureBoxFieldNoSkin = CreateFieldPictureBox();
             pictureBoxFieldSkin = CreateFieldPictureBox();
             chartMethodComparison = CreateMethodComparisonChart();
+            chartExportSlice = CreateExportSliceChart();
+            chartExportMethod = CreateExportMethodChart();
             textBoxDiagnostics = CreateReadOnlyRichTextBox(monoFont);
             textBoxJournal = CreateReadOnlyRichTextBox(monoFont);
             textBoxDiagnostics.Text = "Подробная диагностика появится после расчета.";
@@ -165,9 +170,14 @@ namespace Diffraction
             tabPageMethodComparison.Padding = new Padding(8);
             tabPageMethodComparison.Controls.Add(chartMethodComparison);
 
+            tabPageExportGraphs = new TabPage("Графики для экспорта");
+            tabPageExportGraphs.Padding = new Padding(8);
+            tabPageExportGraphs.Controls.Add(BuildExportGraphsLayout());
+
             resultsTabControl.TabPages.Add(tabPageSlice);
             resultsTabControl.TabPages.Add(tabPageField);
             resultsTabControl.TabPages.Add(tabPageMethodComparison);
+            resultsTabControl.TabPages.Add(tabPageExportGraphs);
 
             detailsTabControl = new TabControl();
             detailsTabControl.Dock = DockStyle.Fill;
@@ -383,6 +393,102 @@ namespace Diffraction
             chart.Titles[0].Font = new Font("Arial", 11, FontStyle.Bold);
             chart.Titles[1].Font = new Font("Arial", 9, FontStyle.Regular);
             return chart;
+        }
+
+        private static Chart CreateExportSliceChart()
+        {
+            Chart chart = new Chart();
+            chart.Dock = DockStyle.Fill;
+            chart.BackColor = Color.White;
+
+            ChartArea area = new ChartArea("SliceArea");
+            area.AxisX.Title = "x";
+            area.AxisY.Title = "Re u(x, λ/10)";
+            area.AxisX.MajorGrid.LineColor = Color.Gainsboro;
+            area.AxisY.MajorGrid.LineColor = Color.Gainsboro;
+            area.AxisX.TitleFont = new Font("Arial", 9, FontStyle.Bold);
+            area.AxisY.TitleFont = new Font("Arial", 9, FontStyle.Bold);
+            chart.ChartAreas.Add(area);
+
+            Legend legend = new Legend("SliceLegend");
+            legend.Docking = Docking.Bottom;
+            legend.Alignment = StringAlignment.Center;
+            chart.Legends.Add(legend);
+
+            chart.Series.Add(CreateLineSeries("Коллокация без скин-слоя", "SliceArea", "SliceLegend", Color.Blue, 2));
+            chart.Series.Add(CreateLineSeries("Коллокация со скин-слоем", "SliceArea", "SliceLegend", Color.FromArgb(214, 39, 40), 2));
+            chart.Titles.Add(new Title("Коллокация: полное поле без/со скин-слоем"));
+            chart.Titles.Add(new Title("Расчет появится после нажатия кнопки \"Рассчитать\""));
+            chart.Titles[0].Font = new Font("Arial", 10, FontStyle.Bold);
+            chart.Titles[1].Font = new Font("Arial", 9, FontStyle.Regular);
+            return chart;
+        }
+
+        private static Chart CreateExportMethodChart()
+        {
+            Chart chart = new Chart();
+            chart.Dock = DockStyle.Fill;
+            chart.BackColor = Color.White;
+
+            ChartArea fieldArea = new ChartArea("FieldArea");
+            fieldArea.Position = new ElementPosition(4, 9, 92, 45);
+            fieldArea.AxisX.Title = "x";
+            fieldArea.AxisY.Title = "Re u(x, λ/10)";
+            fieldArea.AxisX.MajorGrid.LineColor = Color.Gainsboro;
+            fieldArea.AxisY.MajorGrid.LineColor = Color.Gainsboro;
+            fieldArea.AxisX.TitleFont = new Font("Arial", 9, FontStyle.Bold);
+            fieldArea.AxisY.TitleFont = new Font("Arial", 9, FontStyle.Bold);
+
+            ChartArea differenceArea = new ChartArea("DifferenceArea");
+            differenceArea.Position = new ElementPosition(4, 61, 92, 30);
+            differenceArea.AxisX.Title = "x";
+            differenceArea.AxisY.Title = "|Δu|";
+            differenceArea.AxisX.MajorGrid.LineColor = Color.Gainsboro;
+            differenceArea.AxisY.MajorGrid.LineColor = Color.Gainsboro;
+            differenceArea.AxisX.TitleFont = new Font("Arial", 9, FontStyle.Bold);
+            differenceArea.AxisY.TitleFont = new Font("Arial", 9, FontStyle.Bold);
+
+            chart.ChartAreas.Add(fieldArea);
+            chart.ChartAreas.Add(differenceArea);
+
+            Legend legend = new Legend("MethodExportLegend");
+            legend.Docking = Docking.Bottom;
+            legend.Alignment = StringAlignment.Center;
+            chart.Legends.Add(legend);
+
+            chart.Series.Add(CreateLineSeries("Коллокация Re u", "FieldArea", "MethodExportLegend", Color.FromArgb(31, 119, 180), 2));
+            chart.Series.Add(CreateLineSeries("Галеркин Re u", "FieldArea", "MethodExportLegend", Color.FromArgb(214, 39, 40), 2));
+            chart.Series.Add(CreateLineSeries("|u_col-u_gal|", "DifferenceArea", "MethodExportLegend", Color.FromArgb(44, 160, 44), 2));
+            chart.Titles.Add(new Title("Галеркин/коллокация: поле со скин-слоем и разность"));
+            chart.Titles.Add(new Title("Расчет появится после нажатия кнопки \"Рассчитать\""));
+            chart.Titles[0].Font = new Font("Arial", 10, FontStyle.Bold);
+            chart.Titles[1].Font = new Font("Arial", 9, FontStyle.Regular);
+            return chart;
+        }
+
+        private static Series CreateLineSeries(string name, string chartArea, string legend, Color color, int width)
+        {
+            Series series = new Series(name);
+            series.ChartType = SeriesChartType.Line;
+            series.ChartArea = chartArea;
+            series.Legend = legend;
+            series.Color = color;
+            series.BorderWidth = width;
+            return series;
+        }
+
+        private Control BuildExportGraphsLayout()
+        {
+            TableLayoutPanel layout = new TableLayoutPanel();
+            layout.Dock = DockStyle.Fill;
+            layout.ColumnCount = 1;
+            layout.RowCount = 2;
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
+            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
+            layout.Controls.Add(CreateFieldGroup("Коллокация: без/со скин-слоем", chartExportSlice), 0, 0);
+            layout.Controls.Add(CreateFieldGroup("Галеркин/коллокация: разность решений", chartExportMethod), 0, 1);
+            return layout;
         }
 
         private Control BuildFieldLayout()
@@ -1355,9 +1461,41 @@ namespace Diffraction
             SetPictureBoxImage(pictureBoxFieldNoSkin, result.Images == null ? null : result.Images.ImageNoSkin);
             SetPictureBoxImage(pictureBoxFieldSkin, result.Images == null ? null : result.Images.ImageSkin);
             ApplyMethodComparisonResult(result.MethodComparison);
+            ApplyExportGraphResult(result);
             AppendJournalEntry("Расчет завершен. Результаты обновлены на вкладках.");
             if (!string.IsNullOrWhiteSpace(result.ExecutionSummaryText))
                 AppendJournalEntry(result.ExecutionSummaryText, result.ExecutionSummaryColor);
+        }
+
+        private void ApplyExportGraphResult(CalculationResult result)
+        {
+            ClearExportGraphs();
+            if (result == null || chartExportSlice == null || chartExportMethod == null)
+                return;
+
+            if (result.XValues != null)
+            {
+                if (result.NoSkinReal != null)
+                    chartExportSlice.Series[0].Points.DataBindXY(result.XValues, result.NoSkinReal);
+                if (result.SkinReal != null)
+                    chartExportSlice.Series[1].Points.DataBindXY(result.XValues, result.SkinReal);
+                chartExportSlice.Titles[1].Text = "Те же данные сохраняются в CSV кнопкой \"Экспорт данных\".";
+                chartExportSlice.ChartAreas["SliceArea"].RecalculateAxesScale();
+            }
+
+            MethodComparisonResult comparison = result.MethodComparison;
+            if (comparison != null && comparison.XValues != null)
+            {
+                chartExportMethod.Series[0].Points.DataBindXY(comparison.XValues, comparison.CollocationField);
+                chartExportMethod.Series[1].Points.DataBindXY(comparison.XValues, comparison.GalerkinField);
+                chartExportMethod.Series[2].Points.DataBindXY(comparison.XValues, comparison.DifferenceAbs);
+                chartExportMethod.Titles[1].Text = string.Format(
+                    "max |Δu| = {0:E3}; mean |Δu| = {1:E3}",
+                    comparison.MaxDifference,
+                    comparison.MeanDifference);
+                chartExportMethod.ChartAreas["FieldArea"].RecalculateAxesScale();
+                chartExportMethod.ChartAreas["DifferenceArea"].RecalculateAxesScale();
+            }
         }
 
         private void ApplyMethodComparisonResult(MethodComparisonResult comparison)
@@ -1438,6 +1576,7 @@ namespace Diffraction
             SetPictureBoxImage(pictureBoxFieldNoSkin, null);
             SetPictureBoxImage(pictureBoxFieldSkin, null);
             ClearMethodComparisonChart();
+            ClearExportGraphs();
         }
 
         private void ClearMethodComparisonChart()
@@ -1449,6 +1588,23 @@ namespace Diffraction
                 series.Points.Clear();
             if (chartMethodComparison.Titles.Count > 1)
                 chartMethodComparison.Titles[1].Text = "Расчет появится после нажатия кнопки \"Рассчитать\"";
+        }
+
+        private void ClearExportGraphs()
+        {
+            ClearChartData(chartExportSlice, "Расчет появится после нажатия кнопки \"Рассчитать\"");
+            ClearChartData(chartExportMethod, "Расчет появится после нажатия кнопки \"Рассчитать\"");
+        }
+
+        private static void ClearChartData(Chart chart, string subtitle)
+        {
+            if (chart == null)
+                return;
+
+            foreach (Series series in chart.Series)
+                series.Points.Clear();
+            if (chart.Titles.Count > 1)
+                chart.Titles[1].Text = subtitle;
         }
 
         private static void SetPictureBoxImage(PictureBox pictureBox, Image image)
