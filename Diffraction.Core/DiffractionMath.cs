@@ -846,7 +846,7 @@ namespace Diffraction.Core
 
             public double CalculateIncidentEnergy()
             {
-                return CalculateReferenceIncidentEnergy();
+                return CalculateControlContourFlux().Incident;
             }
 
             public double CalculateReflectedEnergy()
@@ -864,42 +864,18 @@ namespace Diffraction.Core
             {
                 ControlContourFlux flux = CalculateControlContourFlux();
                 EnergyComponents energy = new EnergyComponents();
-                energy.Incident = CalculateReferenceIncidentEnergy();
+                energy.Incident = flux.Incident;
                 energy.Reflected = flux.Reflected;
+                energy.Transmitted = flux.Transmitted;
                 energy.Absorbed = CalculateAbsorbedEnergy();
-                energy.Transmitted = energy.Incident - energy.Reflected - energy.Absorbed;
-                if (energy.Transmitted < 0) energy.Transmitted = 0;
                 energy.WasRenormalized = false;
-
-                double total = energy.Reflected + energy.Transmitted + energy.Absorbed;
-                double tolerance = Math.Max(energy.Incident, 1.0) * 0.02;
-                if (Math.Abs(total - energy.Incident) > tolerance)
-                {
-                    double balancedTransmitted = energy.Incident - energy.Reflected - energy.Absorbed;
-                    if (balancedTransmitted >= 0)
-                    {
-                        energy.Transmitted = balancedTransmitted;
-                    }
-                    else
-                    {
-                        energy.Absorbed = Math.Max(0, energy.Incident - energy.Reflected);
-                        energy.Transmitted = 0;
-                    }
-                    energy.WasRenormalized = true;
-                }
-                else
-                {
-                    double balancedTransmitted = energy.Incident - energy.Reflected - energy.Absorbed;
-                    if (balancedTransmitted >= 0) energy.Transmitted = balancedTransmitted;
-                }
 
                 return energy;
             }
 
             public double CalculateTransmittedEnergyIndependent()
             {
-                EnergyComponents energy = CalculateEnergyComponents();
-                return energy.Transmitted;
+                return CalculateControlContourFlux().Transmitted;
             }
 
             private class ControlContourFlux
@@ -984,18 +960,19 @@ namespace Diffraction.Core
                 if (incidentFlux < -sideEps)
                 {
                     flux.Incident += -incidentFlux * ds;
+                    if (scatteredFlux > sideEps)
+                        flux.Reflected += scatteredFlux * ds;
                 }
                 else if (incidentFlux > sideEps)
                 {
-                    if (totalFlux > 0) flux.Transmitted += totalFlux * ds;
+                    if (totalFlux > sideEps)
+                        flux.Transmitted += totalFlux * ds;
                 }
                 else
                 {
-                    if (totalFlux > 0) flux.Transmitted += totalFlux * ds;
+                    if (totalFlux > sideEps)
+                        flux.Transmitted += totalFlux * ds;
                 }
-
-                if (!double.IsNaN(scatteredFlux) && !double.IsInfinity(scatteredFlux))
-                    flux.Reflected += Math.Abs(scatteredFlux) * ds;
             }
 
             public Compl CurrentDensity(double x)

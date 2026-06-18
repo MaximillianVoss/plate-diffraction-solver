@@ -1742,8 +1742,11 @@ namespace Diffraction
 
             // 3. Энергетический баланс через контрольный контур вокруг пластин.
             energyMessage.AppendLine("3. Энергетический баланс (закон сохранения энергии):");
-            energyMessage.AppendLine("   Отражение оценивается по рассеянному потоку через контрольный контур,");
-            energyMessage.AppendLine("   прошедшая энергия восстанавливается из баланса I - R - A.");
+            energyMessage.AppendLine("   Все компоненты считаются независимо:");
+            energyMessage.AppendLine("   падающая — входящий поток падающей волны через контрольный контур,");
+            energyMessage.AppendLine("   отраженная — выходящий поток рассеянного поля через входные стороны,");
+            energyMessage.AppendLine("   прошедшая — выходящий поток полного поля через выходные стороны,");
+            energyMessage.AppendLine("   поглощенная — интеграл по импедансному условию на пластине.");
             energyMessage.AppendLine(string.Format("   Падающая энергия:     {0:F6} (100.00%)", incidentEnergy));
             if (!energyReferenceValid)
                 energyMessage.AppendLine("   Энергетические проценты не рассчитаны: опорная энергия близка к нулю.");
