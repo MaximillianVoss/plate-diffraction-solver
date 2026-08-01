@@ -38,9 +38,15 @@ $command = @"
 call "$vcvars" && nvcc -allow-unsupported-compiler -std=c++17 -O3 -arch=sm_$cudaArch -Xcompiler="/utf-8 /EHsc /MD" "$tempSourceFile" -lcusolver -lcublas -o "$tempOutputFile"
 "@
 
-cmd.exe /c $command
-if ($LASTEXITCODE -ne 0) {
-    throw "nvcc build failed with exit code $LASTEXITCODE"
+Push-Location $tempBuildDir
+try {
+    cmd.exe /c $command
+    if ($LASTEXITCODE -ne 0) {
+        throw "nvcc build failed with exit code $LASTEXITCODE"
+    }
+}
+finally {
+    Pop-Location
 }
 
 Copy-Item -LiteralPath $tempOutputFile -Destination $outputFile -Force

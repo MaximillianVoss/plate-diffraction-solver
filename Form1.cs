@@ -1359,7 +1359,7 @@ namespace Diffraction
             builder.AppendLine();
             builder.AppendLine("Поверхностный импеданс χ:");
             builder.AppendFormat("χ = {0:F6} + {1:F6}i Ом{2}", qSkin.chi.Re, qSkin.chi.Im, Environment.NewLine);
-            builder.AppendFormat("Коэффициент ГУ = {0:F6} + {1:F6}i{2}", qSkin.BoundaryCoefficient.Re, qSkin.BoundaryCoefficient.Im, Environment.NewLine);
+            builder.AppendFormat("Коэффициент тонкого листа q = {0:F6} + {1:F6}i{2}", qSkin.SheetCoefficient.Re, qSkin.SheetCoefficient.Im, Environment.NewLine);
             builder.AppendLine();
 
             AppendCoefficientTable(builder, "МЕТОД КОЛЛОКАЦИИ", qNoSkin, qSkin, noSkinSolved);
@@ -1677,194 +1677,143 @@ namespace Diffraction
         // Новый метод для отображения отчета о точности
         private AccuracyReport BuildAccuracyReport(DifrOnLenta solver, double skinDepth, string caseName)
         {
-            // Расчет энергий
-            var energyComp = solver.CalculateEnergyComponents();
+            var energy = solver.CalculateEnergyComponents(includeContourDiagnostic: true);
+            var farField = solver.CalculateFarFieldScatteredEnergy(180, 200);
 
-            double incidentEnergy = energyComp.Incident;
-            double reflectedEnergy = energyComp.Reflected;
-            double transmittedEnergy = energyComp.Transmitted;
-            double absorbedEnergy = energyComp.Absorbed;
-            bool energyReferenceValid = Math.Abs(incidentEnergy) >= 1e-8;
+            double incident = energy.Incident;
+            double absorbedByField = skinDepth > 0 ? solver.CalculateAbsorbedEnergyByBoundaryValue() : 0.0;
+            double absorbedDifference = Math.Abs(energy.Absorbed - absorbedByField);
+            bool referenceValid = incident >= 1e-8;
             Func<double, string> percentText = value =>
                 (double.IsNaN(value) || double.IsInfinity(value)) ? "н/д" : string.Format("{0:P2}", value);
 
-            // Относительные доли энергии
-            double reflectedFraction = energyReferenceValid ? reflectedEnergy / incidentEnergy : double.NaN;
-            double transmittedFraction = energyReferenceValid ? transmittedEnergy / incidentEnergy : double.NaN;
-            double absorbedFraction = energyReferenceValid ? absorbedEnergy / incidentEnergy : double.NaN;
+            double reflectedFraction = referenceValid ? energy.Reflected / incident : double.NaN;
+            double transmittedFraction = referenceValid ? energy.Transmitted / incident : double.NaN;
+            double absorbedFraction = referenceValid ? energy.Absorbed / incident : double.NaN;
+            double absorbedByFieldFraction = referenceValid ? absorbedByField / incident : double.NaN;
+            double absorbedDifferenceFraction = referenceValid ? absorbedDifference / incident : double.NaN;
+            double fluxAbsorbedFraction = referenceValid ? energy.FluxAbsorbed / incident : double.NaN;
+            double incomingFraction = referenceValid ? energy.IncidentSideIncoming / incident : double.NaN;
+            double outgoingFraction = referenceValid ? energy.OppositeSideOutgoing / incident : double.NaN;
+            double localResidualFraction = referenceValid ? Math.Abs(energy.LocalBalanceResidual) / incident : double.NaN;
+            double contourResidualFraction = referenceValid ? Math.Abs(energy.SignedContourResidual) / incident : double.NaN;
+            double farReflectedFraction = referenceValid ? farField.ReflectedScattered / incident : double.NaN;
+            double farTransmittedFraction = referenceValid ? farField.TransmittedScattered / incident : double.NaN;
+            double farTotalFraction = referenceValid ? farField.TotalScattered / incident : double.NaN;
+            double localTotal = energy.Reflected + energy.Transmitted + energy.Absorbed;
+            double localTotalFraction = referenceValid ? localTotal / incident : double.NaN;
 
-            double sumRAT = reflectedEnergy + absorbedEnergy + transmittedEnergy;
-            double sumFraction = energyReferenceValid ? sumRAT / incidentEnergy : double.NaN;
-
-            // Формирование сообщения для всплывающего окна
-            StringBuilder energyMessage = new StringBuilder();
-            energyMessage.AppendLine($"=== КОНТРОЛЬ ТОЧНОСТИ РЕШЕНИЯ ===");
-            energyMessage.AppendLine($"=== {caseName} ===");
-            energyMessage.AppendLine();
-            energyMessage.AppendLine("На основе физических законов и тождеств");
-            energyMessage.AppendLine();
-
-            // 1. Граничные условия (условие Леонтовича)
             double bcError = solver.VerifyBoundaryConditions();
-            energyMessage.AppendLine("1. Граничные условия (условие Леонтовича):");
+            double helmholtzError = solver.VerifyHelmholtz();
+            bool absorptionFormsAgree = skinDepth <= 0 || !referenceValid || absorbedDifferenceFraction < 0.08;
+            bool localBalanceOk = referenceValid && localResidualFraction < 0.02;
+            bool contourBalanceOk = referenceValid && contourResidualFraction < 0.03;
 
-            if (skinDepth == 0)
+            StringBuilder message = new StringBuilder();
+            message.AppendLine("=== КОНТРОЛЬ ТОЧНОСТИ РЕШЕНИЯ ===");
+            message.AppendLine("=== " + caseName + " ===");
+            message.AppendLine();
+
+            message.AppendLine("1. Граничное условие тонкого листа:");
+            if (skinDepth <= 0)
             {
-                energyMessage.AppendLine(string.Format("   Погрешность на ленте (u = 0): {0:P2}", bcError));
-                energyMessage.AppendLine("   (для идеального проводника)");
+                message.AppendLine(string.Format("   Невязка u = 0: {0:P2}", bcError));
             }
             else
             {
-                energyMessage.AppendLine(string.Format("   Погрешность на ленте (u + χ*du/dn = 0): {0:P2}", bcError));
-                energyMessage.AppendLine(string.Format("   χ = {0:F4} + {1:F4}i", solver.chi.Re, solver.chi.Im));
+                message.AppendLine(string.Format("   Невязка u - qJ = 0: {0:P2}", bcError));
+                message.AppendLine(string.Format("   Zs = {0:F6} + {1:F6}i Ом", solver.chi.Re, solver.chi.Im));
+                message.AppendLine(string.Format("   q = {0:F6} + {1:F6}i", solver.SheetCoefficient.Re, solver.SheetCoefficient.Im));
             }
+            message.AppendLine(bcError < 0.05
+                ? "   OK: граничное условие выполнено."
+                : "   ВНИМАНИЕ: увеличьте N и проверьте сходимость.");
+            message.AppendLine();
 
-            if (bcError < 0.05)
-                energyMessage.AppendLine("   ✓ Условие выполняется отлично");
-            else if (bcError < 0.15)
-                energyMessage.AppendLine("   ✓ Условие выполняется хорошо");
-            else
-                energyMessage.AppendLine("   ⚠ Требуется увеличить N");
-            energyMessage.AppendLine();
+            message.AppendLine("2. Уравнение Гельмгольца:");
+            message.AppendLine(string.Format("   Относительная невязка вне пластин: {0:E2}", helmholtzError));
+            message.AppendLine(helmholtzError < 1e-3
+                ? "   OK: уравнение выполнено."
+                : "   ВНИМАНИЕ: проверьте квадратуру поля.");
+            message.AppendLine();
 
-            // 2. Уравнение Гельмгольца (Закон распространения волны)
-            double helmError = solver.VerifyHelmholtz();
-            energyMessage.AppendLine("2. Уравнение Гельмгольца (Δu + k²u = 0):");
-            energyMessage.AppendLine(string.Format("   Невязка в свободном пространстве: {0:E2}", helmError));
-
-            if (helmError < 1e-6)
-                energyMessage.AppendLine("   ✓ Уравнение выполняется с высокой точностью");
-            else if (helmError < 1e-3)
-                energyMessage.AppendLine("   ✓ Уравнение выполняется удовлетворительно");
-            else
-                energyMessage.AppendLine("   ⚠ Требуется увеличить M_quad");
-            energyMessage.AppendLine();
-
-            // 3. Энергетический баланс через контрольный контур вокруг пластин.
-            energyMessage.AppendLine("3. Энергетический баланс (закон сохранения энергии):");
-            energyMessage.AppendLine("   Все компоненты считаются независимо:");
-            energyMessage.AppendLine("   падающая — входящий поток падающей волны через контрольный контур,");
-            energyMessage.AppendLine("   отраженная — выходящий поток рассеянного поля через входные стороны,");
-            energyMessage.AppendLine("   прошедшая — выходящий поток полного поля через выходные стороны,");
-            energyMessage.AppendLine("   поглощенная — интеграл по импедансному условию на пластине.");
-            energyMessage.AppendLine(string.Format("   Падающая энергия:     {0:F6} (100.00%)", incidentEnergy));
-            if (!energyReferenceValid)
-                energyMessage.AppendLine("   Энергетические проценты не рассчитаны: опорная энергия близка к нулю.");
-            energyMessage.AppendLine(string.Format("   Отраженная:           {0:F6} ({1})", reflectedEnergy, percentText(reflectedFraction)));
-            energyMessage.AppendLine(string.Format("   Прошедшая:            {0:F6} ({1})", transmittedEnergy, percentText(transmittedFraction)));
+            message.AppendLine("3. Локальный энергетический баланс на пластинах:");
+            message.AppendLine("   I считается только по проекции пластин: 0.5*k*|sin(theta)|*sum(L).");
+            message.AppendLine(string.Format("   Падающий поток I:               {0:F6} (100.00%)", incident));
+            if (!referenceValid)
+                message.AppendLine("   При скользящем падении sin(theta)=0, поэтому нормированные доли не определены.");
+            message.AppendLine(string.Format("   Поток Fz сверху (знаковый):     {0:F6}", energy.AboveFlux));
+            message.AppendLine(string.Format("   Поток Fz снизу (знаковый):      {0:F6}", energy.BelowFlux));
+            message.AppendLine(string.Format("   Вход со стороны падения:        {0:F6} ({1})",
+                energy.IncidentSideIncoming, percentText(incomingFraction)));
+            message.AppendLine(string.Format("   Выход с противоположной стороны:{0:F6} ({1})",
+                energy.OppositeSideOutgoing, percentText(outgoingFraction)));
+            message.AppendLine(string.Format("   R_net = I - вход:               {0:F6} ({1})",
+                energy.Reflected, percentText(reflectedFraction)));
+            message.AppendLine(string.Format("   T_full = выход:                 {0:F6} ({1})",
+                energy.Transmitted, percentText(transmittedFraction)));
 
             if (skinDepth > 0)
-                energyMessage.AppendLine(string.Format("   Поглощенная:          {0:F6} ({1})", absorbedEnergy, percentText(absorbedFraction)));
-            else
-                energyMessage.AppendLine("   Поглощенная:          0.000000 (0.00%)");
-
-            energyMessage.AppendLine(new string('-', 50));
-            energyMessage.AppendLine(string.Format("   ИТОГО (расчетная сумма): {0:F6} ({1} от падающей)",
-                sumRAT, percentText(sumFraction)));
-
-            // Проверка энергетического баланса
-            double balanceError = Math.Abs(incidentEnergy - sumRAT);
-            double relativeError = energyReferenceValid ? balanceError / incidentEnergy : double.NaN;
-
-            bool energyConservationOk = energyReferenceValid && relativeError < 0.10; // погрешность менее 10%
-
-            energyMessage.AppendLine(string.Format("   Дисбаланс энергии:       {0}", percentText(relativeError)));
-
-            if (energyConservationOk)
             {
-                energyMessage.AppendLine("   ✓ ЗСЭ выполняется в пределах численной погрешности");
-            }
-            else if (!energyReferenceValid)
-            {
-                energyMessage.AppendLine("   ⚠ Энергетическая оценка недоступна для этой контрольной поверхности");
+                message.AppendLine(string.Format("   A_J по поверхностному току:     {0:F6} ({1})",
+                    energy.Absorbed, percentText(absorbedFraction)));
+                message.AppendLine(string.Format("   A_u по полю на листе:           {0:F6} ({1})",
+                    absorbedByField, percentText(absorbedByFieldFraction)));
+                message.AppendLine(string.Format("   A_flux = вход - выход:          {0:F6} ({1})",
+                    energy.FluxAbsorbed, percentText(fluxAbsorbedFraction)));
+                message.AppendLine(string.Format("   |A_J - A_u| / I:                {0}", percentText(absorbedDifferenceFraction)));
             }
             else
             {
-                energyMessage.AppendLine("   ⚠ ЗСЭ нарушен: проверьте N, M_quad и параметры контрольного расчета");
+                message.AppendLine("   Поглощение A:                   0.000000 (0.00%)");
             }
 
-            energyMessage.AppendLine();
-            energyMessage.AppendLine("Физические проверки (физичность):");
+            message.AppendLine(new string('-', 62));
+            message.AppendLine(string.Format("   R_net + T_full + A_J:           {0:F6} ({1})",
+                localTotal, percentText(localTotalFraction)));
+            message.AppendLine(string.Format("   Локальная невязка A_flux-A_J:   {0:E6} ({1})",
+                energy.LocalBalanceResidual, percentText(localResidualFraction)));
+            message.AppendLine(localBalanceOk
+                ? "   OK: верхний и нижний потоки согласованы с поглощением."
+                : "   ВНИМАНИЕ: локальный баланс требует проверки сетки и N.");
+            message.AppendLine();
 
-            // Проверка физичности каждой компоненты
-            bool allPositive = (reflectedEnergy >= -1e-10) &&
-                               (transmittedEnergy >= -1e-10) &&
-                               (absorbedEnergy >= -1e-10);
+            message.AppendLine("4. Независимый замкнутый контур:");
+            message.AppendLine(string.Format("   Интеграл полного потока:        {0:E6}", energy.SignedContourFlux));
+            message.AppendLine(string.Format("   Интеграл потока + A_J:          {0:E6} ({1} от I)",
+                energy.SignedContourResidual, percentText(contourResidualFraction)));
+            message.AppendLine(contourBalanceOk
+                ? "   OK: глобальный знаковый баланс замыкается."
+                : "   ВНИМАНИЕ: уточните квадратуру контрольного контура.");
+            message.AppendLine();
 
-            if (allPositive)
-            {
-                energyMessage.AppendLine("✓ Отрицательных энергий не обнаружено");
-            }
-            else
-            {
-                energyMessage.AppendLine("✗ Обнаружены нефизичные (отрицательные) значения!");
-                if (reflectedEnergy < 0)
-                    energyMessage.AppendLine($"   Отраженная энергия отрицательна: {reflectedEnergy:F6}");
-                if (transmittedEnergy < 0)
-                    energyMessage.AppendLine($"   Прошедшая энергия отрицательна: {transmittedEnergy:F6}");
-                if (absorbedEnergy < 0)
-                    energyMessage.AppendLine($"   Поглощенная энергия отрицательна: {absorbedEnergy:F6}");
-            }
+            message.AppendLine("5. Дальнее поле, только рассеянная часть:");
+            message.AppendLine(string.Format("   R_scat^far:                     {0:F6} ({1} от I)",
+                farField.ReflectedScattered, percentText(farReflectedFraction)));
+            message.AppendLine(string.Format("   T_scat^far:                     {0:F6} ({1} от I)",
+                farField.TransmittedScattered, percentText(farTransmittedFraction)));
+            message.AppendLine(string.Format("   Суммарное рассеяние:            {0:F6} ({1} от I)",
+                farField.TotalScattered, percentText(farTotalFraction)));
+            message.AppendLine("   Это энергии рассеянного поля, а не полные R и T.");
+            message.AppendLine("   Полное прохождение включает падающую волну и интерференционный вклад.");
+            message.AppendLine();
 
-            // Дополнительная проверка для идеального проводника
-            if (skinDepth == 0)
-            {
-                energyMessage.AppendLine();
-                energyMessage.AppendLine("Специальная проверка для идеального проводника:");
-                if (Math.Abs(absorbedEnergy) < 1e-10)
-                    energyMessage.AppendLine("✓ Поглощение отсутствует (как и должно быть)");
-                else
-                    energyMessage.AppendLine($"⚠ Поглощение должно быть 0, но получено: {absorbedEnergy:E6}");
+            message.AppendLine("Примечание:");
+            message.AppendLine("   R_net и T_full - знаковые потоки через открытую область самих пластин.");
+            message.AppendLine("   Для конечных пластин крайние и боковые потоки могут сделать их отрицательными.");
+            message.AppendLine("   Такие значения не обрезаются и не нормируются принудительно.");
 
-                // Проверка: отраженная + прошедшая = падающая
-                double sumRT = reflectedEnergy + transmittedEnergy;
-                double rtError = energyReferenceValid ? Math.Abs(incidentEnergy - sumRT) / incidentEnergy : double.NaN;
-                double rtFraction = energyReferenceValid ? sumRT / incidentEnergy : double.NaN;
-                energyMessage.AppendLine(string.Format("   Отраженная + Прошедшая = {0:F6} ({1} от падающей)",
-                    sumRT, percentText(rtFraction)));
-                energyMessage.AppendLine(string.Format("   Отклонение от ЗСЭ: {0}", percentText(rtError)));
-            }
-
-            energyMessage.AppendLine();
-            energyMessage.AppendLine("========================================");
-            energyMessage.AppendLine("Рекомендации:");
-
-            if (bcError > 0.10)
-                energyMessage.AppendLine("• Увеличьте N (параметр усечения) для улучшения граничных условий");
-            if (helmError > 1e-3)
-                energyMessage.AppendLine("• Увеличьте M_quad (число узлов квадратуры) для лучшей точности поля");
-            if (!energyReferenceValid)
-                energyMessage.AppendLine("• Для энергетики выберите угол/контрольную поверхность с ненулевой опорной энергией");
-            else if (relativeError > 0.10)
-                energyMessage.AppendLine("• Проверьте параметры расчета энергобаланса");
-
-            if (bcError < 0.05 && helmError < 1e-3 && relativeError < 0.05)
-                energyMessage.AppendLine("✓ Все проверки пройдены успешно! Решение физически корректно.");
-            else if (bcError < 0.05 && helmError < 1e-3)
-                energyMessage.AppendLine("✓ ГУ и уравнение Гельмгольца пройдены; энергобаланс требует отдельной проверки.");
-
-            MessageBoxIcon icon;
-            bool localChecksOk = bcError < 0.10 && helmError < 1e-3;
-            if (skinDepth == 0)
-            {
-                // Для идеального проводника
-                icon = localChecksOk ? MessageBoxIcon.Information : MessageBoxIcon.Warning;
-            }
-            else
-            {
-                // Для проводника со скин-слоем
-                icon = (bcError < 0.15 && helmError < 1e-3) ? MessageBoxIcon.Information : MessageBoxIcon.Warning;
-            }
-
-            string title = skinDepth == 0 ?
-                "Контроль точности (идеальный проводник)" :
-                "Контроль точности (скин-эффект)";
+            bool localChecksOk = bcError < 0.10 && helmholtzError < 1e-3;
+            bool allChecksOk = localChecksOk && (!referenceValid || (localBalanceOk && contourBalanceOk && absorptionFormsAgree));
+            string title = skinDepth <= 0
+                ? "Контроль точности (идеальный проводник)"
+                : "Контроль точности (тонкий импедансный лист)";
 
             return new AccuracyReport
             {
-                Message = energyMessage.ToString(),
+                Message = message.ToString(),
                 Title = title,
-                Icon = icon
+                Icon = allChecksOk ? MessageBoxIcon.Information : MessageBoxIcon.Warning
             };
         }
 

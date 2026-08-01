@@ -108,7 +108,11 @@ namespace Diffraction.Core
         {
             cancellationToken.ThrowIfCancellationRequested();
             string executablePath = GetCudaExecutablePath();
-            if (!string.IsNullOrEmpty(executablePath))
+            string sourcePath = FindRelativeFile(Path.Combine("Diffraction.Cuda", "src", "DiffractionCuda.cu"));
+            bool rebuildRequired = string.IsNullOrEmpty(executablePath)
+                || (!string.IsNullOrEmpty(sourcePath)
+                    && File.GetLastWriteTimeUtc(executablePath) < File.GetLastWriteTimeUtc(sourcePath));
+            if (!rebuildRequired)
                 return executablePath;
 
             string buildScriptPath = FindRelativeFile(Path.Combine("Diffraction.Cuda", "build_cuda.bat"));
@@ -140,7 +144,13 @@ namespace Diffraction.Core
                 }
             }
 
-            return GetCudaExecutablePath();
+            executablePath = GetCudaExecutablePath();
+            if (string.IsNullOrEmpty(executablePath))
+                return null;
+            if (!string.IsNullOrEmpty(sourcePath)
+                && File.GetLastWriteTimeUtc(executablePath) < File.GetLastWriteTimeUtc(sourcePath))
+                return null;
+            return executablePath;
         }
 
         private static string BuildArguments(DiffractionMath.DifrOnLenta solver)
@@ -204,6 +214,14 @@ namespace Diffraction.Core
             {
                 response.Success = false;
                 response.ErrorMessage = values.ContainsKey("message") ? values["message"] : "CUDA backend вернул некорректный ответ.";
+                return response;
+            }
+
+            string model;
+            if (!values.TryGetValue("model", out model) || !string.Equals(model, "thin_sheet_v1", StringComparison.Ordinal))
+            {
+                response.Success = false;
+                response.ErrorMessage = "CUDA backend собран для несовместимой модели граничного условия.";
                 return response;
             }
 

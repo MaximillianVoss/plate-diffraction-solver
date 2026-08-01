@@ -1,33 +1,35 @@
 # Diagnostics
 
-CSV-файлы в этой папке получены после исправления матричного члена условия Леонтовича для двух пластин и пересчета энергетики через контрольный контур.
+Актуальная энергетическая модель с 2026-08-01: тонкий импедансный лист с условием `u=qJ`.
 
-Файлы:
-- `accuracy_sweep_angle10_fixed.csv` - прогон для угла 10 градусов, `N = 5, 10, 20, 30, 60`, `skinDepth = 0, 0.1, 0.01, 0.001`.
-- `accuracy_sweep_angle10_fixed_compare.csv` - сравнение тех же расчетов со случаем `skinDepth = 0`.
-- `accuracy_sweep_quick_fixed.csv` - быстрый прогон для углов `0, 30, 60, 90`, `N = 5, 10, 20, 30, 60`.
-- `accuracy_sweep_quick_fixed_compare.csv` - сравнение быстрого прогона со случаем `skinDepth = 0`.
-- `skin_method_compare.csv` и `skin_method_compare.png` - сравнение решения со скин-слоем методом коллокации и галеркинской проекцией на одной пластине.
+Основные материалы:
 
-Повторить быстрый прогон:
+- `energy-balance-research.md` - вывод модели, формулы потоков и численная проверка;
+- `energy-formulas-sources.md` - физические источники и связь обозначений с кодом;
+- `energy_sheet_validation.csv` - контрольный прогон новой модели;
+- `energy_sheet_validation_compare.csv` - сравнение тех же строк с идеальным листом.
+
+Старые файлы `accuracy_sweep_*_fixed*.csv` и `skin_method_compare.*` были получены до перехода на условие тонкого листа. Они сохранены как история исследования и не должны использоваться как актуальные численные результаты.
+
+## Повторить контрольный прогон
 
 ```powershell
 dotnet build Diffraction.sln -c Debug
-Start-Process -FilePath ".\bin\Debug\Diffraction.exe" -WorkingDirectory (Get-Location) -ArgumentList "--accuracy-sweep-quick --output .\diagnostics\accuracy_sweep_quick_fixed.csv" -Wait
+Start-Process -FilePath ".\bin\Debug\Diffraction.exe" -WorkingDirectory (Get-Location) -ArgumentList "--accuracy-sweep --output .\diagnostics\energy_sheet_validation.csv --angles 45 --n-values 30 --skins 0,0.001,0.01,0.05,0.1,0.2" -Wait
 ```
 
-Повторить прогон для конкретных параметров:
+CSV содержит:
 
-```powershell
-Start-Process -FilePath ".\bin\Debug\Diffraction.exe" -WorkingDirectory (Get-Location) -ArgumentList "--accuracy-sweep --output .\diagnostics\accuracy_sweep_angle10_fixed.csv --angles 10 --n-values 5,10,20,30,60 --skins 0,0.1,0.01,0.001" -Wait
-```
+- падающую энергию только на проекции пластин;
+- `ReflectedNetPct` и `TransmittedFullPct` как локальные знаковые потоки;
+- поглощение через ток и через разность верхнего/нижнего потоков;
+- сами знаковые потоки сверху и снизу;
+- локальную невязку без перенормировки.
 
-Повторить сравнение методов для одной пластины со скин-слоем:
+## Сравнение методов
 
 ```powershell
 Start-Process -FilePath ".\bin\Debug\Diffraction.exe" -WorkingDirectory (Get-Location) -ArgumentList "--skin-method-compare --skin-depth 0.1 --n 30 --theta-deg 45 --output .\diagnostics\skin_method_compare.csv --image .\diagnostics\skin_method_compare.png" -Wait
 ```
 
-Важно: отраженная энергия теперь оценивается по рассеянному потоку через контрольный контур вокруг пластин. Прошедшая энергия восстанавливается из баланса `I - R - A`, чтобы отчет не показывал нефизичные огромные значения из локальной контрольной вертикали.
-
-Падающая энергия нормируется по фиксированному расчетному окну вокруг пластин, поэтому углы около 90 градусов больше не дают деления на почти нулевую величину.
+В отчете интерфейса дополнительно вычисляются замкнутый знаковый контур и две половины рассеянного дальнего поля.

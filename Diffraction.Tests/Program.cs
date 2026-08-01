@@ -68,47 +68,44 @@ namespace Diffraction.Tests
         }
 
         [TestMethod]
-        public void SinglePlateSkin_StoresChiAsSurfaceImpedanceInOhms()
+        public void SinglePlateSkin_StoresSurfaceImpedanceAndPassiveSheetCoefficient()
         {
             const double mu0 = 4 * Math.PI * 1e-7;
-            const double epsilon0 = 8.854187817e-12;
             const double c = 299792458.0;
             double lambda = 1.0;
             double skinDepth = 0.001;
             double frequency = c / lambda;
             double expectedSurfaceResistance = Math.PI * mu0 * frequency * skinDepth;
-            double expectedBoundaryCoefficient = 2.0 * expectedSurfaceResistance / (mu0 * c);
+            double expectedSheetPart = skinDepth / 2.0;
 
             DifrOnLenta solver = new DifrOnLenta(-1.0, 1.0, lambda, 10.0 * Math.PI / 180.0, 20, skinDepth);
 
             Assert.AreEqual(expectedSurfaceResistance, solver.chi.Re, expectedSurfaceResistance * 1e-12, "chi real part in ohms");
             Assert.AreEqual(expectedSurfaceResistance, solver.chi.Im, expectedSurfaceResistance * 1e-12, "chi imaginary part in ohms");
-            Assert.AreEqual(expectedBoundaryCoefficient, solver.BoundaryCoefficient.Re, expectedBoundaryCoefficient * 1e-12, "boundary coefficient real part");
-            Assert.AreEqual(expectedBoundaryCoefficient, solver.BoundaryCoefficient.Im, expectedBoundaryCoefficient * 1e-12, "boundary coefficient imaginary part");
-
-            double plateLength = 2.0;
-            Compl expectedScale = 1.0 / (1.0 - new Compl(0, 1) * (2.0 * Math.PI * frequency) * epsilon0 * solver.chi * plateLength);
-            Assert.AreEqual(expectedScale.Re, solver.IncidentBoundaryScale.Re, 1e-12, "incident scale real part");
-            Assert.AreEqual(expectedScale.Im, solver.IncidentBoundaryScale.Im, 1e-12, "incident scale imaginary part");
+            Assert.AreEqual(expectedSheetPart, solver.SheetCoefficient.Re, 1e-12, "sheet coefficient real part");
+            Assert.AreEqual(-expectedSheetPart, solver.SheetCoefficient.Im, 1e-12, "passive sheet coefficient imaginary part");
         }
 
         [TestMethod]
-        public void TwoPlateSkin_UsesPlateLengthInIncidentScale()
+        public void SheetCoefficient_DoesNotDependOnPlateGeometry()
         {
-            const double epsilon0 = 8.854187817e-12;
-            const double c = 299792458.0;
             double lambda = 1.0;
             double skinDepth = 0.001;
-            double frequency = c / lambda;
-            DifrOnLenta solver = new DifrOnLenta(-1.5, -0.5, 0.25, 1.75, lambda, 10.0 * Math.PI / 180.0, 20, skinDepth);
+            DifrOnLenta single = new DifrOnLenta(-1.0, 1.0, lambda, 10.0 * Math.PI / 180.0, 20, skinDepth);
+            DifrOnLenta two = new DifrOnLenta(-1.5, -0.5, 0.25, 1.75, lambda, 10.0 * Math.PI / 180.0, 20, skinDepth);
 
-            Compl expectedFirst = 1.0 / (1.0 - new Compl(0, 1) * (2.0 * Math.PI * frequency) * epsilon0 * solver.chi * 1.0);
-            Compl expectedSecond = 1.0 / (1.0 - new Compl(0, 1) * (2.0 * Math.PI * frequency) * epsilon0 * solver.chi * 1.5);
+            Assert.AreEqual(single.SheetCoefficient.Re, two.SheetCoefficient.Re, 1e-15, "real part");
+            Assert.AreEqual(single.SheetCoefficient.Im, two.SheetCoefficient.Im, 1e-15, "imaginary part");
+        }
 
-            Assert.AreEqual(expectedFirst.Re, solver.IncidentBoundaryScaleForPlate(0).Re, 1e-12, "first plate scale real part");
-            Assert.AreEqual(expectedFirst.Im, solver.IncidentBoundaryScaleForPlate(0).Im, 1e-12, "first plate scale imaginary part");
-            Assert.AreEqual(expectedSecond.Re, solver.IncidentBoundaryScaleForPlate(1).Re, 1e-12, "second plate scale real part");
-            Assert.AreEqual(expectedSecond.Im, solver.IncidentBoundaryScaleForPlate(1).Im, 1e-12, "second plate scale imaginary part");
+        [TestMethod]
+        public void PlateIncidentEnergy_UsesOnlyProjectedPlateLengths()
+        {
+            double theta = 30.0 * Math.PI / 180.0;
+            DifrOnLenta solver = new DifrOnLenta(-1.5, -0.5, 0.25, 1.75, 1.0, theta, 20, 0.001);
+            double expected = 0.5 * (2.0 * Math.PI) * Math.Sin(theta) * (1.0 + 1.5);
+
+            Assert.AreEqual(expected, solver.CalculatePlateIncidentEnergy(), expected * 1e-12, "plate-only incident flux");
         }
 
         [TestMethod]
@@ -159,6 +156,27 @@ namespace Diffraction.Tests
             Assert.IsTrue(fineError < 0.001, "boundary error must stay below 0.1%");
         }
 
+
+        [DataTestMethod]
+        [DataRow(30, 0.001)]
+        [DataRow(45, 0.01)]
+        [DataRow(90, 0.01)]
+        [DataRow(45, 0.1)]
+        public void AbsorbedEnergy_CurrentAndBoundaryValueFormsAgree(double angleDeg, double skinDepth)
+        {
+            DifrOnLenta solver = CreateSinglePlateSolver(n: 30, skinDepth: skinDepth, angleDeg: angleDeg);
+            Assert.AreEqual(1, solver.SolveDifr(), "solver failed");
+
+            double absorbedByDerivative = solver.CalculateAbsorbedEnergy();
+            double absorbedByBoundaryValue = solver.CalculateAbsorbedEnergyByBoundaryValue();
+            double scale = Math.Max(absorbedByDerivative, 1e-12);
+
+            AssertFiniteAndNonNegative(absorbedByDerivative, "absorbed energy by derivative");
+            AssertFiniteAndNonNegative(absorbedByBoundaryValue, "absorbed energy by boundary value");
+            double tolerance = skinDepth <= 0.001 ? 0.10 : 0.08;
+            Assert.IsTrue(Math.Abs(absorbedByDerivative - absorbedByBoundaryValue) / scale < tolerance,
+                "current and boundary-value absorption formulas must agree");
+        }
         [DataTestMethod]
         [DataRow(0, 0.0)]
         [DataRow(0, 0.001)]
@@ -216,85 +234,84 @@ namespace Diffraction.Tests
         }
 
         [DataTestMethod]
-        [DataRow(0)]
-        [DataRow(30)]
-        [DataRow(60)]
-        [DataRow(90)]
-        public void ThinSkinBoundaryAndEnergyStayCloseToIdealCase(double angleDeg)
+        [DataRow(30, 0.0)]
+        [DataRow(30, 0.001)]
+        [DataRow(45, 0.01)]
+        [DataRow(60, 0.1)]
+        [DataRow(90, 0.01)]
+        public void LocalPlateEnergyBalance_ClosesWithoutRenormalization(double angleDeg, double skinDepth)
         {
-            DifrOnLenta ideal = CreateTwoPlateSolver(n: 30, skinDepth: 0.0, angleDeg: angleDeg);
-            DifrOnLenta skin = CreateTwoPlateSolver(n: 30, skinDepth: 0.001, angleDeg: angleDeg);
+            DifrOnLenta solver = CreateSinglePlateSolver(n: 30, skinDepth: skinDepth, angleDeg: angleDeg);
+            Assert.AreEqual(1, solver.SolveDifr(), "solver failed");
 
-            Assert.AreEqual(1, ideal.SolveDifr(), "ideal solver failed");
-            Assert.AreEqual(1, skin.SolveDifr(), "skin solver failed");
-
-            double idealBoundary = ideal.VerifyBoundaryConditions();
-            double skinBoundary = skin.VerifyBoundaryConditions();
-            var idealEnergy = ideal.CalculateEnergyComponents();
-            var skinEnergy = skin.CalculateEnergyComponents();
-
-            Assert.IsTrue(Math.Abs(skinBoundary - idealBoundary) < 0.001, "thin-skin boundary error must stay close to the ideal case");
-            AssertEnergyFractionsClose(idealEnergy.Reflected / idealEnergy.Incident, skinEnergy.Reflected / skinEnergy.Incident, 0.02, "reflected energy");
-            AssertEnergyFractionsClose(idealEnergy.Transmitted / idealEnergy.Incident, skinEnergy.Transmitted / skinEnergy.Incident, 0.05, "transmitted energy");
-            Assert.IsTrue(skinEnergy.Absorbed / skinEnergy.Incident < 0.06, "thin-skin absorbed energy must stay small");
-            Assert.IsFalse(skinEnergy.WasRenormalized, "energy components must not be renormalized");
+            var energy = solver.CalculateEnergyComponents();
+            Assert.IsTrue(energy.Incident > 0.0, "plate incident energy must be positive");
+            AssertFiniteAndNonNegative(energy.Absorbed, "absorbed energy");
+            Assert.IsFalse(energy.WasRenormalized, "energy components must not be renormalized");
+            Assert.IsTrue(Math.Abs(energy.LocalBalanceResidual) / energy.Incident < 0.015,
+                "upper/lower flux difference must equal impedance absorption");
+            Assert.IsTrue(EnergyBalanceRelativeError(energy) < 0.015, "local plate energy balance");
         }
 
         [TestMethod]
-        public void EnergyComponents_StayBalancedForTwoPlatesWithSkin()
+        public void LocalPlateEnergyBalance_ClosesForTwoPlates()
         {
-            DifrOnLenta solver = CreateTwoPlateSolver(n: 30, skinDepth: 0.001);
+            DifrOnLenta solver = CreateTwoPlateSolver(n: 30, skinDepth: 0.01, angleDeg: 30.0);
             Assert.AreEqual(1, solver.SolveDifr(), "solver failed");
 
             var energy = solver.CalculateEnergyComponents();
-            double reflectedFraction = energy.Reflected / energy.Incident;
-            double transmittedFraction = energy.Transmitted / energy.Incident;
-            double absorbedFraction = energy.Absorbed / energy.Incident;
-
-            Assert.IsFalse(energy.WasRenormalized, "energy components must not be renormalized");
-            Assert.IsTrue(EnergyBalanceRelativeError(energy) < 0.05, "energy balance");
-            Assert.IsTrue(reflectedFraction > 0.0 && reflectedFraction < 0.2, "reflected energy out of expected range");
-            Assert.IsTrue(transmittedFraction > 0.7 && transmittedFraction < 1.1, "transmitted energy out of expected range");
-            Assert.IsTrue(absorbedFraction > 0.0 && absorbedFraction < 0.06, "absorbed energy out of expected range");
+            Assert.IsTrue(Math.Abs(energy.LocalBalanceResidual) / energy.Incident < 0.02,
+                "two-plate upper/lower flux balance");
         }
 
-        [DataTestMethod]
-        [DataRow(0, 0.0)]
-        [DataRow(0, 0.001)]
-        [DataRow(0, 0.01)]
-        [DataRow(0, 0.1)]
-        [DataRow(30, 0.0)]
-        [DataRow(30, 0.001)]
-        [DataRow(30, 0.01)]
-        [DataRow(30, 0.1)]
-        [DataRow(60, 0.0)]
-        [DataRow(60, 0.001)]
-        [DataRow(60, 0.01)]
-        [DataRow(60, 0.1)]
-        [DataRow(90, 0.0)]
-        [DataRow(90, 0.001)]
-        [DataRow(90, 0.01)]
-        [DataRow(90, 0.1)]
-        public void EnergyComponents_AreFinitePositiveAndBalancedAcrossParameterGrid(double angleDeg, double skinDepth)
+        [TestMethod]
+        public void IdealSheet_BlocksNormalFluxAcrossPlate()
         {
-            DifrOnLenta solver = CreateSinglePlateSolver(n: 20, skinDepth: skinDepth, angleDeg: angleDeg);
+            DifrOnLenta solver = CreateSinglePlateSolver(n: 30, skinDepth: 0.0, angleDeg: 45.0);
             Assert.AreEqual(1, solver.SolveDifr(), "solver failed");
 
             var energy = solver.CalculateEnergyComponents();
-            double reflectedFraction = energy.Reflected / energy.Incident;
-            double transmittedFraction = energy.Transmitted / energy.Incident;
-            double absorbedFraction = energy.Absorbed / energy.Incident;
+            Assert.AreEqual(1.0, energy.Reflected / energy.Incident, 1e-4, "net local reflection");
+            Assert.AreEqual(0.0, energy.Transmitted / energy.Incident, 1e-4, "normal flux through ideal sheet");
+            Assert.AreEqual(0.0, energy.Absorbed, 1e-12, "ideal sheet absorption");
+        }
 
-            AssertFiniteAndNonNegative(energy.Incident, "incident energy");
-            AssertFiniteAndNonNegative(energy.Reflected, "reflected energy");
-            AssertFiniteAndNonNegative(energy.Transmitted, "transmitted energy");
-            AssertFiniteAndNonNegative(energy.Absorbed, "absorbed energy");
-            Assert.IsTrue(energy.Incident > 0.0, "incident energy must be positive");
-            Assert.IsFalse(energy.WasRenormalized, "energy components must not be renormalized");
-            Assert.IsTrue(EnergyBalanceRelativeError(energy) < 0.35, "energy balance");
-            Assert.IsTrue(reflectedFraction >= 0.0 && reflectedFraction < 0.8, "reflected energy out of expected range");
-            Assert.IsTrue(transmittedFraction > 0.0 && transmittedFraction <= 1.2, "transmitted energy out of expected range");
-            Assert.IsTrue(absorbedFraction >= 0.0 && absorbedFraction < 0.15, "absorbed energy out of expected range");
+        [TestMethod]
+        public void IncreasingSkinDepth_ReducesNetReflectionAndRaisesFullTransmission()
+        {
+            DifrOnLenta thin = CreateSinglePlateSolver(n: 30, skinDepth: 0.01, angleDeg: 45.0);
+            DifrOnLenta thick = CreateSinglePlateSolver(n: 30, skinDepth: 0.1, angleDeg: 45.0);
+            Assert.AreEqual(1, thin.SolveDifr(), "thin solver failed");
+            Assert.AreEqual(1, thick.SolveDifr(), "thick solver failed");
+
+            var thinEnergy = thin.CalculateEnergyComponents();
+            var thickEnergy = thick.CalculateEnergyComponents();
+            Assert.IsTrue(thickEnergy.Reflected < thinEnergy.Reflected, "net reflection must decrease");
+            Assert.IsTrue(thickEnergy.Transmitted > thinEnergy.Transmitted, "full transmission must increase");
+        }
+
+        [TestMethod]
+        public void SignedControlContour_ClosesWithImpedanceAbsorption()
+        {
+            DifrOnLenta solver = CreateSinglePlateSolver(n: 30, skinDepth: 0.01, angleDeg: 45.0);
+            Assert.AreEqual(1, solver.SolveDifr(), "solver failed");
+
+            var energy = solver.CalculateEnergyComponents(includeContourDiagnostic: true);
+            Assert.IsTrue(Math.Abs(energy.SignedContourResidual) / energy.Incident < 0.02,
+                "signed closed-contour flux plus absorption must vanish");
+        }
+
+        [TestMethod]
+        public void NormalDerivativeJump_EqualsSurfaceCurrent()
+        {
+            DifrOnLenta solver = CreateSinglePlateSolver(n: 20, skinDepth: 0.01, angleDeg: 45.0);
+            Assert.AreEqual(1, solver.SolveDifr(), "solver failed");
+
+            foreach (double x in new[] { -0.75, -0.25, 0.25, 0.75 })
+            {
+                Compl jump = solver.NormalDerivativeAbove(x) - solver.NormalDerivativeBelow(x);
+                Assert.AreEqual(0.0, Compl.Abs(jump - solver.CurrentDensity(x)), 1e-12, "derivative jump");
+            }
         }
 
         [DataTestMethod]
@@ -441,11 +458,6 @@ namespace Diffraction.Tests
             Assert.IsFalse(double.IsNaN(value), message + " must not be NaN");
             Assert.IsFalse(double.IsInfinity(value), message + " must not be Infinity");
             Assert.IsTrue(value >= 0.0, message + " must be non-negative");
-        }
-
-        private static void AssertEnergyFractionsClose(double expected, double actual, double tolerance, string message)
-        {
-            Assert.IsTrue(Math.Abs(expected - actual) < tolerance, message + " differs too much");
         }
 
         private sealed class NativeRunResult

@@ -114,7 +114,7 @@ namespace Diffraction
             public int N;
             public double BcError, HelmholtzResidual;
             public double Incident, Reflected, Transmitted, Absorbed, EnergyTotal, EnergyBalanceError;
-            public double TransmittedThroughStrip;
+            public double AboveFlux, BelowFlux, FluxAbsorbed;
             public long SolveTimeMs, MetricsTimeMs;
             public string ErrorMessage;
         }
@@ -149,7 +149,9 @@ namespace Diffraction
                 Absorbed = double.NaN,
                 EnergyTotal = double.NaN,
                 EnergyBalanceError = double.NaN,
-                TransmittedThroughStrip = double.NaN
+                AboveFlux = double.NaN,
+                BelowFlux = double.NaN,
+                FluxAbsorbed = double.NaN
             };
 
             try
@@ -171,11 +173,13 @@ namespace Diffraction
                 row.Reflected = energy.Reflected;
                 row.Transmitted = energy.Transmitted;
                 row.Absorbed = energy.Absorbed;
+                row.AboveFlux = energy.AboveFlux;
+                row.BelowFlux = energy.BelowFlux;
+                row.FluxAbsorbed = energy.FluxAbsorbed;
                 row.EnergyTotal = energy.Reflected + energy.Transmitted + energy.Absorbed;
                 row.EnergyBalanceError = Math.Abs(row.Incident) < 1e-8
                     ? double.NaN
-                    : Math.Abs(row.Incident - row.EnergyTotal) / row.Incident;
-                row.TransmittedThroughStrip = solver.CalculateTransmittedThroughStrip();
+                    : Math.Abs(energy.LocalBalanceResidual) / row.Incident;
                 metricsWatch.Stop();
                 row.MetricsTimeMs = metricsWatch.ElapsedMilliseconds;
             }
@@ -203,8 +207,8 @@ namespace Diffraction
             using (var rowsWriter = new StreamWriter(outputFilePath, false, Encoding.UTF8))
             using (var compareWriter = new StreamWriter(compareFilePath, false, Encoding.UTF8))
             {
-                rowsWriter.WriteLine("ThetaDeg;N;SkinDepth;SolveResult;BcErrorPct;HelmholtzResidual;Incident;ReflectedPct;TransmittedPct;AbsorbedPct;EnergyTotalPct;EnergyBalanceErrorPct;TransmittedThroughStrip;SolveTimeMs;MetricsTimeMs;ErrorMessage");
-                compareWriter.WriteLine("ThetaDeg;N;SkinDepth;IdealBcErrorPct;SkinBcErrorPct;BcAbsDiffPct;IdealEnergyTotalPct;SkinEnergyTotalPct;EnergyTotalAbsDiffPct;IdealReflectedPct;SkinReflectedPct;ReflectedAbsDiffPct;IdealTransmittedPct;SkinTransmittedPct;AbsorbedSkinPct");
+                rowsWriter.WriteLine("ThetaDeg;N;SkinDepth;SolveResult;BcErrorPct;HelmholtzResidual;PlateIncident;ReflectedNetPct;TransmittedFullPct;AbsorbedCurrentPct;AbsorbedFluxPct;AboveFluxPct;BelowFluxPct;EnergyTotalPct;LocalBalanceErrorPct;SolveTimeMs;MetricsTimeMs;ErrorMessage");
+                compareWriter.WriteLine("ThetaDeg;N;SkinDepth;IdealBcErrorPct;SkinBcErrorPct;BcAbsDiffPct;IdealEnergyTotalPct;SkinEnergyTotalPct;EnergyTotalAbsDiffPct;IdealReflectedNetPct;SkinReflectedNetPct;ReflectedAbsDiffPct;IdealTransmittedFullPct;SkinTransmittedFullPct;AbsorbedSkinPct");
 
                 foreach (double thetaDeg in angles)
                 {
@@ -227,9 +231,11 @@ namespace Diffraction
                                 F(PercentOf(row.Reflected, row.Incident)),
                                 F(PercentOf(row.Transmitted, row.Incident)),
                                 F(PercentOf(row.Absorbed, row.Incident)),
+                                F(PercentOf(row.FluxAbsorbed, row.Incident)),
+                                F(PercentOf(row.AboveFlux, row.Incident)),
+                                F(PercentOf(row.BelowFlux, row.Incident)),
                                 F(PercentOf(row.EnergyTotal, row.Incident)),
                                 F(row.EnergyBalanceError * 100.0),
-                                F(row.TransmittedThroughStrip),
                                 row.SolveTimeMs.ToString(CultureInfo.InvariantCulture),
                                 row.MetricsTimeMs.ToString(CultureInfo.InvariantCulture),
                                 row.ErrorMessage ?? ""));
@@ -362,16 +368,14 @@ namespace Diffraction
             double skinDepth)
         {
             const double mu0 = 4 * Math.PI * 1e-7;
-            const double epsilon0 = 8.854187817e-12;
             const double speedOfLight = 299792458.0;
             double frequency = speedOfLight / lambda;
+            double kWave = 2.0 * Math.PI / lambda;
             Compl chi = new Compl(Math.PI * mu0 * frequency * skinDepth, Math.PI * mu0 * frequency * skinDepth);
-            Compl boundaryChi = 2.0 * chi / (mu0 * speedOfLight);
+            Compl sheetQ = -ci * chi / (kWave * mu0 * speedOfLight);
             double plateLength = beta - alpha;
-            Compl incidentScale = 1.0 / (1.0 - ci * (2.0 * Math.PI * frequency) * epsilon0 * chi * plateLength);
             double halfL = plateLength / 2.0;
             double mid = (alpha + beta) / 2.0;
-            double kWave = 2.0 * Math.PI / lambda;
             int mQuad = Math.Max(8 * n, 80);
 
             double[] tau = new double[mQuad];
@@ -396,7 +400,7 @@ namespace Diffraction
                     Compl projected = new Compl(0, 0);
                     for (int m = 0; m < mQuad; m++)
                     {
-                        Compl op = BoundaryOperatorBasisAtTau(tau[m], j, tau, weights, halfL, kWave, lnConst, boundaryChi);
+                        Compl op = BoundaryOperatorBasisAtTau(tau[m], j, tau, weights, halfL, kWave, lnConst, sheetQ);
                         projected += op * Cheb(k, tau[m]);
                     }
                     matrix[k][j] = projected * projectionWeight;
@@ -406,9 +410,7 @@ namespace Diffraction
                 for (int m = 0; m < mQuad; m++)
                 {
                     Compl u0Raw = IncidentField(x[m], 0, kWave, theta);
-                    Compl du0Dz = ci * kWave * Math.Sin(theta) * u0Raw;
-                    Compl boundaryRhs = -1.0 * incidentScale * u0Raw - boundaryChi * du0Dz;
-                    rhsProjected += boundaryRhs * Cheb(k, tau[m]);
+                    rhsProjected += -u0Raw * Cheb(k, tau[m]);
                 }
                 rhs[k] = rhsProjected * projectionWeight;
             }
@@ -435,7 +437,7 @@ namespace Diffraction
             double halfL,
             double kWave,
             double lnConst,
-            Compl boundaryChi)
+            Compl sheetQ)
         {
             Compl sumReg = new Compl(0, 0);
             for (int m = 0; m < tau.Length; m++)
@@ -452,7 +454,7 @@ namespace Diffraction
             Compl value = ci / 4.0 * (sumReg + sLog);
 
             double sqrtWeight = Math.Sqrt(Math.Max(1.0 - targetTau * targetTau, 1e-10));
-            value -= boundaryChi / (2.0 * halfL) * Cheb(basisIndex, targetTau) / sqrtWeight;
+            value -= sheetQ / halfL * Cheb(basisIndex, targetTau) / sqrtWeight;
             return value;
         }
 
@@ -725,7 +727,7 @@ namespace Diffraction
             if (solverSkin_BC.SolveDifr() == 1)
             {
                 double bcErr = solverSkin_BC.VerifyBoundaryConditions();
-                Console.WriteLine(string.Format("  BC error (u+chi*du/dn=0): {0:P2}", bcErr));
+                Console.WriteLine(string.Format("  BC error (u-qJ=0): {0:P2}", bcErr));
                 Console.WriteLine($"  Condition number: {ConditionNumber(solverSkin_BC.LastMatrixA):E2}");
                 double helmErr = solverSkin_BC.VerifyHelmholtz();
                 Console.WriteLine(string.Format("  Helmholtz residual: {0:E2}", helmErr));
@@ -856,16 +858,13 @@ namespace Diffraction
                 Console.WriteLine("\nDetailed BC Error Profile (M=40):");
                 int M = 40;
                 double dx = 2.0 / M;
-                double kWave = 2 * Math.PI / 1.0;
                 for (int i = 1; i < M; i++)
                 {
                     double x = -1.0 + i * dx;
                     Compl u_val = solver.u_on_strip(x);
                     Compl Jx = solver.GetJphys(x);
-                    Compl incident = solver.BoundaryIncidentField(x, 0);
-                    Compl du_dn = new Compl(0, 1) * kWave * Math.Sin(Math.PI / 4) * solver.u0(x, 0) - Jx / 2.0;
-                    Compl bc_val = u_val + solver.BoundaryCoefficient * du_dn;
-                    double ref_scale = Compl.Abs(incident);
+                    Compl bc_val = u_val - solver.SheetCoefficient * Jx;
+                    double ref_scale = Compl.Abs(solver.u0(x, 0));
                     if (ref_scale < 1e-10) ref_scale = 1.0;
                     double err = Compl.Abs(bc_val) / ref_scale * 100.0;
 
@@ -876,18 +875,14 @@ namespace Diffraction
                     file.WriteLine("x,error_percent");
 
                     double dx_save = 2.0 / M;
-                    double kWave_save = 2 * Math.PI / solver.lambda;
-
                     for (int j = 1; j < M; j++)
                     {
                         double x_save = -1.0 + j * dx_save;
                         Compl u_val_save = solver.u_on_strip(x_save);
                         Compl Jx_save = solver.GetJphys(x_save);
-                        Compl incident_save = solver.BoundaryIncidentField(x_save, 0);
-                        Compl du_dn_save = new Compl(0, 1) * kWave_save * Math.Sin(solver.teta) * solver.u0(x_save, 0) - Jx_save / 2.0;
-                        Compl bc_val_save = u_val_save + solver.BoundaryCoefficient * du_dn_save;
+                        Compl bc_val_save = u_val_save - solver.SheetCoefficient * Jx_save;
 
-                        double ref_scale_save = Compl.Abs(incident_save);
+                        double ref_scale_save = Compl.Abs(solver.u0(x_save, 0));
                         if (ref_scale_save < 1e-10) ref_scale_save = 1.0;
                         double err_save = Compl.Abs(bc_val_save) / ref_scale_save * 100.0;
 

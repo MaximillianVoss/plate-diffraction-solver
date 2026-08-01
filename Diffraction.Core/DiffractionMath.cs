@@ -72,7 +72,6 @@ namespace Diffraction.Core
 
         public static readonly Compl ci = new Compl(0, 1);
         private const double Mu0 = 4 * Math.PI * 1e-7;
-        private const double Epsilon0 = 8.854187817e-12;
         private const double SpeedOfLight = 299792458.0;
         private const double VacuumImpedance = Mu0 * SpeedOfLight;
 
@@ -324,8 +323,7 @@ namespace Diffraction.Core
             public Compl[] y;
             public double skinDepth;
             public Compl chi;
-            private Compl boundaryChi;
-            private Compl[] incidentBoundaryScaleByPlate;
+            private Compl sheetCoefficient;
             public CMatr LastMatrixA; // Сохранение матрицы для расчёта обусловленности
             public int PlateCount { get; private set; }
             public double[] alpha;
@@ -388,8 +386,7 @@ namespace Diffraction.Core
                 skinDepth = _skinDepth;
                 ResetPreparedState();
                 chi = CalculateChi();
-                boundaryChi = CalculateBoundaryCoefficient();
-                incidentBoundaryScaleByPlate = CalculateIncidentBoundaryScales();
+                sheetCoefficient = CalculateSheetCoefficient();
                 LastSolvePerformance = null;
                 LastSolveCancelled = false;
             }
@@ -404,42 +401,19 @@ namespace Diffraction.Core
 
             public Compl BoundaryCoefficient
             {
-                get { return new Compl(boundaryChi.Re, boundaryChi.Im); }
+                get { return new Compl(sheetCoefficient.Re, sheetCoefficient.Im); }
             }
 
-            public Compl IncidentBoundaryScale
+            public Compl SheetCoefficient
             {
-                get { return IncidentBoundaryScaleForPlate(0); }
+                get { return new Compl(sheetCoefficient.Re, sheetCoefficient.Im); }
             }
 
-            private Compl CalculateBoundaryCoefficient()
+            private Compl CalculateSheetCoefficient()
             {
                 if (skinDepth <= 0) return new Compl(0, 0);
-                return 2.0 * chi / VacuumImpedance;
-            }
-
-            public Compl IncidentBoundaryScaleForPlate(int plateIndex)
-            {
-                if (plateIndex < 0 || plateIndex >= PlateCount)
-                    throw new ArgumentOutOfRangeException(nameof(plateIndex));
-                Compl scale = incidentBoundaryScaleByPlate[plateIndex];
-                return new Compl(scale.Re, scale.Im);
-            }
-
-            private Compl[] CalculateIncidentBoundaryScales()
-            {
-                Compl[] scales = new Compl[PlateCount];
-                for (int p = 0; p < PlateCount; p++)
-                    scales[p] = CalculateIncidentBoundaryScale(p);
-                return scales;
-            }
-
-            private Compl CalculateIncidentBoundaryScale(int plateIndex)
-            {
-                if (skinDepth <= 0) return new Compl(1, 0);
-                double omega = 2.0 * Math.PI * SpeedOfLight / lambda;
-                double plateLength = beta[plateIndex] - alpha[plateIndex];
-                return 1.0 / (1.0 - ci * omega * Epsilon0 * chi * plateLength);
+                double k = 2.0 * Math.PI / lambda;
+                return -ci * chi / (k * VacuumImpedance);
             }
 
             public double ChebAB(int n, double x)
@@ -477,30 +451,13 @@ namespace Diffraction.Core
                     double kd = k * diff;
                     g = -(Math.PI * ci / 2.0 * J0(kd) + (J0(kd) - 1.0) * Math.Log(kd / 2.0) + Math.Log(k / 2.0) + _Y0(kd));
                 }
-                Compl dg = dr_dn(t, x);
-                return g + boundaryChi * dg;
+                return g;
             }
 
             public Compl u0(double x, double z)
             {
                 double k = 2 * Math.PI / lambda;
                 return Compl.Exp(k * Math.Cos(teta) * ci * x + k * Math.Sin(teta) * ci * z);
-            }
-
-            private Compl BoundaryIncident(int plateIndex, double x, double z)
-            {
-                return incidentBoundaryScaleByPlate[plateIndex] * u0(x, z);
-            }
-
-            private Compl BoundaryIncident(double x, double z)
-            {
-                int plateIndex = GetPlateIndex(x);
-                return plateIndex < 0 ? u0(x, z) : BoundaryIncident(plateIndex, x, z);
-            }
-
-            public Compl BoundaryIncidentField(double x, double z)
-            {
-                return BoundaryIncident(x, z);
             }
 
             public Compl u(double x, double z)
@@ -559,7 +516,7 @@ namespace Diffraction.Core
                     }
                 }
 
-                return (sum_reg + ci * sum_log + sum_cross) * ci / 4.0 + BoundaryIncident(targetPlate, x, 0);
+                return (sum_reg + ci * sum_log + sum_cross) * ci / 4.0 + u0(x, 0);
             }
 
             public Compl f(double x) => -2 * Math.PI * u0(x, 0);
@@ -743,7 +700,7 @@ namespace Diffraction.Core
                                     {
                                         double Tj_k = Cheb(j, tau_c[targetPlate][ik]);
                                         double sqrt_w = Math.Sqrt(1.0 - tau_c[targetPlate][ik] * tau_c[targetPlate][ik]);
-                                        A_mat[row][col] = A_mat[row][col] - boundaryChi / (2.0 * targetHalfL) * Tj_k / sqrt_w;
+                                        A_mat[row][col] = A_mat[row][col] - sheetCoefficient / targetHalfL * Tj_k / sqrt_w;
                                     }
                                 }
                                 else
@@ -761,15 +718,14 @@ namespace Diffraction.Core
                             }
                         }
 
-                        if (skinDepth > 0)
-                        {
-                            Compl u0Boundary = BoundaryIncident(targetPlate, xk, 0);
-                            Compl du0_dz = ci * k_wave * Math.Sin(teta) * u0(xk, 0);
-                            B_vec[row] = -1.0 * u0Boundary - boundaryChi * du0_dz;
-                        }
-                        else { B_vec[row] = -1.0 * u0(xk, 0); }
+                        B_vec[row] = -1.0 * u0(xk, 0);
                     });
                     assemblyWatch.Stop();
+
+                    LastMatrixA = new CMatr(totalUnknowns);
+                    for (int r = 0; r < totalUnknowns; r++)
+                        for (int c = 0; c < totalUnknowns; c++)
+                            LastMatrixA[r][c] = new Compl(A_mat[r][c].Re, A_mat[r][c].Im);
 
                     CVect w = new CVect(totalUnknowns);
                     Stopwatch solveWatch = Stopwatch.StartNew();
@@ -777,12 +733,6 @@ namespace Diffraction.Core
                     int output = Gauss(A_mat, B_vec, w, cancellationToken);
                     solveWatch.Stop();
                     for (int ik = 0; ik < totalUnknowns; ik++) y[ik] = w[ik];
-
-                    // Сохраняем матрицу для расчёта обусловленности
-                    LastMatrixA = new CMatr(totalUnknowns);
-                    for (int r = 0; r < totalUnknowns; r++)
-                        for (int c = 0; c < totalUnknowns; c++)
-                            LastMatrixA[r][c] = A_mat[r][c];
 
                     totalWatch.Stop();
                     LastSolvePerformance = new SolvePerformance
@@ -846,28 +796,62 @@ namespace Diffraction.Core
 
             public double CalculateIncidentEnergy()
             {
-                return CalculateControlContourFlux().Incident;
+                return CalculatePlateIncidentEnergy();
             }
 
             public double CalculateReflectedEnergy()
             {
-                return CalculateControlContourFlux().Reflected;
+                return CalculateEnergyComponents().Reflected;
             }
 
             public class EnergyComponents
             {
                 public double Incident, Reflected, Transmitted, Absorbed;
+                public double AboveFlux, BelowFlux;
+                public double IncidentSideIncoming, OppositeSideOutgoing;
+                public double FluxAbsorbed, LocalBalanceResidual;
+                public double SignedContourFlux, SignedContourResidual;
                 public bool WasRenormalized;
             }
 
-            public EnergyComponents CalculateEnergyComponents()
+            public class PlateFluxComponents
             {
-                ControlContourFlux flux = CalculateControlContourFlux();
+                public double Incident;
+                public double AboveFlux;
+                public double BelowFlux;
+                public double IncidentSideIncoming;
+                public double OppositeSideOutgoing;
+                public double ReflectedNet;
+                public double AbsorbedFromFlux;
+            }
+
+            public class FarFieldScatteredEnergyComponents
+            {
+                public double ReflectedScattered;
+                public double TransmittedScattered;
+                public double TotalScattered;
+            }
+            public EnergyComponents CalculateEnergyComponents(bool includeContourDiagnostic = false)
+            {
+                PlateFluxComponents flux = CalculatePlateFluxComponents();
                 EnergyComponents energy = new EnergyComponents();
                 energy.Incident = flux.Incident;
-                energy.Reflected = flux.Reflected;
-                energy.Transmitted = flux.Transmitted;
+                energy.Reflected = flux.ReflectedNet;
+                energy.Transmitted = flux.OppositeSideOutgoing;
                 energy.Absorbed = CalculateAbsorbedEnergy();
+                energy.AboveFlux = flux.AboveFlux;
+                energy.BelowFlux = flux.BelowFlux;
+                energy.IncidentSideIncoming = flux.IncidentSideIncoming;
+                energy.OppositeSideOutgoing = flux.OppositeSideOutgoing;
+                energy.FluxAbsorbed = flux.AbsorbedFromFlux;
+                energy.LocalBalanceResidual = flux.AbsorbedFromFlux - energy.Absorbed;
+                energy.SignedContourFlux = double.NaN;
+                energy.SignedContourResidual = double.NaN;
+                if (includeContourDiagnostic)
+                {
+                    energy.SignedContourFlux = CalculateSignedControlContourFlux();
+                    energy.SignedContourResidual = energy.SignedContourFlux + energy.Absorbed;
+                }
                 energy.WasRenormalized = false;
 
                 return energy;
@@ -875,14 +859,58 @@ namespace Diffraction.Core
 
             public double CalculateTransmittedEnergyIndependent()
             {
-                return CalculateControlContourFlux().Transmitted;
+                return CalculatePlateFluxComponents().OppositeSideOutgoing;
             }
 
-            private class ControlContourFlux
+            public double CalculatePlateIncidentEnergy()
             {
-                public double Incident;
-                public double Reflected;
-                public double Transmitted;
+                double totalLength = 0.0;
+                for (int plateIndex = 0; plateIndex < PlateCount; plateIndex++)
+                    totalLength += beta[plateIndex] - alpha[plateIndex];
+
+                double k = 2.0 * Math.PI / lambda;
+                return 0.5 * k * Math.Abs(Math.Sin(teta)) * totalLength;
+            }
+
+            public PlateFluxComponents CalculatePlateFluxComponents(int samplesPerPlate = 400)
+            {
+                if (samplesPerPlate < 16) throw new ArgumentOutOfRangeException(nameof(samplesPerPlate));
+                EnsurePreparedState();
+
+                double aboveFlux = 0.0;
+                double belowFlux = 0.0;
+
+                for (int plateIndex = 0; plateIndex < PlateCount; plateIndex++)
+                {
+                    double dx = (beta[plateIndex] - alpha[plateIndex]) / samplesPerPlate;
+                    for (int m = 0; m < samplesPerPlate; m++)
+                    {
+                        double x = alpha[plateIndex] + (m + 0.5) * dx;
+                        Compl value = u_on_strip(x);
+                        Compl derivativeAbove = NormalDerivativeAbove(x);
+                        Compl derivativeBelow = NormalDerivativeBelow(x);
+                        aboveFlux += EnergyFlux(value, derivativeAbove) * dx;
+                        belowFlux += EnergyFlux(value, derivativeBelow) * dx;
+                    }
+                }
+
+                double incidentDirectionSign = Math.Sin(teta) >= 0.0 ? 1.0 : -1.0;
+                double incidentSideFlux = incidentDirectionSign > 0.0 ? aboveFlux : belowFlux;
+                double oppositeSideFlux = incidentDirectionSign > 0.0 ? belowFlux : aboveFlux;
+                double incidentSideIncoming = -incidentDirectionSign * incidentSideFlux;
+                double oppositeSideOutgoing = -incidentDirectionSign * oppositeSideFlux;
+                double incident = CalculatePlateIncidentEnergy();
+
+                return new PlateFluxComponents
+                {
+                    Incident = incident,
+                    AboveFlux = aboveFlux,
+                    BelowFlux = belowFlux,
+                    IncidentSideIncoming = incidentSideIncoming,
+                    OppositeSideOutgoing = oppositeSideOutgoing,
+                    ReflectedNet = incident - incidentSideIncoming,
+                    AbsorbedFromFlux = incidentSideIncoming - oppositeSideOutgoing
+                };
             }
 
             private double EnergyFlux(Compl value, Compl normalDerivative)
@@ -890,91 +918,99 @@ namespace Diffraction.Core
                 return -0.5 * (value.Re * normalDerivative.Im - value.Im * normalDerivative.Re);
             }
 
-            private double CalculateReferenceIncidentEnergy()
+            public double CalculateSignedControlContourFlux(int pointsPerSide = 80)
             {
-                double k = 2 * Math.PI / lambda;
-                double span = Math.Max(b - a, lambda);
-                double margin = 3.0 * span;
-                double width = (b - a) + 2.0 * margin;
-                double height = 2.0 * margin;
-                return 0.5 * k * (Math.Abs(Math.Cos(teta)) * height + Math.Abs(Math.Sin(teta)) * width);
-            }
+                if (pointsPerSide < 16) throw new ArgumentOutOfRangeException(nameof(pointsPerSide));
+                EnsurePreparedState();
 
-            private ControlContourFlux CalculateControlContourFlux()
-            {
-                double k = 2 * Math.PI / lambda;
                 double span = Math.Max(b - a, lambda);
                 double margin = Math.Max(lambda, 0.25 * span);
                 double xMin = a - margin;
                 double xMax = b + margin;
                 double zMin = -margin;
                 double zMax = margin;
-                double h = lambda / 200.0;
-                const int pointsPerSide = 60;
-                const double sideEps = 1e-9;
+                double h = lambda / 1000.0;
 
-                ControlContourFlux flux = new ControlContourFlux();
-                AccumulateHorizontalFlux(flux, xMin, xMax, zMax, 1.0, pointsPerSide, h, k, sideEps);
-                AccumulateHorizontalFlux(flux, xMin, xMax, zMin, -1.0, pointsPerSide, h, k, sideEps);
-                AccumulateVerticalFlux(flux, xMin, zMin, zMax, -1.0, pointsPerSide, h, k, sideEps);
-                AccumulateVerticalFlux(flux, xMax, zMin, zMax, 1.0, pointsPerSide, h, k, sideEps);
-                return flux;
+                return IntegrateHorizontalContourSide(xMin, xMax, zMax, 1.0, pointsPerSide, h)
+                    + IntegrateHorizontalContourSide(xMin, xMax, zMin, -1.0, pointsPerSide, h)
+                    + IntegrateVerticalContourSide(xMin, zMin, zMax, -1.0, pointsPerSide, h)
+                    + IntegrateVerticalContourSide(xMax, zMin, zMax, 1.0, pointsPerSide, h);
             }
 
-            private void AccumulateHorizontalFlux(ControlContourFlux flux, double xMin, double xMax, double z, double normalZ, int points, double h, double k, double sideEps)
+            private double IntegrateHorizontalContourSide(double xMin, double xMax, double z, double normalZ, int points, double h)
             {
                 double dx = (xMax - xMin) / points;
+                double sum = 0.0;
                 for (int i = 0; i < points; i++)
                 {
                     double x = xMin + (i + 0.5) * dx;
                     Compl uTotal = u(x, z);
-                    Compl uIncident = u0(x, z);
                     Compl duTotalDn = normalZ * (u(x, z + h) - u(x, z - h)) / (2.0 * h);
-                    Compl duIncidentDn = normalZ * ci * k * Math.Sin(teta) * uIncident;
-                    AccumulateFluxSample(flux, uTotal, uIncident, duTotalDn, duIncidentDn, dx, sideEps);
+                    sum += EnergyFlux(uTotal, duTotalDn) * dx;
                 }
+                return sum;
             }
 
-            private void AccumulateVerticalFlux(ControlContourFlux flux, double x, double zMin, double zMax, double normalX, int points, double h, double k, double sideEps)
+            private double IntegrateVerticalContourSide(double x, double zMin, double zMax, double normalX, int points, double h)
             {
                 double dz = (zMax - zMin) / points;
+                double sum = 0.0;
                 for (int i = 0; i < points; i++)
                 {
                     double z = zMin + (i + 0.5) * dz;
                     Compl uTotal = u(x, z);
-                    Compl uIncident = u0(x, z);
                     Compl duTotalDn = normalX * (u(x + h, z) - u(x - h, z)) / (2.0 * h);
-                    Compl duIncidentDn = normalX * ci * k * Math.Cos(teta) * uIncident;
-                    AccumulateFluxSample(flux, uTotal, uIncident, duTotalDn, duIncidentDn, dz, sideEps);
+                    sum += EnergyFlux(uTotal, duTotalDn) * dz;
                 }
+                return sum;
             }
 
-            private void AccumulateFluxSample(ControlContourFlux flux, Compl uTotal, Compl uIncident, Compl duTotalDn, Compl duIncidentDn, double ds, double sideEps)
+
+            public FarFieldScatteredEnergyComponents CalculateFarFieldScatteredEnergy(int angleSamples = 720, int plateSamples = 400)
             {
-                double incidentFlux = EnergyFlux(uIncident, duIncidentDn);
-                double totalFlux = EnergyFlux(uTotal, duTotalDn);
-                Compl uScattered = uTotal - uIncident;
-                Compl duScatteredDn = duTotalDn - duIncidentDn;
-                double scatteredFlux = EnergyFlux(uScattered, duScatteredDn);
+                if (angleSamples < 16) throw new ArgumentOutOfRangeException(nameof(angleSamples));
+                if (plateSamples < 16) throw new ArgumentOutOfRangeException(nameof(plateSamples));
 
-                if (incidentFlux < -sideEps)
+                double k = 2 * Math.PI / lambda;
+                double dPhi = 2.0 * Math.PI / angleSamples;
+                double incidentSideZ = Math.Sin(teta) >= 0.0 ? 1.0 : -1.0;
+                FarFieldScatteredEnergyComponents result = new FarFieldScatteredEnergyComponents();
+
+                for (int i = 0; i < angleSamples; i++)
                 {
-                    flux.Incident += -incidentFlux * ds;
-                    if (scatteredFlux > sideEps)
-                        flux.Reflected += scatteredFlux * ds;
+                    double phi = (i + 0.5) * dPhi;
+                    double nx = Math.Cos(phi);
+                    double nz = Math.Sin(phi);
+                    Compl integral = FarFieldCurrentIntegral(k, nx, plateSamples);
+                    double abs2 = integral.Re * integral.Re + integral.Im * integral.Im;
+                    double density = abs2 / (16.0 * Math.PI);
+                    double energy = density * dPhi;
+
+                    if (Math.Abs(nz) < 1e-12 || nz * incidentSideZ > 0.0)
+                        result.ReflectedScattered += energy;
+                    else
+                        result.TransmittedScattered += energy;
                 }
-                else if (incidentFlux > sideEps)
-                {
-                    if (totalFlux > sideEps)
-                        flux.Transmitted += totalFlux * ds;
-                }
-                else
-                {
-                    if (totalFlux > sideEps)
-                        flux.Transmitted += totalFlux * ds;
-                }
+
+                result.TotalScattered = result.ReflectedScattered + result.TransmittedScattered;
+                return result;
             }
 
+            private Compl FarFieldCurrentIntegral(double k, double directionX, int plateSamples)
+            {
+                Compl sum = new Compl(0, 0);
+                for (int plateIndex = 0; plateIndex < PlateCount; plateIndex++)
+                {
+                    double dx = (beta[plateIndex] - alpha[plateIndex]) / plateSamples;
+                    for (int m = 0; m < plateSamples; m++)
+                    {
+                        double x = alpha[plateIndex] + (m + 0.5) * dx;
+                        Compl phase = Compl.Exp(ci * k * directionX * x);
+                        sum += CurrentDensity(x) * phase * dx;
+                    }
+                }
+                return sum;
+            }
             public Compl CurrentDensity(double x)
             {
                 int plateIndex = GetPlateIndex(x);
@@ -991,24 +1027,21 @@ namespace Diffraction.Core
                 return phi;
             }
 
+            public Compl NormalDerivativeAbove(double x)
+            {
+                double k = 2.0 * Math.PI / lambda;
+                return ci * k * Math.Sin(teta) * u0(x, 0.0) + CurrentDensity(x) / 2.0;
+            }
+
+            public Compl NormalDerivativeBelow(double x)
+            {
+                double k = 2.0 * Math.PI / lambda;
+                return ci * k * Math.Sin(teta) * u0(x, 0.0) - CurrentDensity(x) / 2.0;
+            }
+
             public double CalculateTransmittedThroughStrip()
             {
-                double k = 2 * Math.PI / lambda;
-                const int M = 200;
-                double sum = 0;
-                for (int plateIndex = 0; plateIndex < PlateCount; plateIndex++)
-                {
-                    double dx = (beta[plateIndex] - alpha[plateIndex]) / M;
-                    for (int m = 1; m < M; m++)
-                    {
-                        double x = alpha[plateIndex] + m * dx;
-                        Compl u_val = u_on_strip(x), Jx = GetJphys(x);
-                        Compl du_dz_below = ci * k * Math.Sin(teta) * u0(x, 0) + Jx / 2.0;
-                        Compl du_conj = new Compl(du_dz_below.Re, -du_dz_below.Im);
-                        sum += -0.5 * (u_val * du_conj).Re * dx;
-                    }
-                }
-                return sum * k / (2.0 * Math.PI);
+                return CalculatePlateFluxComponents().OppositeSideOutgoing;
             }
 
             public Compl GetJphys(double x)
@@ -1025,7 +1058,7 @@ namespace Diffraction.Core
             public double VerifyBoundaryConditions()
             {
                 int M = 40;
-                double sumErr = 0, k_wave = 2 * Math.PI / lambda;
+                double sumErr = 0;
                 int count = 0;
                 for (int plateIndex = 0; plateIndex < PlateCount; plateIndex++)
                 {
@@ -1033,10 +1066,8 @@ namespace Diffraction.Core
                     for (int i = 1; i < M; i++)
                     {
                         double x = alpha[plateIndex] + i * dx;
-                        Compl u0Boundary = BoundaryIncident(plateIndex, x, 0);
-                        Compl u_val = u(x, 0), du0_dz = ci * k_wave * Math.Sin(teta) * u0(x, 0), J_val = CurrentDensity(x);
-                        Compl du_total = du0_dz - J_val / 2.0, bc_val = u_val + boundaryChi * du_total;
-                        double scale = Compl.Abs(u0Boundary); if (scale < 0.01) scale = 0.01;
+                        Compl bc_val = u_on_strip(x) - sheetCoefficient * CurrentDensity(x);
+                        double scale = Compl.Abs(u0(x, 0)); if (scale < 0.01) scale = 0.01;
                         sumErr += Compl.Abs(bc_val) / scale; count++;
                     }
                 }
@@ -1055,37 +1086,60 @@ namespace Diffraction.Core
             public double CalculateAbsorbedEnergy()
             {
                 if (skinDepth <= 0) return 0;
-                double k = 2 * Math.PI / lambda, sum = 0;
-                const int M = 200;
+                double sum = 0;
+                const int M = 400;
                 for (int plateIndex = 0; plateIndex < PlateCount; plateIndex++)
                 {
                     double dx = (beta[plateIndex] - alpha[plateIndex]) / M;
-                    for (int m = 1; m < M; m++)
+                    for (int m = 0; m < M; m++)
                     {
-                        double x = alpha[plateIndex] + m * dx;
-                        Compl Jx = CurrentDensity(x), du_dn = ci * k * Math.Sin(teta) * u0(x, 0) - Jx / 2.0;
-                        double du_dn_abs2 = du_dn.Re * du_dn.Re + du_dn.Im * du_dn.Im;
-                        sum += 0.5 * boundaryChi.Re * du_dn_abs2 * dx;
+                        double x = alpha[plateIndex] + (m + 0.5) * dx;
+                        Compl current = CurrentDensity(x);
+                        double currentAbs2 = current.Re * current.Re + current.Im * current.Im;
+                        sum += -0.5 * sheetCoefficient.Im * currentAbs2 * dx;
                     }
                 }
-                return sum * k / (2.0 * Math.PI);
+                return sum;
+            }
+
+
+            public double CalculateAbsorbedEnergyByBoundaryValue()
+            {
+                if (skinDepth <= 0) return 0;
+                double coefficientAbs2 = sheetCoefficient.Re * sheetCoefficient.Re + sheetCoefficient.Im * sheetCoefficient.Im;
+                if (coefficientAbs2 < 1e-30) return 0;
+                double admittanceLoss = -sheetCoefficient.Im / coefficientAbs2;
+                double sum = 0;
+                const int M = 400;
+                for (int plateIndex = 0; plateIndex < PlateCount; plateIndex++)
+                {
+                    double dx = (beta[plateIndex] - alpha[plateIndex]) / M;
+                    for (int m = 0; m < M; m++)
+                    {
+                        double x = alpha[plateIndex] + (m + 0.5) * dx;
+                        Compl uValue = u_on_strip(x);
+                        double uAbs2 = uValue.Re * uValue.Re + uValue.Im * uValue.Im;
+                        sum += 0.5 * admittanceLoss * uAbs2 * dx;
+                    }
+                }
+                return sum;
             }
 
             public void VerifyEnergyConservation()
             {
-                EnergyComponents energy = CalculateEnergyComponents();
+                EnergyComponents energy = CalculateEnergyComponents(includeContourDiagnostic: true);
                 double total = energy.Reflected + energy.Transmitted + energy.Absorbed;
-                Console.WriteLine("Energy Balance Check:");
-                if (energy.WasRenormalized) Console.WriteLine("  ⚠ Note: energies were renormalized due to numerical errors");
+                Console.WriteLine("Energy balance on the plate:");
                 Console.WriteLine(string.Format("  Incident:    {0:F6} (100%)", energy.Incident));
-                Console.WriteLine(string.Format("  Reflected:   {0:F6} ({1:P2})", energy.Reflected, energy.Reflected / energy.Incident));
-                Console.WriteLine(string.Format("  Transmitted: {0:F6} ({1:P2})", energy.Transmitted, energy.Transmitted / energy.Incident));
-                Console.WriteLine(string.Format("  Absorbed:    {0:F6} ({1:P2})", energy.Absorbed, energy.Absorbed / energy.Incident));
+                Console.WriteLine(string.Format("  Reflected (net): {0:F6}", energy.Reflected));
+                Console.WriteLine(string.Format("  Transmitted:     {0:F6}", energy.Transmitted));
+                Console.WriteLine(string.Format("  Absorbed:        {0:F6}", energy.Absorbed));
                 Console.WriteLine(string.Format("  Total:       {0:F6}", total));
-                double error = Math.Abs(energy.Incident - total), relError = error / energy.Incident;
-                Console.WriteLine(string.Format("  Error:       {0:E6} ({1:P2})", error, relError));
-                if (relError < 0.05) Console.WriteLine("  ✓ Energy conservation verified!");
-                else Console.WriteLine("  ⚠ Warning: significant energy imbalance");
+                double error = Math.Abs(energy.LocalBalanceResidual);
+                double relError = energy.Incident > 0.0 ? error / energy.Incident : double.NaN;
+                Console.WriteLine(string.Format("  Above/below flux: {0:F6} / {1:F6}", energy.AboveFlux, energy.BelowFlux));
+                Console.WriteLine(string.Format("  Local residual:   {0:E6} ({1:P2})", error, relError));
+                Console.WriteLine(string.Format("  Closed-contour residual: {0:E6}", energy.SignedContourResidual));
             }
 
             public void TestConvergence()
