@@ -1,7 +1,8 @@
 <UserControl x:Class="Diffraction.WpfPrototype.Views.AboutView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <StackPanel MaxWidth="760" HorizontalAlignment="Left">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+    <StackPanel MaxWidth="760" HorizontalAlignment="Stretch">
         <TextBlock FontSize="18" FontWeight="SemiBold" Text="О программе" />
         <TextBlock Margin="0,4,0,16" Style="{StaticResource CaptionStyle}" Text="Решатель дифракции электромагнитной волны на тонкой пластине." />
         <Border Style="{StaticResource PanelBorderStyle}" Padding="18">
@@ -26,4 +27,5 @@
             </Grid>
         </Border>
     </StackPanel>
+    </ScrollViewer>
 </UserControl>

@@ -9,6 +9,7 @@
                 <ResourceDictionary Source="Themes/Styles.xaml" />
             </ResourceDictionary.MergedDictionaries>
             <infra:SectionVisibilityConverter x:Key="SectionVisibilityConverter" />
+            <infra:SectionSelectionConverter x:Key="SectionSelectionConverter" />
             <infra:InverseBooleanToVisibilityConverter x:Key="InverseBooleanToVisibilityConverter" />
             <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
         </ResourceDictionary>

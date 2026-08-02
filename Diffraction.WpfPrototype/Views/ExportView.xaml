@@ -2,15 +2,21 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:controls="clr-namespace:Diffraction.WpfPrototype.Controls">
-    <Grid MaxWidth="1080" HorizontalAlignment="Stretch">
+    <Grid x:Name="ExportRoot" MaxWidth="1080" HorizontalAlignment="Stretch">
         <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
         <StackPanel Margin="2,0,0,12">
             <TextBlock FontSize="18" FontWeight="SemiBold" Text="Экспорт результатов" />
             <TextBlock Margin="0,4,0,0" Style="{StaticResource CaptionStyle}" Text="Единый пакет сохраняет данные, изображения и условия воспроизводимости расчёта." />
         </StackPanel>
-        <Grid Grid.Row="1">
-            <Grid.ColumnDefinitions><ColumnDefinition Width="340" /><ColumnDefinition Width="12" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-            <Border Grid.Column="0" Style="{StaticResource PanelBorderStyle}" Padding="16">
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <Grid x:Name="ExportContentGrid" MinHeight="560">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+                <RowDefinition x:Name="ExportGapRow" Height="0" />
+                <RowDefinition x:Name="ExportPreviewRow" Height="0" />
+            </Grid.RowDefinitions>
+            <Grid.ColumnDefinitions><ColumnDefinition x:Name="ExportOptionsColumn" Width="340" /><ColumnDefinition x:Name="ExportGapColumn" Width="12" /><ColumnDefinition x:Name="ExportPreviewColumn" Width="*" /></Grid.ColumnDefinitions>
+            <Border Grid.Column="0" x:Name="ExportOptionsPanel" Style="{StaticResource PanelBorderStyle}" Padding="16">
                 <StackPanel>
                     <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Содержимое пакета" />
                     <CheckBox Margin="0,15,0,0" IsChecked="True" Content="CSV — точки графиков и таблиц" />
@@ -24,7 +30,7 @@
                     <Button Margin="0,18,0,0" Style="{StaticResource PrimaryButtonStyle}" Command="{Binding ExportCommand}" Content="Сохранить пакет" />
                 </StackPanel>
             </Border>
-            <Border Grid.Column="2" Style="{StaticResource PanelBorderStyle}" Padding="14">
+            <Border Grid.Column="2" x:Name="ExportPreviewPanel" Style="{StaticResource PanelBorderStyle}" Padding="14">
                 <Grid>
                     <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                     <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Предварительный просмотр" />
@@ -34,5 +40,6 @@
                 </Grid>
             </Border>
         </Grid>
+        </ScrollViewer>
     </Grid>
 </UserControl>

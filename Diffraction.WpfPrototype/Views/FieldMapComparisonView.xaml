@@ -2,14 +2,21 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:controls="clr-namespace:Diffraction.WpfPrototype.Controls">
-    <Grid Margin="12">
+    <ScrollViewer x:Name="ComparisonScroll"
+                  VerticalScrollBarVisibility="Auto"
+                  HorizontalScrollBarVisibility="Disabled">
+    <Grid x:Name="ComparisonGrid" Margin="12" MinHeight="620">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="2.2*" />
-            <RowDefinition Height="1*" />
+            <RowDefinition x:Name="MapsMainRow" Height="2.2*" />
+            <RowDefinition x:Name="DifferenceRow" Height="1*" />
         </Grid.RowDefinitions>
 
-        <Grid Grid.Row="0" Margin="0,0,0,9">
+        <Grid Grid.Row="0" x:Name="HeaderGrid" Margin="0,0,0,9">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition x:Name="CompactHeaderControlRow" Height="0" />
+            </Grid.RowDefinitions>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
@@ -21,13 +28,18 @@
             <CheckBox Grid.Column="1" x:Name="LinkCursorsCheckBox" IsChecked="True" VerticalAlignment="Center" Content="Связать курсоры" />
         </Grid>
 
-        <Grid Grid.Row="1">
+        <Grid Grid.Row="1" x:Name="MapsGrid">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+                <RowDefinition x:Name="MapsGapRow" Height="0" />
+                <RowDefinition x:Name="SkinMapRow" Height="0" />
+            </Grid.RowDefinitions>
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="10" />
-                <ColumnDefinition Width="*" />
+                <ColumnDefinition x:Name="IdealMapColumn" Width="*" />
+                <ColumnDefinition x:Name="MapsGapColumn" Width="10" />
+                <ColumnDefinition x:Name="SkinMapColumn" Width="*" />
             </Grid.ColumnDefinitions>
-            <Border Grid.Column="0" Style="{StaticResource PanelBorderStyle}" Padding="10">
+            <Border Grid.Column="0" x:Name="IdealPanel" Style="{StaticResource PanelBorderStyle}" Padding="10">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -39,7 +51,7 @@
                     <TextBlock Grid.Row="2" Style="{StaticResource CaptionStyle}" Text="Опорное поле для идеально проводящей тонкой пластины." />
                 </Grid>
             </Border>
-            <Border Grid.Column="2" Style="{StaticResource PanelBorderStyle}" Padding="10">
+            <Border Grid.Column="2" x:Name="SkinPanel" Style="{StaticResource PanelBorderStyle}" Padding="10">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -53,7 +65,7 @@
             </Border>
         </Grid>
 
-        <Border Grid.Row="2" Margin="0,10,0,0" Style="{StaticResource PanelBorderStyle}" Padding="10">
+        <Border Grid.Row="2" x:Name="DifferencePanel" Margin="0,10,0,0" Style="{StaticResource PanelBorderStyle}" Padding="10">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -66,4 +78,5 @@
             </Grid>
         </Border>
     </Grid>
+    </ScrollViewer>
 </UserControl>
