@@ -40,7 +40,11 @@
                             BorderBrush="#344054"
                             BorderThickness="1"
                             CornerRadius="4">
-                        <ContentPresenter TextElement.Foreground="{TemplateBinding Foreground}" />
+                        <TextBlock Foreground="White"
+                                   FontSize="12"
+                                   LineHeight="17"
+                                   Text="{TemplateBinding Content}"
+                                   TextWrapping="Wrap" />
                     </Border>
                 </ControlTemplate>
             </Setter.Value>
