@@ -21,6 +21,7 @@ bld/
 # MSTest test Results
 [Tt]est[Rr]esult*/
 [Bb]uild[Ll]og.*
+/artifacts/
 
 # Files built by Visual Studio
 *.exe

@@ -1,0 +1,35 @@
+name: Numerical validation
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Run numerical and reporting validation
+        shell: pwsh
+        run: .\scripts\run_validation.ps1 -Configuration Release -OutputDirectory .\artifacts\validation
+
+      - name: Upload validation reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: validation-reports
+          path: artifacts/validation
+          if-no-files-found: warn

@@ -904,8 +904,8 @@ namespace Diffraction
             public string CoefficientsText;
             public string ConductivityText;
             public Color ConductivityColor;
-            public AccuracyReport NoSkinReport;
-            public AccuracyReport SkinReport;
+            public EnergyDiagnosticsReport NoSkinReport;
+            public EnergyDiagnosticsReport SkinReport;
             public GraphImagePair Images;
             public MethodComparisonResult MethodComparison;
             public GalerkinCoefficientResult GalerkinCoefficients;
@@ -938,13 +938,6 @@ namespace Diffraction
         {
             public DifrOnLenta NoSkinSolver;
             public DifrOnLenta SkinSolver;
-        }
-
-        private class AccuracyReport
-        {
-            public string Message;
-            public string Title;
-            public MessageBoxIcon Icon;
         }
 
         private bool TryReadCalculationInput(out PlateCalculationInput input)
@@ -1625,9 +1618,9 @@ namespace Diffraction
                 textBoxDiagnostics.Text = diagnosticText;
 
             bool hasWarning = false;
-            if (result.NoSkinReport != null && result.NoSkinReport.Icon == MessageBoxIcon.Warning)
+            if (result.NoSkinReport != null && result.NoSkinReport.HasWarning)
                 hasWarning = true;
-            if (result.SkinReport != null && result.SkinReport.Icon == MessageBoxIcon.Warning)
+            if (result.SkinReport != null && result.SkinReport.HasWarning)
                 hasWarning = true;
 
             if (hasWarning)
@@ -1650,188 +1643,16 @@ namespace Diffraction
             }
         }
 
-        private static string BuildDiagnosticText(AccuracyReport noSkinReport, AccuracyReport skinReport)
+        private static string BuildDiagnosticText(
+            EnergyDiagnosticsReport noSkinReport,
+            EnergyDiagnosticsReport skinReport)
         {
-            StringBuilder builder = new StringBuilder();
-
-            AppendReport(builder, noSkinReport);
-            if (noSkinReport != null && skinReport != null)
-                builder.AppendLine();
-            AppendReport(builder, skinReport);
-
-            return builder.Length == 0
-                ? "Подробная диагностика отсутствует."
-                : builder.ToString();
+            return EnergyDiagnosticsReportBuilder.Compose(noSkinReport, skinReport);
         }
 
-        private static void AppendReport(StringBuilder builder, AccuracyReport report)
+        private EnergyDiagnosticsReport BuildAccuracyReport(DifrOnLenta solver, double skinDepth, string caseName)
         {
-            if (report == null)
-                return;
-
-            builder.AppendLine(report.Title);
-            builder.AppendLine(new string('=', report.Title.Length));
-            builder.AppendLine(report.Message.Trim());
-        }
-
-        // Новый метод для отображения отчета о точности
-        private AccuracyReport BuildAccuracyReport(DifrOnLenta solver, double skinDepth, string caseName)
-        {
-            var energy = solver.CalculateEnergyComponents(includeContourDiagnostic: true);
-            var farField = solver.CalculateFarFieldScatteredEnergy(360, Math.Max(8 * solver.N, 80));
-            var scatteredSheet = solver.CalculateScatteredSheetFluxComponents();
-
-            double incident = energy.Incident;
-            double absorbedByField = skinDepth > 0 ? solver.CalculateAbsorbedEnergyByBoundaryValue() : 0.0;
-            double absorbedDifference = Math.Abs(energy.Absorbed - absorbedByField);
-            bool referenceValid = incident >= 1e-8;
-            Func<double, string> percentText = value =>
-                (double.IsNaN(value) || double.IsInfinity(value)) ? "н/д" : string.Format("{0:P2}", value);
-
-            double absorbedFraction = referenceValid ? energy.Absorbed / incident : double.NaN;
-            double absorbedByFieldFraction = referenceValid ? absorbedByField / incident : double.NaN;
-            double absorbedDifferenceFraction = referenceValid ? absorbedDifference / incident : double.NaN;
-            double fluxAbsorbedFraction = referenceValid ? energy.FluxAbsorbed / incident : double.NaN;
-            double incomingFraction = referenceValid ? energy.IncidentSideIncoming / incident : double.NaN;
-            double outgoingFraction = referenceValid ? energy.OppositeSideSignedFlux / incident : double.NaN;
-            double incidentSideDeficitFraction = referenceValid ? energy.IncidentSideDeficit / incident : double.NaN;
-            double localResidualFraction = referenceValid ? Math.Abs(energy.LocalBalanceResidual) / incident : double.NaN;
-            double contourResidualFraction = referenceValid ? Math.Abs(energy.SignedContourResidual) / incident : double.NaN;
-            double farReflectedFraction = referenceValid ? farField.ReflectedScattered / incident : double.NaN;
-            double farTransmittedFraction = referenceValid ? farField.TransmittedScattered / incident : double.NaN;
-            double farTotalFraction = referenceValid ? farField.TotalScattered / incident : double.NaN;
-            double farMismatchFraction = referenceValid
-                ? Math.Abs(farField.ReflectedScattered - farField.TransmittedScattered) / incident
-                : double.NaN;
-            double sheetAboveFraction = referenceValid ? scatteredSheet.AboveOutgoing / incident : double.NaN;
-            double sheetBelowFraction = referenceValid ? scatteredSheet.BelowOutgoing / incident : double.NaN;
-            double sheetMismatchFraction = referenceValid ? scatteredSheet.AbsoluteMismatch / incident : double.NaN;
-            double localTotal = energy.IncidentSideDeficit + energy.OppositeSideSignedFlux + energy.Absorbed;
-            double localTotalFraction = referenceValid ? localTotal / incident : double.NaN;
-
-            double bcError = solver.VerifyBoundaryConditions();
-            double helmholtzError = solver.VerifyHelmholtz();
-            bool absorptionFormsAgree = skinDepth <= 0 || !referenceValid || absorbedDifferenceFraction < 0.08;
-            bool localBalanceOk = referenceValid && localResidualFraction < 0.02;
-            bool contourBalanceOk = referenceValid && contourResidualFraction < 0.03;
-            bool scatteringSymmetryOk = !referenceValid || (farMismatchFraction < 1e-8 && sheetMismatchFraction < 1e-8);
-            bool scatteredEnergyNonNegative = farField.ReflectedScattered >= -1e-12 && farField.TransmittedScattered >= -1e-12;
-
-            StringBuilder message = new StringBuilder();
-            message.AppendLine("=== КОНТРОЛЬ ТОЧНОСТИ РЕШЕНИЯ ===");
-            message.AppendLine("=== " + caseName + " ===");
-            message.AppendLine();
-
-            message.AppendLine("1. Граничное условие тонкого листа:");
-            if (skinDepth <= 0)
-            {
-                message.AppendLine(string.Format("   Невязка u = 0: {0:P2}", bcError));
-            }
-            else
-            {
-                message.AppendLine(string.Format("   Невязка u - qJ = 0: {0:P2}", bcError));
-                message.AppendLine(string.Format("   Zs = {0:F6} + {1:F6}i Ом", solver.chi.Re, solver.chi.Im));
-                message.AppendLine(string.Format("   q = {0:F6} + {1:F6}i", solver.SheetCoefficient.Re, solver.SheetCoefficient.Im));
-            }
-            message.AppendLine(bcError < 0.05
-                ? "   OK: граничное условие выполнено."
-                : "   ВНИМАНИЕ: увеличьте N и проверьте сходимость.");
-            message.AppendLine();
-
-            message.AppendLine("2. Уравнение Гельмгольца:");
-            message.AppendLine(string.Format("   Относительная невязка вне пластин: {0:E2}", helmholtzError));
-            message.AppendLine(helmholtzError < 1e-3
-                ? "   OK: уравнение выполнено."
-                : "   ВНИМАНИЕ: проверьте квадратуру поля.");
-            message.AppendLine();
-
-            message.AppendLine("3. Энергии рассеянного поля (основной результат):");
-            message.AppendLine(string.Format("   Отражённая R_scat:              {0:F6} ({1} от I)",
-                farField.ReflectedScattered, percentText(farReflectedFraction)));
-            message.AppendLine(string.Format("   Прошедшая рассеянная T_scat:    {0:F6} ({1} от I)",
-                farField.TransmittedScattered, percentText(farTransmittedFraction)));
-            message.AppendLine(string.Format("   Суммарное рассеяние:            {0:F6} ({1} от I)",
-                farField.TotalScattered, percentText(farTotalFraction)));
-            message.AppendLine(string.Format("   |R_scat - T_scat| / I:          {0}", percentText(farMismatchFraction)));
-            message.AppendLine(string.Format("   Поток рассеяния вверх у листа:  {0:F6} ({1} от I)",
-                scatteredSheet.AboveOutgoing, percentText(sheetAboveFraction)));
-            message.AppendLine(string.Format("   Поток рассеяния вниз у листа:   {0:F6} ({1} от I)",
-                scatteredSheet.BelowOutgoing, percentText(sheetBelowFraction)));
-            message.AppendLine(string.Format("   Расхождение потоков у листа:    {0:E6} ({1} от I)",
-                scatteredSheet.AbsoluteMismatch, percentText(sheetMismatchFraction)));
-            message.AppendLine(scatteringSymmetryOk && scatteredEnergyNonNegative
-                ? "   OK: рассеянные потоки сверху и снизу неотрицательны и совпадают."
-                : "   ВНИМАНИЕ: нарушена симметрия рассеяния тонкого листа.");
-            message.AppendLine("   T_scat - поле, излучённое током вперёд; это не полный поток падающей волны за листом.");
-            message.AppendLine();
-
-            message.AppendLine("4. ЗСЭ по полным знаковым потокам на пластинах:");
-            message.AppendLine("   I считается только по проекции пластин: 0.5*k*|sin(theta)|*sum(L).");
-            message.AppendLine(string.Format("   Падающий поток I:               {0:F6} (100.00%)", incident));
-            if (!referenceValid)
-                message.AppendLine("   При скользящем падении sin(theta)=0, поэтому нормированные доли не определены.");
-            message.AppendLine(string.Format("   Полный Fz сверху (знаковый):    {0:F6}", energy.AboveFlux));
-            message.AppendLine(string.Format("   Полный Fz снизу (знаковый):     {0:F6}", energy.BelowFlux));
-            message.AppendLine(string.Format("   Вход со стороны падения:        {0:F6} ({1})",
-                energy.IncidentSideIncoming, percentText(incomingFraction)));
-            message.AppendLine(string.Format("   Знаковый поток с другой стороны:{0:F6} ({1})",
-                energy.OppositeSideSignedFlux, percentText(outgoingFraction)));
-            message.AppendLine(string.Format("   Дефицит входа D = I - вход:     {0:F6} ({1})",
-                energy.IncidentSideDeficit, percentText(incidentSideDeficitFraction)));
-
-            if (skinDepth > 0)
-            {
-                message.AppendLine(string.Format("   A_J по поверхностному току:     {0:F6} ({1})",
-                    energy.Absorbed, percentText(absorbedFraction)));
-                message.AppendLine(string.Format("   A_u по полю на листе:           {0:F6} ({1})",
-                    absorbedByField, percentText(absorbedByFieldFraction)));
-                message.AppendLine(string.Format("   A_flux = вход - выход:          {0:F6} ({1})",
-                    energy.FluxAbsorbed, percentText(fluxAbsorbedFraction)));
-                message.AppendLine(string.Format("   |A_J - A_u| / I:                {0}", percentText(absorbedDifferenceFraction)));
-            }
-            else
-            {
-                message.AppendLine("   Поглощение A:                   0.000000 (0.00%)");
-            }
-
-            message.AppendLine(new string('-', 62));
-            message.AppendLine(string.Format("   D + поток_другой_стороны + A_J: {0:F6} ({1})",
-                localTotal, percentText(localTotalFraction)));
-            message.AppendLine(string.Format("   Локальная невязка A_flux-A_J:   {0:E6} ({1})",
-                energy.LocalBalanceResidual, percentText(localResidualFraction)));
-            message.AppendLine(localBalanceOk
-                ? "   OK: верхний и нижний потоки согласованы с поглощением."
-                : "   ВНИМАНИЕ: локальный баланс требует проверки сетки и N.");
-            message.AppendLine("   Отрицательный знаковый поток здесь допустим и не является отрицательной T_scat.");
-            message.AppendLine();
-
-            message.AppendLine("5. Независимый замкнутый контур:");
-            message.AppendLine(string.Format("   Интеграл полного потока:        {0:E6}", energy.SignedContourFlux));
-            message.AppendLine(string.Format("   Интеграл потока + A_J:          {0:E6} ({1} от I)",
-                energy.SignedContourResidual, percentText(contourResidualFraction)));
-            message.AppendLine(contourBalanceOk
-                ? "   OK: глобальный знаковый баланс замыкается."
-                : "   ВНИМАНИЕ: уточните квадратуру контрольного контура.");
-            message.AppendLine();
-
-            message.AppendLine("Примечание:");
-            message.AppendLine("   Для конечной пластины полный прошедший поток содержит падающее поле и интерференцию.");
-            message.AppendLine("   Поэтому он не равен T_scat и не сравнивается с R_scat как отдельная энергия рассеяния.");
-            message.AppendLine("   Нормировка на геометрическую проекцию может дать рассеяние больше 100%: это сечение, а не вероятность.");
-
-            bool localChecksOk = bcError < 0.10 && helmholtzError < 1e-3;
-            bool allChecksOk = localChecksOk && scatteringSymmetryOk && scatteredEnergyNonNegative
-                && (!referenceValid || (localBalanceOk && contourBalanceOk && absorptionFormsAgree));
-            string title = skinDepth <= 0
-                ? "Контроль точности (идеальный проводник)"
-                : "Контроль точности (тонкий импедансный лист)";
-
-            return new AccuracyReport
-            {
-                Message = message.ToString(),
-                Title = title,
-                Icon = allChecksOk ? MessageBoxIcon.Information : MessageBoxIcon.Warning
-            };
+            return EnergyDiagnosticsReportBuilder.Build(solver, skinDepth, caseName);
         }
 
         private async void button2_Click(object sender, EventArgs e)
