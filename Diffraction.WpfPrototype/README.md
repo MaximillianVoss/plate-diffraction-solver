@@ -4,6 +4,8 @@
 
 ## Запуск
 
+При открытии `Diffraction.sln` общий профиль `WPF Prototype` запускает этот проект по `F5` или `Ctrl+F5`.
+
 ```powershell
 dotnet run --project Diffraction.WpfPrototype
 ```

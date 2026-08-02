@@ -3,6 +3,8 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.13.35913.81
 MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Diffraction.WpfPrototype", "Diffraction.WpfPrototype\Diffraction.WpfPrototype.csproj", "{5AB52380-7CA5-467E-8874-9CD9EF581142}"
+EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Diffraction", "Diffraction.csproj", "{DD26AD89-854D-4254-AEF8-3BE7B0DBD149}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Diffraction.Core", "Diffraction.Core\Diffraction.Core.csproj", "{1373088A-1620-4EC0-B063-33A592F52EC1}"
@@ -15,8 +17,6 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Diffraction.Cuda", "Diffrac
 		Diffraction.Cuda\build_cuda.ps1 = Diffraction.Cuda\build_cuda.ps1
 		Diffraction.Cuda\src\DiffractionCuda.cu = Diffraction.Cuda\src\DiffractionCuda.cu
 	EndProjectSection
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Diffraction.WpfPrototype", "Diffraction.WpfPrototype\Diffraction.WpfPrototype.csproj", "{5AB52380-7CA5-467E-8874-9CD9EF581142}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

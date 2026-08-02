@@ -1,0 +1,11 @@
+[
+  {
+    "Name": "WPF Prototype",
+    "Projects": [
+      {
+        "Path": "Diffraction.WpfPrototype\\Diffraction.WpfPrototype.csproj",
+        "Action": "Start"
+      }
+    ]
+  }
+]
