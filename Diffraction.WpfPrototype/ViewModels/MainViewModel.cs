@@ -70,6 +70,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ICollectionView CoefficientsView { get; }
 
     public IReadOnlyList<string> Backends { get; } = new[] { "Авто", "CPU", "CUDA" };
+    public IReadOnlyList<string> Modes { get; } = new[] { "Один расчёт", "Серия" };
     public IReadOnlyList<string> FluxCategories { get; } = new[] { "Все показатели", "Энергия", "Потоки", "Баланс" };
 
     public ICommand NavigateCommand { get; }
@@ -150,6 +151,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             if (!SetProperty(ref _isSingleMode, value))
                 return;
             OnPropertyChanged(nameof(IsSeriesMode));
+            OnPropertyChanged(nameof(SelectedMode));
         }
     }
 
@@ -159,6 +161,18 @@ public sealed class MainViewModel : INotifyPropertyChanged
         set
         {
             if (value)
+                IsSingleMode = false;
+        }
+    }
+
+    public string SelectedMode
+    {
+        get => IsSingleMode ? Modes[0] : Modes[1];
+        set
+        {
+            if (value == Modes[0])
+                IsSingleMode = true;
+            else if (value == Modes[1])
                 IsSingleMode = false;
         }
     }
@@ -318,11 +332,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         return new[]
         {
-            new FluxRow { Category = "Энергия", Metric = "Отражение R", Top = 0.629, Bottom = 0.625, DifferencePercent = 0.64, TolerancePercent = 1.0, Status = "В допуске" },
-            new FluxRow { Category = "Энергия", Metric = "Прохождение T", Top = 0.251, Bottom = 0.250, DifferencePercent = 0.40, TolerancePercent = 1.0, Status = "В допуске" },
-            new FluxRow { Category = "Энергия", Metric = "Поглощение A", Top = 0.121, Bottom = 0.120, DifferencePercent = 0.83, TolerancePercent = 1.0, Status = "В допуске" },
+            new FluxRow { Category = "Энергия", Metric = "R_scat (обратно)", Top = 0.629, Bottom = 0.625, DifferencePercent = 0.64, TolerancePercent = 1.0, Status = "В допуске" },
+            new FluxRow { Category = "Энергия", Metric = "T_scat (вперёд)", Top = 0.251, Bottom = 0.250, DifferencePercent = 0.40, TolerancePercent = 1.0, Status = "В допуске" },
+            new FluxRow { Category = "Энергия", Metric = "A_J (пластина)", Top = 0.121, Bottom = 0.120, DifferencePercent = 0.83, TolerancePercent = 1.0, Status = "В допуске" },
             new FluxRow { Category = "Потоки", Metric = "Поток рассеяния", Top = 0.629, Bottom = 0.625, DifferencePercent = 0.64, TolerancePercent = 1.0, Status = "В допуске" },
-            new FluxRow { Category = "Баланс", Metric = "Баланс R+T+A", Top = 1.001, Bottom = 0.995, DifferencePercent = 0.60, TolerancePercent = 1.0, Status = "В допуске" }
+            new FluxRow { Category = "Баланс", Metric = "Локальный баланс ЗСЭ", Top = 1.001, Bottom = 0.995, DifferencePercent = 0.60, TolerancePercent = 1.0, Status = "В допуске" }
         };
     }
 

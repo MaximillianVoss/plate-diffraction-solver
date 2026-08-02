@@ -179,9 +179,9 @@ public sealed class ScientificPlot : FrameworkElement
             }),
             _ => (0, 0.1, 0, 1.05, "Толщина δ", "Доля падающей энергии", new[]
             {
-                new PlotSeries("Отражение R", Color.FromRgb(37, 99, 235), x => 0.63 - 0.15 * (1 - Math.Exp(-28 * x)), 2.3),
-                new PlotSeries("Прохождение T", Color.FromRgb(22, 163, 74), x => 0.25 - 0.015 * (1 - Math.Exp(-22 * x)), 2.3),
-                new PlotSeries("Поглощение A", Color.FromRgb(234, 88, 12), x => 1 - (0.63 - 0.15 * (1 - Math.Exp(-28 * x))) - (0.25 - 0.015 * (1 - Math.Exp(-22 * x))), 2.3)
+                new PlotSeries("R_scat обратно", Color.FromRgb(37, 99, 235), x => 0.63 - 0.15 * (1 - Math.Exp(-28 * x)), 2.3),
+                new PlotSeries("T_scat вперёд", Color.FromRgb(22, 163, 74), x => 0.25 - 0.015 * (1 - Math.Exp(-22 * x)), 2.3),
+                new PlotSeries("A_J пластина", Color.FromRgb(234, 88, 12), x => 0.12 + 0.16 * (1 - Math.Exp(-20 * x)), 2.3)
             })
         };
     }

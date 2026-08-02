@@ -25,13 +25,23 @@
             </StackPanel>
 
             <StackPanel Grid.Column="1" Margin="18,0,0,0" Orientation="Horizontal" VerticalAlignment="Center">
-                <TextBlock Margin="0,0,8,0" VerticalAlignment="Center" Style="{StaticResource CaptionStyle}" Text="Режим:" />
+                <controls:InfoLabel Margin="0,0,8,0"
+                                    VerticalAlignment="Center"
+                                    FontSize="11.5"
+                                    Foreground="{StaticResource TextMutedBrush}"
+                                    Text="Режим"
+                                    HelpText="Один расчёт использует текущий набор параметров; серия выполняет последовательность значений." />
                 <RadioButton GroupName="Mode" Style="{StaticResource SegmentRadioStyle}" IsChecked="{Binding IsSingleMode, Mode=TwoWay}" Content="Один расчёт" />
                 <RadioButton GroupName="Mode" Style="{StaticResource SegmentRadioStyle}" IsChecked="{Binding IsSeriesMode, Mode=TwoWay}" Content="Серия" />
             </StackPanel>
 
             <StackPanel Grid.Column="2" Margin="16,0,0,0" Orientation="Horizontal" VerticalAlignment="Center">
-                <TextBlock Margin="0,0,8,0" VerticalAlignment="Center" Style="{StaticResource CaptionStyle}" Text="Решатель:" />
+                <controls:InfoLabel Margin="0,0,8,0"
+                                    VerticalAlignment="Center"
+                                    FontSize="11.5"
+                                    Foreground="{StaticResource TextMutedBrush}"
+                                    Text="Решатель"
+                                    HelpText="Авто выбирает доступный вычислитель; CPU и CUDA задают его явно." />
                 <ComboBox Width="98" ItemsSource="{Binding Backends}" SelectedItem="{Binding SelectedBackend}" ToolTip="Выбор вычислительного backend" />
             </StackPanel>
 
@@ -58,12 +68,23 @@
                 <TextBlock FontSize="17" FontWeight="SemiBold" Text="Расчёт #024 — тонкая пластина" />
                 <TextBlock Margin="0,3,0,0" Style="{StaticResource CaptionStyle}" Text="λ 1 мкм  •  θ 45°  •  N 30" />
             </StackPanel>
-            <WrapPanel Grid.Row="1" Margin="0,8,0,0">
-                <TextBlock Margin="0,0,7,0" VerticalAlignment="Center" Style="{StaticResource CaptionStyle}" Text="Режим:" />
-                <RadioButton GroupName="CompactMode" Style="{StaticResource SegmentRadioStyle}" Padding="10,6" MinWidth="68" IsChecked="{Binding IsSingleMode, Mode=TwoWay}" Content="Один" />
-                <RadioButton GroupName="CompactMode" Style="{StaticResource SegmentRadioStyle}" Padding="10,6" MinWidth="68" IsChecked="{Binding IsSeriesMode, Mode=TwoWay}" Content="Серия" />
-                <TextBlock Margin="12,0,7,0" VerticalAlignment="Center" Style="{StaticResource CaptionStyle}" Text="Решатель:" />
-                <ComboBox Width="94" ItemsSource="{Binding Backends}" SelectedItem="{Binding SelectedBackend}" />
+            <WrapPanel Grid.Row="1" Margin="0,6,0,0">
+                <StackPanel Width="148" Margin="0,2,8,0">
+                    <controls:InfoLabel FontSize="11.5"
+                                        Foreground="{StaticResource TextMutedBrush}"
+                                        Text="Режим"
+                                        HelpText="Выберите одиночный расчёт или серию значений." />
+                    <ComboBox Margin="0,3,0,0"
+                              ItemsSource="{Binding Modes}"
+                              SelectedItem="{Binding SelectedMode, Mode=TwoWay}" />
+                </StackPanel>
+                <StackPanel Width="112" Margin="0,2,0,0">
+                    <controls:InfoLabel FontSize="11.5"
+                                        Foreground="{StaticResource TextMutedBrush}"
+                                        Text="Решатель"
+                                        HelpText="Авто выбирает доступный вычислитель; CPU и CUDA задают его явно." />
+                    <ComboBox Margin="0,3,0,0" ItemsSource="{Binding Backends}" SelectedItem="{Binding SelectedBackend}" />
+                </StackPanel>
             </WrapPanel>
             <WrapPanel Grid.Row="2" Margin="0,8,0,0">
                 <Button Margin="0,0,6,6" Style="{StaticResource PrimaryButtonStyle}" Padding="11,7" Command="{Binding RunCommand}">
@@ -103,43 +124,43 @@
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Grid.Column="0" Margin="0,0,7,0">
-                    <TextBlock Style="{StaticResource CaptionStyle}" Text="λ, мкм" />
+                    <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="λ, мкм" HelpText="Длина волны падающего поля в микрометрах." />
                     <TextBox Margin="0,4,0,0" Text="1,000" ToolTip="Нормированная длина волны" />
                 </StackPanel>
                 <StackPanel Grid.Column="1" Margin="0,0,7,0">
-                    <TextBlock Style="{StaticResource CaptionStyle}" Text="θ, °" />
+                    <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="θ, °" HelpText="Угол падения относительно нормали к пластине." />
                     <TextBox Margin="0,4,0,0" Text="45,0" ToolTip="Угол падения" />
                 </StackPanel>
                 <StackPanel Grid.Column="2" Margin="0,0,7,0">
-                    <TextBlock Style="{StaticResource CaptionStyle}" Text="α₁" />
+                    <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="α₁" HelpText="Левая координата границы пластины." />
                     <TextBox Margin="0,4,0,0" Text="-1,500" ToolTip="Левая граница пластины" />
                 </StackPanel>
                 <StackPanel Grid.Column="3" Margin="0,0,7,0">
-                    <TextBlock Style="{StaticResource CaptionStyle}" Text="β₁" />
+                    <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="β₁" HelpText="Правая координата границы пластины." />
                     <TextBox Margin="0,4,0,0" Text="-0,500" ToolTip="Правая граница пластины" />
                 </StackPanel>
                 <StackPanel Grid.Column="4" Margin="0,0,7,0">
-                    <TextBlock Style="{StaticResource CaptionStyle}" Text="N" />
+                    <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="N" HelpText="Порядок усечения ряда в численном решении." />
                     <TextBox Margin="0,4,0,0" Text="30" ToolTip="Параметр усечения" />
                 </StackPanel>
                 <StackPanel Grid.Column="5" Margin="0,0,7,0">
-                    <TextBlock Style="{StaticResource CaptionStyle}" Text="δ, мкм" />
+                    <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="δ, мкм" HelpText="Толщина скин-слоя пластины в микрометрах." />
                     <TextBox Margin="0,4,0,0" Text="0,010000" ToolTip="Толщина скин-слоя" />
                 </StackPanel>
                 <StackPanel Grid.Column="6" Margin="0,0,7,0">
-                    <TextBlock Style="{StaticResource CaptionStyle}" Text="xL" />
+                    <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="xL" HelpText="Левая граница области вывода по оси x." />
                     <TextBox Margin="0,4,0,0" Text="-2,00" />
                 </StackPanel>
                 <StackPanel Grid.Column="7" Margin="0,0,7,0">
-                    <TextBlock Style="{StaticResource CaptionStyle}" Text="xR" />
+                    <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="xR" HelpText="Правая граница области вывода по оси x." />
                     <TextBox Margin="0,4,0,0" Text="2,00" />
                 </StackPanel>
                 <StackPanel Grid.Column="8" Margin="0,0,7,0">
-                    <TextBlock Style="{StaticResource CaptionStyle}" Text="yDn" />
+                    <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="yDn" HelpText="Нижняя граница области вывода по оси y." />
                     <TextBox Margin="0,4,0,0" Text="-3,00" />
                 </StackPanel>
                 <StackPanel Grid.Column="9" Margin="0,0,7,0">
-                    <TextBlock Style="{StaticResource CaptionStyle}" Text="yUp" />
+                    <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="yUp" HelpText="Верхняя граница области вывода по оси y." />
                     <TextBox Margin="0,4,0,0" Text="3,00" />
                 </StackPanel>
                 <StackPanel Grid.Column="10" Margin="12,17,0,0" Orientation="Horizontal" VerticalAlignment="Center">
@@ -154,43 +175,43 @@
                           HorizontalScrollBarVisibility="Disabled">
                 <UniformGrid Columns="2" Margin="9,7,9,9">
                     <StackPanel Margin="3,3,5,5">
-                        <TextBlock Style="{StaticResource CaptionStyle}" Text="λ, мкм" />
+                        <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="λ, мкм" HelpText="Длина волны падающего поля в микрометрах." />
                         <TextBox Margin="0,4,0,0" Text="1,000" />
                     </StackPanel>
                     <StackPanel Margin="5,3,3,5">
-                        <TextBlock Style="{StaticResource CaptionStyle}" Text="θ, °" />
+                        <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="θ, °" HelpText="Угол падения относительно нормали к пластине." />
                         <TextBox Margin="0,4,0,0" Text="45,0" />
                     </StackPanel>
                     <StackPanel Margin="3,3,5,5">
-                        <TextBlock Style="{StaticResource CaptionStyle}" Text="α₁" />
+                        <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="α₁" HelpText="Левая координата границы пластины." />
                         <TextBox Margin="0,4,0,0" Text="-1,500" />
                     </StackPanel>
                     <StackPanel Margin="5,3,3,5">
-                        <TextBlock Style="{StaticResource CaptionStyle}" Text="β₁" />
+                        <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="β₁" HelpText="Правая координата границы пластины." />
                         <TextBox Margin="0,4,0,0" Text="-0,500" />
                     </StackPanel>
                     <StackPanel Margin="3,3,5,5">
-                        <TextBlock Style="{StaticResource CaptionStyle}" Text="N" />
+                        <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="N" HelpText="Порядок усечения ряда в численном решении." />
                         <TextBox Margin="0,4,0,0" Text="30" />
                     </StackPanel>
                     <StackPanel Margin="5,3,3,5">
-                        <TextBlock Style="{StaticResource CaptionStyle}" Text="δ, мкм" />
+                        <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="δ, мкм" HelpText="Толщина скин-слоя пластины в микрометрах." />
                         <TextBox Margin="0,4,0,0" Text="0,010000" />
                     </StackPanel>
                     <StackPanel Margin="3,3,5,5">
-                        <TextBlock Style="{StaticResource CaptionStyle}" Text="xL" />
+                        <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="xL" HelpText="Левая граница области вывода по оси x." />
                         <TextBox Margin="0,4,0,0" Text="-2,00" />
                     </StackPanel>
                     <StackPanel Margin="5,3,3,5">
-                        <TextBlock Style="{StaticResource CaptionStyle}" Text="xR" />
+                        <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="xR" HelpText="Правая граница области вывода по оси x." />
                         <TextBox Margin="0,4,0,0" Text="2,00" />
                     </StackPanel>
                     <StackPanel Margin="3,3,5,5">
-                        <TextBlock Style="{StaticResource CaptionStyle}" Text="yDn" />
+                        <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="yDn" HelpText="Нижняя граница области вывода по оси y." />
                         <TextBox Margin="0,4,0,0" Text="-3,00" />
                     </StackPanel>
                     <StackPanel Margin="5,3,3,5">
-                        <TextBlock Style="{StaticResource CaptionStyle}" Text="yUp" />
+                        <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="yUp" HelpText="Верхняя граница области вывода по оси y." />
                         <TextBox Margin="0,4,0,0" Text="3,00" />
                     </StackPanel>
                 </UniformGrid>
@@ -327,7 +348,7 @@
                              TextWrapping="Wrap"
                              FontFamily="Consolas"
                              FontSize="11"
-                             Text="ЗСЭ: R + T + A = 1,000; локальная невязка 0,30% (допуск 1,00%).&#x0a;Потоки тока на верхней и нижней сторонах: 0,629 / 0,625; относительная разность 0,64%.&#x0a;Граничное условие и уравнение Гельмгольца выполнены в установленном допуске.&#x0a;Примечание: направления потоков и знак прошедшей энергии должны отображаться явно." />
+                             Text="Локальный ЗСЭ: |Δ| / I_plate = 0,003; невязка 0,30% (допуск 1,00%).&#x0a;Потоки тока на верхней и нижней сторонах: 0,629 / 0,625; относительная разность 0,64%.&#x0a;Граничное условие и уравнение Гельмгольца выполнены в установленном допуске.&#x0a;R_scat и T_scat показывают потоки рассеянного поля; полное прохождение учитывает интерференцию падающего и рассеянного полей." />
                 </Grid>
             </TabItem>
         </TabControl>

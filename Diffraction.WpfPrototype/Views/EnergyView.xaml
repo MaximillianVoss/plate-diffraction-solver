@@ -8,86 +8,110 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <Border Grid.Row="0" x:Name="DesktopSummary" Style="{StaticResource PanelBorderStyle}">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="1.15*" />
-                </Grid.ColumnDefinitions>
+        <Grid Grid.Row="0" x:Name="DesktopSummary">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="6" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="6" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="6" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="6" />
+                <ColumnDefinition Width="1.15*" />
+            </Grid.ColumnDefinitions>
 
-                <Border Grid.Column="0" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0">
-                    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-                        <TextBlock FontWeight="SemiBold" Text="R — отражение" />
-                        <TextBlock Margin="0,2,0,0" FontSize="25" FontWeight="SemiBold" Text="0,628" />
-                        <TextBlock Style="{StaticResource CaptionStyle}" Text="62,8% от I" />
-                    </StackPanel>
-                </Border>
-                <Border Grid.Column="1" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0">
-                    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-                        <TextBlock FontWeight="SemiBold" Text="T — прохождение" />
-                        <TextBlock Margin="0,2,0,0" FontSize="25" FontWeight="SemiBold" Text="0,251" />
-                        <TextBlock Style="{StaticResource CaptionStyle}" Text="25,1% от I" />
-                    </StackPanel>
-                </Border>
-                <Border Grid.Column="2" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0">
-                    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-                        <TextBlock FontWeight="SemiBold" Text="A — поглощение" />
-                        <TextBlock Margin="0,2,0,0" FontSize="25" FontWeight="SemiBold" Text="0,121" />
-                        <TextBlock Style="{StaticResource CaptionStyle}" Text="12,1% от I" />
-                    </StackPanel>
-                </Border>
-                <Border Grid.Column="3" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0">
-                    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-                        <TextBlock FontWeight="SemiBold" Text="Невязка ЗСЭ" />
-                        <TextBlock Margin="0,2,0,0" FontSize="25" FontWeight="SemiBold" Text="0,3%" />
-                        <TextBlock Style="{StaticResource CaptionStyle}" Text="допуск 1,0%" />
-                    </StackPanel>
-                </Border>
-                <StackPanel Grid.Column="4" VerticalAlignment="Center" HorizontalAlignment="Center">
+            <Border Grid.Column="0" Padding="8" Style="{StaticResource PanelBorderStyle}">
+                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <controls:InfoLabel HorizontalAlignment="Center"
+                                        FontWeight="SemiBold"
+                                        Text="R_scat — обратно"
+                                        HelpText="Нормированный поток рассеянного поля вверх. Это не полный коэффициент отражения." />
+                    <TextBlock Margin="0,2,0,0" FontSize="25" FontWeight="SemiBold" Text="0,628" />
+                    <TextBlock Style="{StaticResource CaptionStyle}" Text="62,8% от I_plate" />
+                </StackPanel>
+            </Border>
+            <Border Grid.Column="2" Padding="8" Style="{StaticResource PanelBorderStyle}">
+                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <controls:InfoLabel HorizontalAlignment="Center"
+                                        FontWeight="SemiBold"
+                                        Text="T_scat — вперёд"
+                                        HelpText="Нормированный поток рассеянного поля вниз. Это не полная прошедшая энергия." />
+                    <TextBlock Margin="0,2,0,0" FontSize="25" FontWeight="SemiBold" Text="0,251" />
+                    <TextBlock Style="{StaticResource CaptionStyle}" Text="25,1% от I_plate" />
+                </StackPanel>
+            </Border>
+            <Border Grid.Column="4" Padding="8" Style="{StaticResource PanelBorderStyle}">
+                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <controls:InfoLabel HorizontalAlignment="Center"
+                                        FontWeight="SemiBold"
+                                        Text="A_J — поглощение"
+                                        HelpText="Джоулево поглощение, вычисленное интегрированием по самой пластине." />
+                    <TextBlock Margin="0,2,0,0" FontSize="25" FontWeight="SemiBold" Text="0,121" />
+                    <TextBlock Style="{StaticResource CaptionStyle}" Text="12,1% от I_plate" />
+                </StackPanel>
+            </Border>
+            <Border Grid.Column="6" Padding="8" Style="{StaticResource PanelBorderStyle}">
+                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <controls:InfoLabel HorizontalAlignment="Center"
+                                        FontWeight="SemiBold"
+                                        Text="Локальная невязка ЗСЭ"
+                                        HelpText="Относительная невязка локального энергетического равенства на пластине." />
+                    <TextBlock Margin="0,2,0,0" FontSize="25" FontWeight="SemiBold" Text="0,3%" />
+                    <TextBlock Style="{StaticResource CaptionStyle}" Text="допуск 1,0%" />
+                </StackPanel>
+            </Border>
+            <Border Grid.Column="8" Padding="8" Background="#F0FAF4" BorderBrush="#ABEFC6" BorderThickness="1" CornerRadius="4">
+                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
                     <StackPanel Orientation="Horizontal">
                         <TextBlock FontFamily="Segoe MDL2 Assets" FontSize="22" Foreground="{StaticResource SuccessBrush}" Text="&#xE73E;" />
                         <TextBlock Margin="8,0,0,0" VerticalAlignment="Center" FontSize="18" FontWeight="SemiBold" Foreground="{StaticResource SuccessBrush}" Text="В допуске" />
                     </StackPanel>
-                    <TextBlock Margin="0,5,0,0" Style="{StaticResource CaptionStyle}" Text="Баланс R + T + A = 1,000" />
+                    <TextBlock Margin="0,5,0,0" Style="{StaticResource CaptionStyle}" Text="|ΔЗСЭ| / I_plate = 0,003" />
                 </StackPanel>
-            </Grid>
-        </Border>
+            </Border>
+        </Grid>
 
-        <Border Grid.Row="0" x:Name="CompactSummary" Visibility="Collapsed" Style="{StaticResource PanelBorderStyle}">
+        <Grid Grid.Row="0" x:Name="CompactSummary" Visibility="Collapsed">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <UniformGrid Columns="2">
-                    <StackPanel Margin="6,7" HorizontalAlignment="Center">
-                        <TextBlock HorizontalAlignment="Center" Style="{StaticResource CaptionStyle}" Text="Отражение R" />
-                        <TextBlock Margin="0,2,0,0" HorizontalAlignment="Center" FontSize="21" FontWeight="SemiBold" Text="0,628" />
-                    </StackPanel>
-                    <StackPanel Margin="6,7" HorizontalAlignment="Center">
-                        <TextBlock HorizontalAlignment="Center" Style="{StaticResource CaptionStyle}" Text="Прохождение T" />
-                        <TextBlock Margin="0,2,0,0" HorizontalAlignment="Center" FontSize="21" FontWeight="SemiBold" Text="0,251" />
-                    </StackPanel>
-                    <StackPanel Margin="6,7" HorizontalAlignment="Center">
-                        <TextBlock HorizontalAlignment="Center" Style="{StaticResource CaptionStyle}" Text="Поглощение A" />
-                        <TextBlock Margin="0,2,0,0" HorizontalAlignment="Center" FontSize="21" FontWeight="SemiBold" Text="0,121" />
-                    </StackPanel>
-                    <StackPanel Margin="6,7" HorizontalAlignment="Center">
-                        <TextBlock HorizontalAlignment="Center" Style="{StaticResource CaptionStyle}" Text="Невязка ЗСЭ" />
-                        <TextBlock Margin="0,2,0,0" HorizontalAlignment="Center" FontSize="21" FontWeight="SemiBold" Text="0,3%" />
-                    </StackPanel>
+                    <Border Margin="0,0,3,3" Padding="7" Style="{StaticResource PanelBorderStyle}">
+                        <StackPanel HorizontalAlignment="Center">
+                            <controls:InfoLabel HorizontalAlignment="Center" FontSize="11.5" Text="R_scat — обратно" HelpText="Поток рассеянного поля вверх; не полный коэффициент отражения." />
+                            <TextBlock Margin="0,2,0,0" HorizontalAlignment="Center" FontSize="21" FontWeight="SemiBold" Text="0,628" />
+                        </StackPanel>
+                    </Border>
+                    <Border Margin="3,0,0,3" Padding="7" Style="{StaticResource PanelBorderStyle}">
+                        <StackPanel HorizontalAlignment="Center">
+                            <controls:InfoLabel HorizontalAlignment="Center" FontSize="11.5" Text="T_scat — вперёд" HelpText="Поток рассеянного поля вниз; не полная прошедшая энергия." />
+                            <TextBlock Margin="0,2,0,0" HorizontalAlignment="Center" FontSize="21" FontWeight="SemiBold" Text="0,251" />
+                        </StackPanel>
+                    </Border>
+                    <Border Margin="0,3,3,0" Padding="7" Style="{StaticResource PanelBorderStyle}">
+                        <StackPanel HorizontalAlignment="Center">
+                            <controls:InfoLabel HorizontalAlignment="Center" FontSize="11.5" Text="A_J — поглощение" HelpText="Джоулево поглощение, интегрированное по пластине." />
+                            <TextBlock Margin="0,2,0,0" HorizontalAlignment="Center" FontSize="21" FontWeight="SemiBold" Text="0,121" />
+                        </StackPanel>
+                    </Border>
+                    <Border Margin="3,3,0,0" Padding="7" Style="{StaticResource PanelBorderStyle}">
+                        <StackPanel HorizontalAlignment="Center">
+                            <controls:InfoLabel HorizontalAlignment="Center" FontSize="11.5" Text="Невязка ЗСЭ" HelpText="Относительная невязка локального энергетического равенства." />
+                            <TextBlock Margin="0,2,0,0" HorizontalAlignment="Center" FontSize="21" FontWeight="SemiBold" Text="0,3%" />
+                        </StackPanel>
+                    </Border>
                 </UniformGrid>
-                <Border Grid.Row="1" Padding="7" Background="#F0FAF4" BorderBrush="#ABEFC6" BorderThickness="0,1,0,0">
+                <Border Grid.Row="1" Margin="0,6,0,0" Padding="8" Background="#F0FAF4" BorderBrush="#ABEFC6" BorderThickness="1" CornerRadius="4">
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
                         <TextBlock FontFamily="Segoe MDL2 Assets" Foreground="{StaticResource SuccessBrush}" Text="&#xE73E;" />
-                        <TextBlock Margin="7,0,0,0" Foreground="{StaticResource SuccessBrush}" FontWeight="SemiBold" Text="ЗСЭ в допуске  •  R + T + A = 1,000" />
+                        <TextBlock Margin="7,0,0,0" Foreground="{StaticResource SuccessBrush}" FontWeight="SemiBold" Text="ЗСЭ в допуске  •  |Δ| / I_plate = 0,003" TextWrapping="Wrap" />
                     </StackPanel>
                 </Border>
             </Grid>
-        </Border>
+        </Grid>
 
         <ScrollViewer Grid.Row="1"
                       x:Name="ResultsScroll"
@@ -160,7 +184,7 @@
                     </Grid.RowDefinitions>
                     <TextBlock FontWeight="SemiBold" Text="Энергии в зависимости от толщины скин-слоя" />
                     <controls:ScientificPlot Grid.Row="1" Margin="0,8,0,8" MinHeight="280" PlotKind="Energy" />
-                    <TextBlock Grid.Row="2" Style="{StaticResource CaptionStyle}" Text="График показывает нормированные доли R, T и A. Для каждой точки контролируются баланс и знак прошедшей энергии." TextWrapping="Wrap" />
+                    <TextBlock Grid.Row="2" Style="{StaticResource CaptionStyle}" Text="График показывает R_scat, T_scat и A_J, нормированные на падающий поток через пластину. Для каждой точки контролируется локальная невязка ЗСЭ." TextWrapping="Wrap" />
                 </Grid>
             </Border>
 
@@ -211,7 +235,7 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <TextBlock FontFamily="Segoe MDL2 Assets" Foreground="{StaticResource WarningBrush}" Text="&#xE7BA;" />
-                            <TextBlock Grid.Column="1" Margin="8,0" VerticalAlignment="Center" Text="Проверить знак прошедшей энергии" TextWrapping="Wrap" />
+                            <TextBlock Grid.Column="1" Margin="8,0" VerticalAlignment="Center" Text="Проверить знаки потоков и ориентацию нормалей" TextWrapping="Wrap" />
                             <Button Grid.Column="2" Padding="9,4" MinHeight="27" Style="{StaticResource SecondaryButtonStyle}" Content="Открыть диагностику" Click="OpenDiagnostics_Click" />
                         </Grid>
                     </Border>

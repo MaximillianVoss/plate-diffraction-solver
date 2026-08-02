@@ -15,7 +15,7 @@ public partial class EnergyView : UserControl
 
     private void ApplyResponsiveLayout(double width)
     {
-        bool useCompactSummary = width < 650;
+        bool useCompactSummary = width < 900;
         bool stackPanels = width < 900;
 
         DesktopSummary.Visibility = useCompactSummary ? Visibility.Collapsed : Visibility.Visible;

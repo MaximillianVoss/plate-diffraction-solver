@@ -157,15 +157,15 @@
                     <Separator Grid.Row="1" Margin="0,8" />
                     <Grid Grid.Row="2">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                        <TextBlock Text="Отражение R" /><TextBlock Grid.Column="1" FontWeight="SemiBold" Text="0,628" />
+                        <TextBlock Text="R_scat, обратно" /><TextBlock Grid.Column="1" FontWeight="SemiBold" Text="0,628" />
                     </Grid>
                     <Grid Grid.Row="3" Margin="0,7,0,0">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                        <TextBlock Text="Прохождение T" /><TextBlock Grid.Column="1" FontWeight="SemiBold" Text="0,251" />
+                        <TextBlock Text="T_scat, вперёд" /><TextBlock Grid.Column="1" FontWeight="SemiBold" Text="0,251" />
                     </Grid>
                     <Grid Grid.Row="4" Margin="0,7,0,0">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                        <TextBlock Text="Поглощение A" /><TextBlock Grid.Column="1" FontWeight="SemiBold" Text="0,121" />
+                        <TextBlock Text="A_J, пластина" /><TextBlock Grid.Column="1" FontWeight="SemiBold" Text="0,121" />
                     </Grid>
                     <Grid Grid.Row="5" Margin="0,7,0,0">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
