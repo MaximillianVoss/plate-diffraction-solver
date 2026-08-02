@@ -700,7 +700,7 @@ namespace Diffraction.Core
                                     {
                                         double Tj_k = Cheb(j, tau_c[targetPlate][ik]);
                                         double sqrt_w = Math.Sqrt(1.0 - tau_c[targetPlate][ik] * tau_c[targetPlate][ik]);
-                                        A_mat[row][col] = A_mat[row][col] - sheetCoefficient / targetHalfL * Tj_k / sqrt_w;
+                                        A_mat[row][col] = A_mat[row][col] - sheetCoefficient * Tj_k / sqrt_w;
                                     }
                                 }
                                 else
@@ -799,16 +799,21 @@ namespace Diffraction.Core
                 return CalculatePlateIncidentEnergy();
             }
 
+            public double CalculateReflectedScatteredEnergy()
+            {
+                return CalculateFarFieldScatteredEnergy().ReflectedScattered;
+            }
+
             public double CalculateReflectedEnergy()
             {
-                return CalculateEnergyComponents().Reflected;
+                return CalculateReflectedScatteredEnergy();
             }
 
             public class EnergyComponents
             {
-                public double Incident, Reflected, Transmitted, Absorbed;
+                public double Incident, IncidentSideDeficit, OppositeSideSignedFlux, Absorbed;
                 public double AboveFlux, BelowFlux;
-                public double IncidentSideIncoming, OppositeSideOutgoing;
+                public double IncidentSideIncoming;
                 public double FluxAbsorbed, LocalBalanceResidual;
                 public double SignedContourFlux, SignedContourResidual;
                 public bool WasRenormalized;
@@ -820,9 +825,16 @@ namespace Diffraction.Core
                 public double AboveFlux;
                 public double BelowFlux;
                 public double IncidentSideIncoming;
-                public double OppositeSideOutgoing;
-                public double ReflectedNet;
+                public double OppositeSideSignedFlux;
+                public double IncidentSideDeficit;
                 public double AbsorbedFromFlux;
+            }
+
+            public class ScatteredSheetFluxComponents
+            {
+                public double AboveOutgoing;
+                public double BelowOutgoing;
+                public double AbsoluteMismatch;
             }
 
             public class FarFieldScatteredEnergyComponents
@@ -836,13 +848,12 @@ namespace Diffraction.Core
                 PlateFluxComponents flux = CalculatePlateFluxComponents();
                 EnergyComponents energy = new EnergyComponents();
                 energy.Incident = flux.Incident;
-                energy.Reflected = flux.ReflectedNet;
-                energy.Transmitted = flux.OppositeSideOutgoing;
+                energy.IncidentSideDeficit = flux.IncidentSideDeficit;
+                energy.OppositeSideSignedFlux = flux.OppositeSideSignedFlux;
                 energy.Absorbed = CalculateAbsorbedEnergy();
                 energy.AboveFlux = flux.AboveFlux;
                 energy.BelowFlux = flux.BelowFlux;
                 energy.IncidentSideIncoming = flux.IncidentSideIncoming;
-                energy.OppositeSideOutgoing = flux.OppositeSideOutgoing;
                 energy.FluxAbsorbed = flux.AbsorbedFromFlux;
                 energy.LocalBalanceResidual = flux.AbsorbedFromFlux - energy.Absorbed;
                 energy.SignedContourFlux = double.NaN;
@@ -857,9 +868,14 @@ namespace Diffraction.Core
                 return energy;
             }
 
+            public double CalculateForwardScatteredEnergy()
+            {
+                return CalculateFarFieldScatteredEnergy().TransmittedScattered;
+            }
+
             public double CalculateTransmittedEnergyIndependent()
             {
-                return CalculatePlateFluxComponents().OppositeSideOutgoing;
+                return CalculateForwardScatteredEnergy();
             }
 
             public double CalculatePlateIncidentEnergy()
@@ -898,7 +914,7 @@ namespace Diffraction.Core
                 double incidentSideFlux = incidentDirectionSign > 0.0 ? aboveFlux : belowFlux;
                 double oppositeSideFlux = incidentDirectionSign > 0.0 ? belowFlux : aboveFlux;
                 double incidentSideIncoming = -incidentDirectionSign * incidentSideFlux;
-                double oppositeSideOutgoing = -incidentDirectionSign * oppositeSideFlux;
+                double oppositeSideSignedFlux = -incidentDirectionSign * oppositeSideFlux;
                 double incident = CalculatePlateIncidentEnergy();
 
                 return new PlateFluxComponents
@@ -907,9 +923,37 @@ namespace Diffraction.Core
                     AboveFlux = aboveFlux,
                     BelowFlux = belowFlux,
                     IncidentSideIncoming = incidentSideIncoming,
-                    OppositeSideOutgoing = oppositeSideOutgoing,
-                    ReflectedNet = incident - incidentSideIncoming,
-                    AbsorbedFromFlux = incidentSideIncoming - oppositeSideOutgoing
+                    OppositeSideSignedFlux = oppositeSideSignedFlux,
+                    IncidentSideDeficit = incident - incidentSideIncoming,
+                    AbsorbedFromFlux = incidentSideIncoming - oppositeSideSignedFlux
+                };
+            }
+
+            public ScatteredSheetFluxComponents CalculateScatteredSheetFluxComponents(int samplesPerPlate = 400)
+            {
+                if (samplesPerPlate < 16) throw new ArgumentOutOfRangeException(nameof(samplesPerPlate));
+                EnsurePreparedState();
+
+                double aboveOutgoing = 0.0;
+                double belowOutgoing = 0.0;
+                for (int plateIndex = 0; plateIndex < PlateCount; plateIndex++)
+                {
+                    double dx = (beta[plateIndex] - alpha[plateIndex]) / samplesPerPlate;
+                    for (int m = 0; m < samplesPerPlate; m++)
+                    {
+                        double x = alpha[plateIndex] + (m + 0.5) * dx;
+                        Compl scatteredValue = u_on_strip(x) - u0(x, 0.0);
+                        Compl halfJump = CurrentDensity(x) / 2.0;
+                        aboveOutgoing += EnergyFlux(scatteredValue, halfJump) * dx;
+                        belowOutgoing -= EnergyFlux(scatteredValue, -halfJump) * dx;
+                    }
+                }
+
+                return new ScatteredSheetFluxComponents
+                {
+                    AboveOutgoing = aboveOutgoing,
+                    BelowOutgoing = belowOutgoing,
+                    AbsoluteMismatch = Math.Abs(aboveOutgoing - belowOutgoing)
                 };
             }
 
@@ -986,7 +1030,12 @@ namespace Diffraction.Core
                     double density = abs2 / (16.0 * Math.PI);
                     double energy = density * dPhi;
 
-                    if (Math.Abs(nz) < 1e-12 || nz * incidentSideZ > 0.0)
+                    if (Math.Abs(nz) < 1e-12)
+                    {
+                        result.ReflectedScattered += 0.5 * energy;
+                        result.TransmittedScattered += 0.5 * energy;
+                    }
+                    else if (nz * incidentSideZ > 0.0)
                         result.ReflectedScattered += energy;
                     else
                         result.TransmittedScattered += energy;
@@ -1001,12 +1050,18 @@ namespace Diffraction.Core
                 Compl sum = new Compl(0, 0);
                 for (int plateIndex = 0; plateIndex < PlateCount; plateIndex++)
                 {
-                    double dx = (beta[plateIndex] - alpha[plateIndex]) / plateSamples;
+                    double halfL = HalfLength(plateIndex);
+                    // Gauss-Chebyshev integrates J dx with J=phi/sqrt(1-tau^2) and dx=halfL dtau.
+                    double weight = Math.PI * halfL / plateSamples;
                     for (int m = 0; m < plateSamples; m++)
                     {
-                        double x = alpha[plateIndex] + (m + 0.5) * dx;
+                        double tau = Math.Cos((m + 0.5) * Math.PI / plateSamples);
+                        double x = TauToX(plateIndex, tau);
+                        Compl phi = new Compl(0, 0);
+                        for (int j = 0; j < N; j++)
+                            phi += y[CoeffIndex(plateIndex, j)] * Cheb(j, tau);
                         Compl phase = Compl.Exp(ci * k * directionX * x);
-                        sum += CurrentDensity(x) * phase * dx;
+                        sum += phi * phase * weight;
                     }
                 }
                 return sum;
@@ -1015,14 +1070,15 @@ namespace Diffraction.Core
             {
                 int plateIndex = GetPlateIndex(x);
                 if (plateIndex < 0) return new Compl(0, 0);
-                double halfL = HalfLength(plateIndex), tau_x = XToTau(plateIndex, x);
+                double tau_x = XToTau(plateIndex, x);
                 if (tau_x < -1) tau_x = -1; if (tau_x > 1) tau_x = 1;
                 Compl phi = new Compl(0, 0);
                 for (int j = 0; j < N; j++) phi += y[CoeffIndex(plateIndex, j)] * Cheb(j, tau_x);
                 if (useSingularWeight)
                 {
                     double w = Math.Sqrt(Math.Max(1.0 - tau_x * tau_x, 1e-10));
-                    return phi / (halfL * w);
+                    // The mapping half-length belongs to dx in the layer-potential quadrature, not to J.
+                    return phi / w;
                 }
                 return phi;
             }
@@ -1039,20 +1095,25 @@ namespace Diffraction.Core
                 return ci * k * Math.Sin(teta) * u0(x, 0.0) - CurrentDensity(x) / 2.0;
             }
 
+            public double CalculateOppositeSideSignedFlux()
+            {
+                return CalculatePlateFluxComponents().OppositeSideSignedFlux;
+            }
+
             public double CalculateTransmittedThroughStrip()
             {
-                return CalculatePlateFluxComponents().OppositeSideOutgoing;
+                return CalculateOppositeSideSignedFlux();
             }
 
             public Compl GetJphys(double x)
             {
                 int plateIndex = GetPlateIndex(x);
                 if (plateIndex < 0) return new Compl(0, 0);
-                double halfL = HalfLength(plateIndex), xi = XToTau(plateIndex, x);
+                double xi = XToTau(plateIndex, x);
                 double w2 = 1.0 - xi * xi; if (w2 < 1e-10) w2 = 1e-10;
                 Compl phi = new Compl(0, 0);
                 for (int j = 0; j < N; j++) phi += y[CoeffIndex(plateIndex, j)] * new Compl(ChebOnPlate(plateIndex, j, x));
-                return phi / (halfL * Math.Sqrt(w2));
+                return phi / Math.Sqrt(w2);
             }
 
             public double VerifyBoundaryConditions()
@@ -1128,13 +1189,16 @@ namespace Diffraction.Core
             public void VerifyEnergyConservation()
             {
                 EnergyComponents energy = CalculateEnergyComponents(includeContourDiagnostic: true);
-                double total = energy.Reflected + energy.Transmitted + energy.Absorbed;
+                FarFieldScatteredEnergyComponents scattered = CalculateFarFieldScatteredEnergy();
+                double total = energy.IncidentSideDeficit + energy.OppositeSideSignedFlux + energy.Absorbed;
                 Console.WriteLine("Energy balance on the plate:");
                 Console.WriteLine(string.Format("  Incident:    {0:F6} (100%)", energy.Incident));
-                Console.WriteLine(string.Format("  Reflected (net): {0:F6}", energy.Reflected));
-                Console.WriteLine(string.Format("  Transmitted:     {0:F6}", energy.Transmitted));
+                Console.WriteLine(string.Format("  Incident-side deficit: {0:F6}", energy.IncidentSideDeficit));
+                Console.WriteLine(string.Format("  Opposite signed flux:  {0:F6}", energy.OppositeSideSignedFlux));
                 Console.WriteLine(string.Format("  Absorbed:        {0:F6}", energy.Absorbed));
                 Console.WriteLine(string.Format("  Total:       {0:F6}", total));
+                Console.WriteLine(string.Format("  Reflected/forward scattered: {0:F6} / {1:F6}",
+                    scattered.ReflectedScattered, scattered.TransmittedScattered));
                 double error = Math.Abs(energy.LocalBalanceResidual);
                 double relError = energy.Incident > 0.0 ? error / energy.Incident : double.NaN;
                 Console.WriteLine(string.Format("  Above/below flux: {0:F6} / {1:F6}", energy.AboveFlux, energy.BelowFlux));

@@ -423,7 +423,7 @@ namespace
                         {
                             double tj_k = cheb(j, tau_k);
                             double sqrt_w = std::sqrt(1.0 - tau_k * tau_k);
-                            result = result - sheet_q / target_half_length * (tj_k / sqrt_w);
+                            result = result - sheet_q * (tj_k / sqrt_w);
                         }
                     }
                     else
@@ -568,7 +568,7 @@ int main(int argc, char** argv)
         std::cout << std::setprecision(17);
         std::cout << "status=ok\n";
         std::cout << "backend=CPU C++ (matrix + solve)\n";
-        std::cout << "model=thin_sheet_v1\n";
+        std::cout << "model=thin_sheet_v2\n";
         std::cout << "alpha1=" << params.alpha[0] << "\n";
         std::cout << "beta1=" << params.beta[0] << "\n";
         std::cout << "alpha2=" << params.alpha[1] << "\n";

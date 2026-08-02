@@ -113,8 +113,10 @@ namespace Diffraction
             public double ThetaDeg, SkinDepth;
             public int N;
             public double BcError, HelmholtzResidual;
-            public double Incident, Reflected, Transmitted, Absorbed, EnergyTotal, EnergyBalanceError;
+            public double Incident, ReflectedScattered, TransmittedScattered, TotalScattered;
+            public double IncidentSideDeficit, OppositeSideSignedFlux, Absorbed, PlateBalanceTotal, EnergyBalanceError;
             public double AboveFlux, BelowFlux, FluxAbsorbed;
+            public double ScatteredAbove, ScatteredBelow, ScatteredMismatch;
             public long SolveTimeMs, MetricsTimeMs;
             public string ErrorMessage;
         }
@@ -144,14 +146,20 @@ namespace Diffraction
                 BcError = double.NaN,
                 HelmholtzResidual = double.NaN,
                 Incident = double.NaN,
-                Reflected = double.NaN,
-                Transmitted = double.NaN,
+                ReflectedScattered = double.NaN,
+                TransmittedScattered = double.NaN,
+                TotalScattered = double.NaN,
+                IncidentSideDeficit = double.NaN,
+                OppositeSideSignedFlux = double.NaN,
                 Absorbed = double.NaN,
-                EnergyTotal = double.NaN,
+                PlateBalanceTotal = double.NaN,
                 EnergyBalanceError = double.NaN,
                 AboveFlux = double.NaN,
                 BelowFlux = double.NaN,
-                FluxAbsorbed = double.NaN
+                FluxAbsorbed = double.NaN,
+                ScatteredAbove = double.NaN,
+                ScatteredBelow = double.NaN,
+                ScatteredMismatch = double.NaN
             };
 
             try
@@ -169,14 +177,22 @@ namespace Diffraction
                 row.BcError = solver.VerifyBoundaryConditions();
                 row.HelmholtzResidual = solver.VerifyHelmholtz();
                 var energy = solver.CalculateEnergyComponents();
+                var farField = solver.CalculateFarFieldScatteredEnergy(360, Math.Max(8 * n, 80));
+                var scatteredSheet = solver.CalculateScatteredSheetFluxComponents();
                 row.Incident = energy.Incident;
-                row.Reflected = energy.Reflected;
-                row.Transmitted = energy.Transmitted;
+                row.ReflectedScattered = farField.ReflectedScattered;
+                row.TransmittedScattered = farField.TransmittedScattered;
+                row.TotalScattered = farField.TotalScattered;
+                row.IncidentSideDeficit = energy.IncidentSideDeficit;
+                row.OppositeSideSignedFlux = energy.OppositeSideSignedFlux;
                 row.Absorbed = energy.Absorbed;
                 row.AboveFlux = energy.AboveFlux;
                 row.BelowFlux = energy.BelowFlux;
                 row.FluxAbsorbed = energy.FluxAbsorbed;
-                row.EnergyTotal = energy.Reflected + energy.Transmitted + energy.Absorbed;
+                row.ScatteredAbove = scatteredSheet.AboveOutgoing;
+                row.ScatteredBelow = scatteredSheet.BelowOutgoing;
+                row.ScatteredMismatch = scatteredSheet.AbsoluteMismatch;
+                row.PlateBalanceTotal = energy.IncidentSideDeficit + energy.OppositeSideSignedFlux + energy.Absorbed;
                 row.EnergyBalanceError = Math.Abs(row.Incident) < 1e-8
                     ? double.NaN
                     : Math.Abs(energy.LocalBalanceResidual) / row.Incident;
@@ -207,8 +223,8 @@ namespace Diffraction
             using (var rowsWriter = new StreamWriter(outputFilePath, false, Encoding.UTF8))
             using (var compareWriter = new StreamWriter(compareFilePath, false, Encoding.UTF8))
             {
-                rowsWriter.WriteLine("ThetaDeg;N;SkinDepth;SolveResult;BcErrorPct;HelmholtzResidual;PlateIncident;ReflectedNetPct;TransmittedFullPct;AbsorbedCurrentPct;AbsorbedFluxPct;AboveFluxPct;BelowFluxPct;EnergyTotalPct;LocalBalanceErrorPct;SolveTimeMs;MetricsTimeMs;ErrorMessage");
-                compareWriter.WriteLine("ThetaDeg;N;SkinDepth;IdealBcErrorPct;SkinBcErrorPct;BcAbsDiffPct;IdealEnergyTotalPct;SkinEnergyTotalPct;EnergyTotalAbsDiffPct;IdealReflectedNetPct;SkinReflectedNetPct;ReflectedAbsDiffPct;IdealTransmittedFullPct;SkinTransmittedFullPct;AbsorbedSkinPct");
+                rowsWriter.WriteLine("ThetaDeg;N;SkinDepth;SolveResult;BcErrorPct;HelmholtzResidual;PlateIncident;ReflectedScatteredPct;ForwardScatteredPct;ScatteredTotalPct;ScatteredHalfPlaneMismatchPct;SheetScatteredAbovePct;SheetScatteredBelowPct;SheetScatteredMismatchPct;IncidentSideDeficitPct;OppositeSideSignedFluxPct;AbsorbedCurrentPct;AbsorbedFluxPct;AboveTotalFluxPct;BelowTotalFluxPct;PlateBalanceTotalPct;LocalBalanceErrorPct;SolveTimeMs;MetricsTimeMs;ErrorMessage");
+                compareWriter.WriteLine("ThetaDeg;N;SkinDepth;IdealBcErrorPct;SkinBcErrorPct;BcAbsDiffPct;IdealReflectedScatteredPct;SkinReflectedScatteredPct;ReflectedScatteredAbsDiffPct;IdealForwardScatteredPct;SkinForwardScatteredPct;ForwardScatteredAbsDiffPct;SkinScatteredHalfPlaneMismatchPct;SkinPlateBalanceTotalPct;SkinAbsorbedPct");
 
                 foreach (double thetaDeg in angles)
                 {
@@ -228,13 +244,20 @@ namespace Diffraction
                                 F(row.BcError * 100.0),
                                 F(row.HelmholtzResidual),
                                 F(row.Incident),
-                                F(PercentOf(row.Reflected, row.Incident)),
-                                F(PercentOf(row.Transmitted, row.Incident)),
+                                F(PercentOf(row.ReflectedScattered, row.Incident)),
+                                F(PercentOf(row.TransmittedScattered, row.Incident)),
+                                F(PercentOf(row.TotalScattered, row.Incident)),
+                                F(PercentOf(Math.Abs(row.ReflectedScattered - row.TransmittedScattered), row.Incident)),
+                                F(PercentOf(row.ScatteredAbove, row.Incident)),
+                                F(PercentOf(row.ScatteredBelow, row.Incident)),
+                                F(PercentOf(row.ScatteredMismatch, row.Incident)),
+                                F(PercentOf(row.IncidentSideDeficit, row.Incident)),
+                                F(PercentOf(row.OppositeSideSignedFlux, row.Incident)),
                                 F(PercentOf(row.Absorbed, row.Incident)),
                                 F(PercentOf(row.FluxAbsorbed, row.Incident)),
                                 F(PercentOf(row.AboveFlux, row.Incident)),
                                 F(PercentOf(row.BelowFlux, row.Incident)),
-                                F(PercentOf(row.EnergyTotal, row.Incident)),
+                                F(PercentOf(row.PlateBalanceTotal, row.Incident)),
                                 F(row.EnergyBalanceError * 100.0),
                                 row.SolveTimeMs.ToString(CultureInfo.InvariantCulture),
                                 row.MetricsTimeMs.ToString(CultureInfo.InvariantCulture),
@@ -242,12 +265,10 @@ namespace Diffraction
 
                             if (ideal != null && skinDepth > 0)
                             {
-                                double idealTotalPct = PercentOf(ideal.EnergyTotal, ideal.Incident);
-                                double skinTotalPct = PercentOf(row.EnergyTotal, row.Incident);
-                                double idealReflectedPct = PercentOf(ideal.Reflected, ideal.Incident);
-                                double skinReflectedPct = PercentOf(row.Reflected, row.Incident);
-                                double idealTransmittedPct = PercentOf(ideal.Transmitted, ideal.Incident);
-                                double skinTransmittedPct = PercentOf(row.Transmitted, row.Incident);
+                                double idealReflectedPct = PercentOf(ideal.ReflectedScattered, ideal.Incident);
+                                double skinReflectedPct = PercentOf(row.ReflectedScattered, row.Incident);
+                                double idealTransmittedPct = PercentOf(ideal.TransmittedScattered, ideal.Incident);
+                                double skinTransmittedPct = PercentOf(row.TransmittedScattered, row.Incident);
 
                                 compareWriter.WriteLine(string.Join(";",
                                     F(thetaDeg),
@@ -256,14 +277,14 @@ namespace Diffraction
                                     F(ideal.BcError * 100.0),
                                     F(row.BcError * 100.0),
                                     F(Math.Abs(row.BcError - ideal.BcError) * 100.0),
-                                    F(idealTotalPct),
-                                    F(skinTotalPct),
-                                    F(Math.Abs(skinTotalPct - idealTotalPct)),
                                     F(idealReflectedPct),
                                     F(skinReflectedPct),
                                     F(Math.Abs(skinReflectedPct - idealReflectedPct)),
                                     F(idealTransmittedPct),
                                     F(skinTransmittedPct),
+                                    F(Math.Abs(skinTransmittedPct - idealTransmittedPct)),
+                                    F(PercentOf(Math.Abs(row.ReflectedScattered - row.TransmittedScattered), row.Incident)),
+                                    F(PercentOf(row.PlateBalanceTotal, row.Incident)),
                                     F(PercentOf(row.Absorbed, row.Incident))));
                             }
                         }
@@ -736,7 +757,7 @@ namespace Diffraction
             // Сравнение: без скин-эффекта и с различными значениями скин-слоя
             Console.WriteLine("\n=== СРАВНЕНИЕ: БЕЗ СКИНА vs СО СКИНОМ ===");
             Console.WriteLine(string.Format("{0,-10} {1,-10} {2,-10} {3,-10} {4,-10} {5,-10} {6,-10} {7,-12}",
-                "delta", "|Zs| Ohm", "BC err%", "Refl%", "Absorb%", "Trans%", "TransStrip", "Cond#"));
+                "delta", "|Zs| Ohm", "BC err%", "Rscat%", "Absorb%", "FwdScat%", "Tsigned", "Cond#"));
 
             // Без скина
             {
@@ -745,13 +766,14 @@ namespace Diffraction
                 {
                     double bc0 = s0.VerifyBoundaryConditions();
                     var e0 = s0.CalculateEnergyComponents();
-                    double ts0 = s0.CalculateTransmittedThroughStrip();
+                    var f0 = s0.CalculateFarFieldScatteredEnergy(360, 160);
+                    double ts0 = s0.CalculateOppositeSideSignedFlux();
                     double cond0 = ConditionNumber(s0.LastMatrixA);
                     Console.WriteLine(string.Format("{0,-10} {1,-10} {2,-10:F4} {3,-10:F2} {4,-10:F2} {5,-10:F2} {6,-10:F4} {7,-12:E2}",
                         "0(ideal)", "0", bc0 * 100,
-                        e0.Reflected / e0.Incident * 100,
+                        f0.ReflectedScattered / e0.Incident * 100,
                         e0.Absorbed / e0.Incident * 100,
-                        e0.Transmitted / e0.Incident * 100,
+                        f0.TransmittedScattered / e0.Incident * 100,
                         ts0, cond0));
                 }
             }
@@ -765,20 +787,21 @@ namespace Diffraction
                 {
                     double bcE = ts.VerifyBoundaryConditions();
                     var en = ts.CalculateEnergyComponents();
-                    double tsStrip = ts.CalculateTransmittedThroughStrip();
+                    var far = ts.CalculateFarFieldScatteredEnergy(360, 160);
+                    double tsStrip = ts.CalculateOppositeSideSignedFlux();
                     double cond = ConditionNumber(ts.LastMatrixA);
                     Console.WriteLine(string.Format("{0,-10} {1,-10:F4} {2,-10:F4} {3,-10:F2} {4,-10:F2} {5,-10:F2} {6,-10:F4} {7,-12:E2}",
                         td, Compl.Abs(ts.chi), bcE * 100,
-                        en.Reflected / en.Incident * 100,
+                        far.ReflectedScattered / en.Incident * 100,
                         en.Absorbed / en.Incident * 100,
-                        en.Transmitted / en.Incident * 100,
+                        far.TransmittedScattered / en.Incident * 100,
                         tsStrip, cond));
                 }
             }
 
             // Тест сходимости по N для delta=0.001 (тонкий скин-слой)
             Console.WriteLine("\n=== CONVERGENCE TEST (delta=0.001) ===");
-            Console.WriteLine(string.Format("{0,-6} {1,-12} {2,-12} {3,-12} {4,-12} {5,-12}", "N", "BC err%", "Refl%", "Absorb%", "Trans%", "Cond#"));
+            Console.WriteLine(string.Format("{0,-6} {1,-12} {2,-12} {3,-12} {4,-12} {5,-12}", "N", "BC err%", "Rscat%", "Absorb%", "FwdScat%", "Cond#"));
             int[] testNs = { 10, 15, 20, 25, 30, 40, 50, 60 };
             foreach (int tn in testNs)
             {
@@ -793,12 +816,13 @@ namespace Diffraction
                     {
                         double bcN = tsN.VerifyBoundaryConditions();
                         var enN = tsN.CalculateEnergyComponents();
+                        var farN = tsN.CalculateFarFieldScatteredEnergy(360, Math.Max(8 * tn, 80));
                         double condN = ConditionNumber(tsN.LastMatrixA);
                         Console.WriteLine(string.Format("{0,-6} {1,-12:F4} {2,-12:F2} {3,-12:F4} {4,-12:F2} {5,-12:E2}",
                             tn, bcN * 100,
-                            enN.Reflected / enN.Incident * 100,
+                            farN.ReflectedScattered / enN.Incident * 100,
                             enN.Absorbed / enN.Incident * 100,
-                            enN.Transmitted / enN.Incident * 100,
+                            farN.TransmittedScattered / enN.Incident * 100,
                             condN));
                         Console.WriteLine($"    → Assembly+solve time: {sw.ElapsedMilliseconds} ms");
                         Console.Out.Flush();

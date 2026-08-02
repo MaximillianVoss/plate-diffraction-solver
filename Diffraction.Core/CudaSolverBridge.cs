@@ -218,7 +218,7 @@ namespace Diffraction.Core
             }
 
             string model;
-            if (!values.TryGetValue("model", out model) || !string.Equals(model, "thin_sheet_v1", StringComparison.Ordinal))
+            if (!values.TryGetValue("model", out model) || !string.Equals(model, "thin_sheet_v2", StringComparison.Ordinal))
             {
                 response.Success = false;
                 response.ErrorMessage = "CUDA backend собран для несовместимой модели граничного условия.";

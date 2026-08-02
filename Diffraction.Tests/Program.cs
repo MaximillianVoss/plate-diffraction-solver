@@ -271,8 +271,8 @@ namespace Diffraction.Tests
             Assert.AreEqual(1, solver.SolveDifr(), "solver failed");
 
             var energy = solver.CalculateEnergyComponents();
-            Assert.AreEqual(1.0, energy.Reflected / energy.Incident, 1e-4, "net local reflection");
-            Assert.AreEqual(0.0, energy.Transmitted / energy.Incident, 1e-4, "normal flux through ideal sheet");
+            Assert.AreEqual(1.0, energy.IncidentSideDeficit / energy.Incident, 1e-4, "incident-side deficit");
+            Assert.AreEqual(0.0, energy.OppositeSideSignedFlux / energy.Incident, 1e-4, "normal flux through ideal sheet");
             Assert.AreEqual(0.0, energy.Absorbed, 1e-12, "ideal sheet absorption");
         }
 
@@ -286,8 +286,9 @@ namespace Diffraction.Tests
 
             var thinEnergy = thin.CalculateEnergyComponents();
             var thickEnergy = thick.CalculateEnergyComponents();
-            Assert.IsTrue(thickEnergy.Reflected < thinEnergy.Reflected, "net reflection must decrease");
-            Assert.IsTrue(thickEnergy.Transmitted > thinEnergy.Transmitted, "full transmission must increase");
+            Assert.IsTrue(thickEnergy.IncidentSideDeficit < thinEnergy.IncidentSideDeficit, "incident-side deficit must decrease");
+            Assert.IsTrue(thickEnergy.OppositeSideSignedFlux > thinEnergy.OppositeSideSignedFlux,
+                "opposite-side signed full flux must increase");
         }
 
         [TestMethod]
@@ -346,6 +347,7 @@ namespace Diffraction.Tests
                 "--skin-depth", "0.001");
 
             Assert.IsTrue(native.Success, native.Output);
+            Assert.AreEqual("thin_sheet_v2", native.Model, "native model version");
             Assert.AreEqual(managed.y.Length, native.Coefficients.Count, "coefficient count mismatch");
 
             for (int i = 0; i < managed.y.Length; i++)
@@ -449,7 +451,7 @@ namespace Diffraction.Tests
 
         private static double EnergyBalanceRelativeError(DifrOnLenta.EnergyComponents energy)
         {
-            double total = energy.Reflected + energy.Transmitted + energy.Absorbed;
+            double total = energy.IncidentSideDeficit + energy.OppositeSideSignedFlux + energy.Absorbed;
             return Math.Abs(total - energy.Incident) / energy.Incident;
         }
 
@@ -468,6 +470,7 @@ namespace Diffraction.Tests
             public double? ThetaRadians { get; set; }
             public double? ThetaDegrees { get; set; }
             public int? MQuad { get; set; }
+            public string Model { get; set; }
         }
 
         private static NativeRunResult RunNativeCpu(params string[] arguments)
@@ -550,6 +553,10 @@ namespace Diffraction.Tests
                         else if (line.StartsWith("m_quad=", StringComparison.Ordinal))
                         {
                             result.MQuad = int.Parse(line.Substring("m_quad=".Length), CultureInfo.InvariantCulture);
+                        }
+                        else if (line.StartsWith("model=", StringComparison.Ordinal))
+                        {
+                            result.Model = line.Substring("model=".Length);
                         }
                     }
                 }
