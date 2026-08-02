@@ -104,6 +104,9 @@
                                         <Style TargetType="ListBoxItem">
                                             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                                             <Setter Property="Padding" Value="8,7" />
+                                            <Setter Property="Cursor" Value="Hand" />
+                                            <Setter Property="ToolTip" Value="Открыть результаты расчёта" />
+                                            <EventSetter Event="PreviewMouseLeftButtonUp" Handler="HistoryItem_Click" />
                                         </Style>
                                     </ListBox.ItemContainerStyle>
                                     <ListBox.ItemTemplate>
@@ -117,7 +120,7 @@
                                                     <ColumnDefinition Width="*" />
                                                     <ColumnDefinition Width="96" />
                                                 </Grid.ColumnDefinitions>
-                                                <TextBlock Margin="0,0,8,0" FontWeight="SemiBold" Text="{Binding DateLabel}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
+                                                <TextBlock Margin="0,0,8,0" FontWeight="SemiBold" Text="{Binding HistoryTitle}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
                                                 <TextBlock Grid.Column="1" HorizontalAlignment="Right" Style="{StaticResource CaptionStyle}" Text="{Binding SkinDepth}" TextTrimming="CharacterEllipsis" />
                                                 <TextBlock Grid.Row="1" Margin="0,4,8,0" Style="{StaticResource CaptionStyle}" Text="{Binding Details}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" ToolTip="{Binding Details}" />
                                                 <TextBlock Grid.Row="1" Grid.Column="1" Margin="0,4,0,0" HorizontalAlignment="Right" Style="{StaticResource RunStatusTextStyle}" Text="{Binding Status}" />
@@ -289,6 +292,9 @@
                                 <Setter Property="BorderBrush" Value="#E7EBF0" />
                                 <Setter Property="BorderThickness" Value="0,0,0,1" />
                                 <Setter Property="Background" Value="White" />
+                                <Setter Property="Cursor" Value="Hand" />
+                                <Setter Property="ToolTip" Value="Открыть результаты расчёта" />
+                                <EventSetter Event="PreviewMouseLeftButtonUp" Handler="HistoryItem_Click" />
                                 <Style.Triggers>
                                     <Trigger Property="IsMouseOver" Value="True">
                                         <Setter Property="Background" Value="#F5F8FF" />
@@ -311,7 +317,7 @@
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="96" />
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Margin="0,0,8,0" FontWeight="SemiBold" Text="{Binding DateLabel}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
+                                    <TextBlock Margin="0,0,8,0" FontWeight="SemiBold" Text="{Binding HistoryTitle}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
                                     <StackPanel Grid.Column="1" HorizontalAlignment="Right" Orientation="Horizontal" VerticalAlignment="Center">
                                         <TextBlock Margin="0,0,8,0" Style="{StaticResource CaptionStyle}" Text="{Binding SkinDepth}" />
                                         <Ellipse x:Name="StatusDot" Width="7" Height="7" Fill="{StaticResource SuccessBrush}" />

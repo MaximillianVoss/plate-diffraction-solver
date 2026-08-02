@@ -1,5 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
+using Diffraction.WpfPrototype.Models;
 using Diffraction.WpfPrototype.ViewModels;
 
 namespace Diffraction.WpfPrototype;
@@ -45,4 +47,16 @@ public partial class MainWindow : Window
 
     private void MobileHistoryButton_Click(object sender, RoutedEventArgs e)
         => MobileHistoryPopup.IsOpen = !MobileHistoryPopup.IsOpen;
+
+    private void HistoryItem_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not ListBoxItem { DataContext: CalculationRun run } ||
+            DataContext is not MainViewModel viewModel)
+        {
+            return;
+        }
+
+        viewModel.OpenRun(run);
+        MobileHistoryPopup.IsOpen = false;
+    }
 }

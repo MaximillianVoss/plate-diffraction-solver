@@ -207,6 +207,16 @@ public sealed class MainViewModel : INotifyPropertyChanged
             CurrentSection = section;
     }
 
+    public void OpenRun(CalculationRun run)
+    {
+        SelectedRun = run;
+        CurrentSection = "Calculations";
+        SelectedBackend = run.Backend;
+        StatusText = $"Открыт расчёт #{run.RunNumber:000}";
+        StatusDetail = $"{run.DateLabel}  •  {run.Status}";
+        JournalEntries.Add($"[{DateTime.Now:HH:mm:ss}] Открыт расчёт #{run.RunNumber:000} из истории.");
+    }
+
     private async Task RunCalculationAsync()
     {
         _calculationCancellation?.Dispose();
@@ -239,6 +249,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
             var completedRun = new CalculationRun
             {
+                RunNumber = Runs.Count == 0 ? 1 : Runs.Max(run => run.RunNumber) + 1,
                 DateLabel = $"Сегодня {DateTime.Now:HH:mm}",
                 SkinDepth = "δ 0,010000",
                 N = 30,
@@ -288,7 +299,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         if (item is not CalculationRun run || string.IsNullOrWhiteSpace(HistorySearch))
             return true;
 
-        string haystack = $"{run.DateLabel} {run.SkinDepth} {run.N} {run.Backend} {run.Status}";
+        string haystack = $"{run.RunNumber} {run.DateLabel} {run.SkinDepth} {run.N} {run.Backend} {run.Status}";
         return haystack.Contains(HistorySearch, StringComparison.CurrentCultureIgnoreCase);
     }
 
@@ -318,13 +329,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         return new[]
         {
-            new CalculationRun { DateLabel = "Сегодня 14:32", SkinDepth = "δ 0,010000", N = 30, Backend = "CPU", Status = "В допуске", StatusKind = "Success" },
-            new CalculationRun { DateLabel = "Сегодня 11:18", SkinDepth = "δ 0,010000", N = 20, Backend = "CPU", Status = "В допуске", StatusKind = "Success" },
-            new CalculationRun { DateLabel = "Вчера 16:47", SkinDepth = "δ 0,020000", N = 30, Backend = "CPU", Status = "Предупреждение", StatusKind = "Warning" },
-            new CalculationRun { DateLabel = "Вчера 10:05", SkinDepth = "δ 0,010000", N = 10, Backend = "CPU", Status = "В допуске", StatusKind = "Success" },
-            new CalculationRun { DateLabel = "12.05.2026 09:22", SkinDepth = "δ 0,005000", N = 30, Backend = "CPU", Status = "В допуске", StatusKind = "Success" },
-            new CalculationRun { DateLabel = "11.05.2026 18:31", SkinDepth = "δ 0,010000", N = 30, Backend = "CUDA", Status = "Аномалия", StatusKind = "Error" },
-            new CalculationRun { DateLabel = "10.05.2026 15:09", SkinDepth = "δ 0,015000", N = 40, Backend = "CPU", Status = "В допуске", StatusKind = "Success" }
+            new CalculationRun { RunNumber = 24, DateLabel = "Сегодня 14:32", SkinDepth = "δ 0,010000", N = 30, Backend = "CPU", Status = "В допуске", StatusKind = "Success" },
+            new CalculationRun { RunNumber = 23, DateLabel = "Сегодня 11:18", SkinDepth = "δ 0,010000", N = 20, Backend = "CPU", Status = "В допуске", StatusKind = "Success" },
+            new CalculationRun { RunNumber = 22, DateLabel = "Вчера 16:47", SkinDepth = "δ 0,020000", N = 30, Backend = "CPU", Status = "Предупреждение", StatusKind = "Warning" },
+            new CalculationRun { RunNumber = 21, DateLabel = "Вчера 10:05", SkinDepth = "δ 0,010000", N = 10, Backend = "CPU", Status = "В допуске", StatusKind = "Success" },
+            new CalculationRun { RunNumber = 20, DateLabel = "12.05.2026 09:22", SkinDepth = "δ 0,005000", N = 30, Backend = "CPU", Status = "В допуске", StatusKind = "Success" },
+            new CalculationRun { RunNumber = 19, DateLabel = "11.05.2026 18:31", SkinDepth = "δ 0,010000", N = 30, Backend = "CUDA", Status = "Аномалия", StatusKind = "Error" },
+            new CalculationRun { RunNumber = 18, DateLabel = "10.05.2026 15:09", SkinDepth = "δ 0,015000", N = 40, Backend = "CPU", Status = "В допуске", StatusKind = "Success" }
         };
     }
 

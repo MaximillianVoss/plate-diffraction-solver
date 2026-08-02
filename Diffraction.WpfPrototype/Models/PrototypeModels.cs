@@ -2,6 +2,7 @@ namespace Diffraction.WpfPrototype.Models;
 
 public sealed class CalculationRun
 {
+    public required int RunNumber { get; init; }
     public required string DateLabel { get; init; }
     public required string SkinDepth { get; init; }
     public required int N { get; init; }
@@ -10,6 +11,10 @@ public sealed class CalculationRun
     public required string StatusKind { get; init; }
 
     public string Details => $"N {N}  •  тонкая пластина  •  {Backend}";
+    public string HistoryTitle => $"#{RunNumber:000}  •  {DateLabel}";
+    public string Title => $"Расчёт #{RunNumber:000} — тонкая пластина";
+    public string ParameterSummary => $"λ 1 мкм  •  θ 45°  •  {SkinDepth}  •  N {N}  •  {Backend}  •  {DateLabel}";
+    public string SkinDepthValue => SkinDepth.StartsWith("δ ", StringComparison.Ordinal) ? SkinDepth[2..] : SkinDepth;
 }
 
 public sealed class FluxRow
