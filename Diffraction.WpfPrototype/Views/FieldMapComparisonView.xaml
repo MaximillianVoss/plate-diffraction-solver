@@ -1,0 +1,69 @@
+<UserControl x:Class="Diffraction.WpfPrototype.Views.FieldMapComparisonView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:Diffraction.WpfPrototype.Controls">
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="2.2*" />
+            <RowDefinition Height="1*" />
+        </Grid.RowDefinitions>
+
+        <Grid Grid.Row="0" Margin="0,0,0,9">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel>
+                <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Синхронное сравнение карт поля" />
+                <TextBlock Margin="0,3,0,0" Style="{StaticResource CaptionStyle}" Text="Обе карты используют одинаковую цветовую шкалу и область координат." />
+            </StackPanel>
+            <CheckBox Grid.Column="1" x:Name="LinkCursorsCheckBox" IsChecked="True" VerticalAlignment="Center" Content="Связать курсоры" />
+        </Grid>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="10" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Border Grid.Column="0" Style="{StaticResource PanelBorderStyle}" Padding="10">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock FontWeight="SemiBold" Text="Идеальный проводник, δ = 0" />
+                    <controls:FieldMapView Grid.Row="1" x:Name="IdealMap" Margin="0,7,0,7" CursorChanged="IdealMap_CursorChanged" />
+                    <TextBlock Grid.Row="2" Style="{StaticResource CaptionStyle}" Text="Опорное поле для идеально проводящей тонкой пластины." />
+                </Grid>
+            </Border>
+            <Border Grid.Column="2" Style="{StaticResource PanelBorderStyle}" Padding="10">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock FontWeight="SemiBold" Text="Со скин-слоем, δ = 0,010000" />
+                    <controls:FieldMapView Grid.Row="1" x:Name="SkinMap" Margin="0,7,0,7" SkinEnabled="True" CursorChanged="SkinMap_CursorChanged" />
+                    <TextBlock Grid.Row="2" Style="{StaticResource CaptionStyle}" Text="Поле с импедансным граничным условием и учётом скин-слоя." />
+                </Grid>
+            </Border>
+        </Grid>
+
+        <Border Grid.Row="2" Margin="0,10,0,0" Style="{StaticResource PanelBorderStyle}" Padding="10">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <TextBlock FontWeight="SemiBold" Text="Профиль разности решений" />
+                <controls:ScientificPlot Grid.Row="1" Margin="0,6,0,5" MinHeight="120" PlotKind="Difference" />
+                <TextBlock Grid.Row="2" Style="{StaticResource CaptionStyle}" Text="График показывает |u_skin − u_ideal| на выбранном сечении. Общая шкала карт позволяет сравнивать амплитуды напрямую, а связанный курсор — проверять одну координату в обеих моделях." />
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

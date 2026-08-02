@@ -1,0 +1,33 @@
+<UserControl x:Class="Diffraction.WpfPrototype.Views.HelpView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel MaxWidth="900" HorizontalAlignment="Left">
+            <TextBlock FontSize="18" FontWeight="SemiBold" Text="Справка" />
+            <TextBlock Margin="0,4,0,14" Style="{StaticResource CaptionStyle}" Text="Определения входных параметров и правила чтения энергетических результатов." />
+
+            <Border Style="{StaticResource PanelBorderStyle}" Padding="16">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Параметры задачи" />
+                    <TextBlock Margin="0,10,0,0" Text="λ — нормированная длина волны; θ — угол падения относительно нормали; α₁ и β₁ — левая и правая границы пластины; N — параметр усечения; δ — толщина скин-слоя." />
+                    <TextBlock Margin="0,8,0,0" Text="xL, xR, yDn и yUp задают только область построения поля и не должны изменять энергетический баланс пластины." />
+                </StackPanel>
+            </Border>
+
+            <Border Margin="0,12,0,0" Style="{StaticResource PanelBorderStyle}" Padding="16">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Энергетические показатели" />
+                    <TextBlock Margin="0,10,0,0" Text="R — отражённая энергия, T — прошедшая энергия, A — поглощение. Для согласованного расчёта выполняется R + T + A ≈ 1 с учётом заданного допуска." />
+                    <TextBlock Margin="0,8,0,0" TextWrapping="Wrap" Text="Знак потока определяется направлением нормали. Интерфейс не должен маскировать отрицательную прошедшую энергию: знак, направление нормали и используемое абсолютное значение требуется показывать явно." />
+                </StackPanel>
+            </Border>
+
+            <Border Margin="0,12,0,0" Style="{StaticResource PanelBorderStyle}" Padding="16">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Потоки сверху и снизу" />
+                    <TextBlock Margin="0,10,0,0" Text="Сопоставляются значения на двух сторонах тонкой пластины, абсолютная и относительная разность. Результат считается согласованным, если различие не превышает установленный допуск." />
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

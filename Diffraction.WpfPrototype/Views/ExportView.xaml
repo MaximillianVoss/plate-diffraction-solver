@@ -1,0 +1,38 @@
+<UserControl x:Class="Diffraction.WpfPrototype.Views.ExportView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:Diffraction.WpfPrototype.Controls">
+    <Grid MaxWidth="1080" HorizontalAlignment="Stretch">
+        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+        <StackPanel Margin="2,0,0,12">
+            <TextBlock FontSize="18" FontWeight="SemiBold" Text="Экспорт результатов" />
+            <TextBlock Margin="0,4,0,0" Style="{StaticResource CaptionStyle}" Text="Единый пакет сохраняет данные, изображения и условия воспроизводимости расчёта." />
+        </StackPanel>
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="340" /><ColumnDefinition Width="12" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+            <Border Grid.Column="0" Style="{StaticResource PanelBorderStyle}" Padding="16">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Содержимое пакета" />
+                    <CheckBox Margin="0,15,0,0" IsChecked="True" Content="CSV — точки графиков и таблиц" />
+                    <CheckBox Margin="0,10,0,0" IsChecked="True" Content="PNG — карты поля и графики" />
+                    <CheckBox Margin="0,10,0,0" IsChecked="True" Content="SVG — графики для публикации" />
+                    <CheckBox Margin="0,10,0,0" IsChecked="True" Content="JSON — параметры и версия решателя" />
+                    <CheckBox Margin="0,10,0,0" IsChecked="True" Content="Отчёт — ЗСЭ, потоки и диагностика" />
+                    <Separator Margin="0,16" />
+                    <TextBlock FontWeight="SemiBold" Text="Имя пакета" />
+                    <TextBox Margin="0,7,0,0" Text="diffraction_N30_lambda1_theta45_skin0.01" />
+                    <Button Margin="0,18,0,0" Style="{StaticResource PrimaryButtonStyle}" Command="{Binding ExportCommand}" Content="Сохранить пакет" />
+                </StackPanel>
+            </Border>
+            <Border Grid.Column="2" Style="{StaticResource PanelBorderStyle}" Padding="14">
+                <Grid>
+                    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                    <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Предварительный просмотр" />
+                    <controls:ScientificPlot Grid.Row="1" Margin="0,12,0,8" PlotKind="Energy" />
+                    <controls:ScientificPlot Grid.Row="2" Margin="0,0,0,8" PlotKind="Method" />
+                    <TextBlock Grid.Row="3" Style="{StaticResource CaptionStyle}" Text="Подписи осей, легенда, краткое описание и снимок параметров включаются автоматически." />
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>
