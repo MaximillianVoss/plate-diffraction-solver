@@ -35,7 +35,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
             "[14:32:01] Инициализация параметров...",
             "[14:32:01] Построение сетки гармоник... (N = 30)",
             "[14:32:01] Проверка сходимости и баланса энергии...",
-            "[14:32:01] Разность потоков: 0,64% — в допуске (1%).",
+            "[14:32:01] R_scat и T_scat совпадают в пределах машинной точности.",
+            "[14:32:01] Локальная невязка ЗСЭ: 0,047% — в допуске (2%).",
             "[14:32:01] Расчёт завершён успешно."
         };
 
@@ -69,9 +70,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ICollectionView FluxView { get; }
     public ICollectionView CoefficientsView { get; }
 
+    public EnergyDemoSnapshot Energy { get; } = ValidatedEnergyDemo.Selected;
+
     public IReadOnlyList<string> Backends { get; } = new[] { "Авто", "CPU", "CUDA" };
     public IReadOnlyList<string> Modes { get; } = new[] { "Один расчёт", "Серия" };
-    public IReadOnlyList<string> FluxCategories { get; } = new[] { "Все показатели", "Энергия", "Потоки", "Баланс" };
+    public IReadOnlyList<string> FluxCategories { get; } = new[] { "Все показатели", "Рассеяние", "Потоки", "Баланс" };
 
     public ICommand NavigateCommand { get; }
     public ICommand RunCommand { get; }
@@ -341,13 +344,39 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private static IEnumerable<FluxRow> CreateFluxRows()
     {
+        EnergyDemoSnapshot energy = ValidatedEnergyDemo.Selected;
         return new[]
         {
-            new FluxRow { Category = "Энергия", Metric = "R_scat (обратно)", Top = 0.629, Bottom = 0.625, DifferencePercent = 0.64, TolerancePercent = 1.0, Status = "В допуске" },
-            new FluxRow { Category = "Энергия", Metric = "T_scat (вперёд)", Top = 0.251, Bottom = 0.250, DifferencePercent = 0.40, TolerancePercent = 1.0, Status = "В допуске" },
-            new FluxRow { Category = "Энергия", Metric = "A_J (пластина)", Top = 0.121, Bottom = 0.120, DifferencePercent = 0.83, TolerancePercent = 1.0, Status = "В допуске" },
-            new FluxRow { Category = "Потоки", Metric = "Поток рассеяния", Top = 0.629, Bottom = 0.625, DifferencePercent = 0.64, TolerancePercent = 1.0, Status = "В допуске" },
-            new FluxRow { Category = "Баланс", Metric = "Локальный баланс ЗСЭ", Top = 1.001, Bottom = 0.995, DifferencePercent = 0.60, TolerancePercent = 1.0, Status = "В допуске" }
+            new FluxRow
+            {
+                Category = "Рассеяние",
+                Metric = "R_scat / T_scat",
+                Top = energy.ReflectedScattered,
+                Bottom = energy.ForwardScattered,
+                DifferencePercent = energy.FarFieldMismatchPercent,
+                TolerancePercent = 0.000001,
+                Status = "Совпадают"
+            },
+            new FluxRow
+            {
+                Category = "Потоки",
+                Metric = "У листа: сверху / снизу",
+                Top = energy.SheetAbove,
+                Bottom = energy.SheetBelow,
+                DifferencePercent = energy.SheetMismatchPercent,
+                TolerancePercent = 0.000001,
+                Status = "Совпадают"
+            },
+            new FluxRow
+            {
+                Category = "Баланс",
+                Metric = "A_flux / A_J",
+                Top = energy.FluxAbsorbed,
+                Bottom = energy.Absorbed,
+                DifferencePercent = energy.LocalBalanceErrorPercent,
+                TolerancePercent = 2.0,
+                Status = "В допуске"
+            }
         };
     }
 
@@ -376,8 +405,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             new DiagnosticRow { Group = "Граничное условие", Check = "Невязка на пластине", Value = "0,00%", Tolerance = "≤ 1,00%", Status = "В допуске" },
             new DiagnosticRow { Group = "Уравнение Гельмгольца", Check = "Относительная невязка", Value = "1,65E-04", Tolerance = "≤ 1,00E-03", Status = "В допуске" },
-            new DiagnosticRow { Group = "Энергетика", Check = "Невязка ЗСЭ", Value = "0,30%", Tolerance = "≤ 1,00%", Status = "В допуске" },
-            new DiagnosticRow { Group = "Потоки", Check = "Разность сверху/снизу", Value = "0,64%", Tolerance = "≤ 1,00%", Status = "В допуске" },
+            new DiagnosticRow { Group = "Энергетика", Check = "Локальная невязка ЗСЭ", Value = "0,047%", Tolerance = "≤ 2,00%", Status = "В допуске" },
+            new DiagnosticRow { Group = "Рассеяние", Check = "Разность R_scat/T_scat", Value = "< 1,0E-12%", Tolerance = "≤ 1,0E-06%", Status = "Совпадают" },
+            new DiagnosticRow { Group = "Потоки", Check = "Разность сверху/снизу у листа", Value = "0,000000%", Tolerance = "≤ 1,0E-06%", Status = "Совпадают" },
             new DiagnosticRow { Group = "Методы", Check = "Коллокация / Галеркин", Value = "4,70E-02", Tolerance = "справочно", Status = "Проверить" }
         };
     }

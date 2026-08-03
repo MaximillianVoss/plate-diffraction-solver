@@ -13,4 +13,8 @@
   <ItemGroup>
     <ProjectReference Include="..\Diffraction.Core\Diffraction.Core.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Diffraction.WpfPrototype\Models\ValidatedEnergyDemo.cs" Link="WpfPrototype\ValidatedEnergyDemo.cs" />
+  </ItemGroup>
 </Project>

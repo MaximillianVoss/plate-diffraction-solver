@@ -15,8 +15,8 @@
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <StackPanel>
-                <TextBlock FontSize="18" FontWeight="SemiBold" Text="Серия по толщине скин-слоя" />
-                <TextBlock Margin="0,3,0,0" Style="{StaticResource CaptionStyle}" Text="Анализ R, T, A, невязки ЗСЭ и различия потоков для диапазона δ" />
+                <TextBlock FontSize="18" FontWeight="SemiBold" Text="Серийный анализ" />
+                <TextBlock Margin="0,3,0,0" Style="{StaticResource CaptionStyle}" Text="R_scat, T_scat, A_J и ЗСЭ по толщине скин-слоя и углу падения" />
             </StackPanel>
             <ComboBox Grid.Column="1" Width="105" Margin="0,0,9,0" ItemsSource="{Binding Backends}" SelectedItem="{Binding SelectedBackend}" ToolTip="Вычислительный backend" />
             <Button Grid.Column="2" Style="{StaticResource PrimaryButtonStyle}" Command="{Binding RunCommand}">
@@ -28,8 +28,8 @@
         </Grid>
 
         <StackPanel Grid.Row="0" x:Name="CompactSeriesHeader" Margin="1,0,1,8" Visibility="Collapsed">
-            <TextBlock FontSize="17" FontWeight="SemiBold" Text="Серия по толщине скин-слоя" />
-            <TextBlock Margin="0,3,0,0" Style="{StaticResource CaptionStyle}" Text="R, T, A, невязка ЗСЭ и потоки для диапазона δ" />
+            <TextBlock FontSize="17" FontWeight="SemiBold" Text="Серийный анализ" />
+            <TextBlock Margin="0,3,0,0" Style="{StaticResource CaptionStyle}" Text="R_scat, T_scat, A_J и ЗСЭ по δ и θ" />
             <WrapPanel Margin="0,8,0,0">
                 <ComboBox Width="102" Margin="0,0,7,6" ItemsSource="{Binding Backends}" SelectedItem="{Binding SelectedBackend}" />
                 <Button Margin="0,0,0,6" Style="{StaticResource PrimaryButtonStyle}" Padding="11,7" Command="{Binding RunCommand}">
@@ -123,19 +123,29 @@
                     <RowDefinition Height="1*" />
                 </Grid.RowDefinitions>
                 <Border Grid.Row="0" Style="{StaticResource PanelBorderStyle}" Padding="10">
-                    <Grid>
-                        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-                        <TextBlock FontWeight="SemiBold" Text="Энергии в зависимости от толщины" />
-                        <controls:ScientificPlot Grid.Row="1" Margin="0,7,0,6" PlotKind="Energy" />
-                        <TextBlock Grid.Row="2" Style="{StaticResource CaptionStyle}" Text="Линии R, T и A строятся для общей нормировки на падающую энергию. Выбор точки обновляет таблицу справа." />
-                    </Grid>
+                    <TabControl>
+                        <TabItem Header="По толщине δ">
+                            <Grid Margin="0,8,0,0">
+                                <Grid.RowDefinitions><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                                <controls:ScientificPlot Margin="0,0,0,6" PlotKind="Energy" />
+                                <TextBlock Grid.Row="1" Style="{StaticResource CaptionStyle}" Text="R_scat и T_scat совпадают и уменьшаются вместе. Пунктирная T_scat наложена на сплошную R_scat." TextWrapping="Wrap" />
+                            </Grid>
+                        </TabItem>
+                        <TabItem Header="По углу θ">
+                            <Grid Margin="0,8,0,0">
+                                <Grid.RowDefinitions><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                                <controls:ScientificPlot Margin="0,0,0,6" PlotKind="AngleEnergy" />
+                                <TextBlock Grid.Row="1" Style="{StaticResource CaptionStyle}" Text="Контрольная серия: δ=0,010, N=30. Углы ниже 10° исключены из масштаба из-за нормировки I_plate ∝ sin θ." TextWrapping="Wrap" />
+                            </Grid>
+                        </TabItem>
+                    </TabControl>
                 </Border>
                 <Border Grid.Row="2" Style="{StaticResource PanelBorderStyle}" Padding="10">
                     <Grid>
                         <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                         <TextBlock FontWeight="SemiBold" Text="Невязка ЗСЭ и различие потоков" />
-                        <controls:ScientificPlot Grid.Row="1" Margin="0,7,0,5" PlotKind="Difference" />
-                        <TextBlock Grid.Row="2" Style="{StaticResource CaptionStyle}" Text="Допуск применяется отдельно к невязке энергетического баланса и относительной разности потоков сверху/снизу." />
+                        <controls:ScientificPlot Grid.Row="1" Margin="0,7,0,5" PlotKind="EnergyDiagnostics" />
+                        <TextBlock Grid.Row="2" Style="{StaticResource CaptionStyle}" Text="Невязка ЗСЭ остаётся ниже 0,05%; различие R_scat/T_scat находится на уровне машинного округления." />
                     </Grid>
                 </Border>
             </Grid>
@@ -157,37 +167,37 @@
                     <Separator Grid.Row="1" Margin="0,8" />
                     <Grid Grid.Row="2">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                        <TextBlock Text="R_scat, обратно" /><TextBlock Grid.Column="1" FontWeight="SemiBold" Text="0,628" />
+                        <TextBlock Text="R_scat, обратно" /><TextBlock Grid.Column="1" FontWeight="SemiBold" Text="{Binding Energy.ReflectedDisplay}" />
                     </Grid>
                     <Grid Grid.Row="3" Margin="0,7,0,0">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                        <TextBlock Text="T_scat, вперёд" /><TextBlock Grid.Column="1" FontWeight="SemiBold" Text="0,251" />
+                        <TextBlock Text="T_scat, вперёд" /><TextBlock Grid.Column="1" FontWeight="SemiBold" Text="{Binding Energy.ForwardDisplay}" />
                     </Grid>
                     <Grid Grid.Row="4" Margin="0,7,0,0">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                        <TextBlock Text="A_J, пластина" /><TextBlock Grid.Column="1" FontWeight="SemiBold" Text="0,121" />
+                        <TextBlock Text="A_J, пластина" /><TextBlock Grid.Column="1" FontWeight="SemiBold" Text="{Binding Energy.AbsorbedDisplay}" />
                     </Grid>
                     <Grid Grid.Row="5" Margin="0,7,0,0">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                        <TextBlock Text="Невязка ЗСЭ" /><TextBlock Grid.Column="1" FontWeight="SemiBold" Foreground="{StaticResource SuccessBrush}" Text="0,3%" />
+                        <TextBlock Text="Невязка ЗСЭ" /><TextBlock Grid.Column="1" FontWeight="SemiBold" Foreground="{StaticResource SuccessBrush}" Text="{Binding Energy.LocalBalanceErrorDisplay}" />
                     </Grid>
                     <Grid Grid.Row="6" Margin="0,14,0,0">
                         <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                         <TextBlock Grid.ColumnSpan="2" FontWeight="SemiBold" Text="Потоки сверху/снизу" />
                         <TextBlock Grid.Row="1" Margin="0,7,0,0" Text="Сверху / снизу" />
-                        <TextBlock Grid.Row="1" Grid.Column="1" Margin="0,7,0,0" Text="0,629 / 0,625" />
+                        <TextBlock Grid.Row="1" Grid.Column="1" Margin="0,7,0,0" Text="{Binding Energy.SheetPairDisplay}" />
                         <TextBlock Grid.Row="2" Margin="0,6,0,0" Text="Разность" />
-                        <TextBlock Grid.Row="2" Grid.Column="1" Margin="0,6,0,0" Foreground="{StaticResource SuccessBrush}" FontWeight="SemiBold" Text="0,64% — в допуске" />
+                        <TextBlock Grid.Row="2" Grid.Column="1" Margin="0,6,0,0" Foreground="{StaticResource SuccessBrush}" FontWeight="SemiBold" Text="0,000000% — совпадают" />
                     </Grid>
 
                     <DataGrid Grid.Row="7" Margin="0,14,0,8" AutoGenerateColumns="False" MinHeight="135">
                         <DataGrid.Items>
-                            <sys:String xmlns:sys="clr-namespace:System;assembly=System.Runtime">δ 0,075  •  ЗСЭ 1,42%  •  Предупреждение</sys:String>
-                            <sys:String xmlns:sys="clr-namespace:System;assembly=System.Runtime">δ 0,090  •  Δ потоков 1,10%  •  Проверить</sys:String>
+                            <sys:String xmlns:sys="clr-namespace:System;assembly=System.Runtime">Толщина δ 0...0,100  •  нарушений не найдено</sys:String>
+                            <sys:String xmlns:sys="clr-namespace:System;assembly=System.Runtime">Угол θ 10...90°  •  R_scat и T_scat совпадают</sys:String>
                         </DataGrid.Items>
                         <DataGrid.Columns>
-                            <DataGridTextColumn Header="Аномалии серии" Binding="{Binding}" Width="*" />
+                            <DataGridTextColumn Header="Контроль серии" Binding="{Binding}" Width="*" />
                         </DataGrid.Columns>
                     </DataGrid>
                     <Button Grid.Row="8" Style="{StaticResource SecondaryButtonStyle}" Command="{Binding ExportCommand}" Content="Экспортировать серию" />

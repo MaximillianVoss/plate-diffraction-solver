@@ -27,8 +27,8 @@
                                         FontWeight="SemiBold"
                                         Text="R_scat — обратно"
                                         HelpText="Нормированный поток рассеянного поля вверх. Это не полный коэффициент отражения." />
-                    <TextBlock Margin="0,2,0,0" FontSize="25" FontWeight="SemiBold" Text="0,628" />
-                    <TextBlock Style="{StaticResource CaptionStyle}" Text="62,8% от I_plate" />
+                    <TextBlock Margin="0,2,0,0" FontSize="25" FontWeight="SemiBold" Text="{Binding Energy.ReflectedDisplay}" />
+                    <TextBlock Style="{StaticResource CaptionStyle}" Text="{Binding Energy.ReflectedPercentDisplay}" />
                 </StackPanel>
             </Border>
             <Border Grid.Column="2" Padding="8" Style="{StaticResource PanelBorderStyle}">
@@ -37,8 +37,8 @@
                                         FontWeight="SemiBold"
                                         Text="T_scat — вперёд"
                                         HelpText="Нормированный поток рассеянного поля вниз. Это не полная прошедшая энергия." />
-                    <TextBlock Margin="0,2,0,0" FontSize="25" FontWeight="SemiBold" Text="0,251" />
-                    <TextBlock Style="{StaticResource CaptionStyle}" Text="25,1% от I_plate" />
+                    <TextBlock Margin="0,2,0,0" FontSize="25" FontWeight="SemiBold" Text="{Binding Energy.ForwardDisplay}" />
+                    <TextBlock Style="{StaticResource CaptionStyle}" Text="{Binding Energy.ForwardPercentDisplay}" />
                 </StackPanel>
             </Border>
             <Border Grid.Column="4" Padding="8" Style="{StaticResource PanelBorderStyle}">
@@ -47,8 +47,8 @@
                                         FontWeight="SemiBold"
                                         Text="A_J — поглощение"
                                         HelpText="Джоулево поглощение, вычисленное интегрированием по самой пластине." />
-                    <TextBlock Margin="0,2,0,0" FontSize="25" FontWeight="SemiBold" Text="0,121" />
-                    <TextBlock Style="{StaticResource CaptionStyle}" Text="12,1% от I_plate" />
+                    <TextBlock Margin="0,2,0,0" FontSize="25" FontWeight="SemiBold" Text="{Binding Energy.AbsorbedDisplay}" />
+                    <TextBlock Style="{StaticResource CaptionStyle}" Text="{Binding Energy.AbsorbedPercentDisplay}" />
                 </StackPanel>
             </Border>
             <Border Grid.Column="6" Padding="8" Style="{StaticResource PanelBorderStyle}">
@@ -57,8 +57,8 @@
                                         FontWeight="SemiBold"
                                         Text="Локальная невязка ЗСЭ"
                                         HelpText="Относительная невязка локального энергетического равенства на пластине." />
-                    <TextBlock Margin="0,2,0,0" FontSize="25" FontWeight="SemiBold" Text="0,3%" />
-                    <TextBlock Style="{StaticResource CaptionStyle}" Text="допуск 1,0%" />
+                    <TextBlock Margin="0,2,0,0" FontSize="25" FontWeight="SemiBold" Text="{Binding Energy.LocalBalanceErrorDisplay}" />
+                    <TextBlock Style="{StaticResource CaptionStyle}" Text="допуск 2,0%" />
                 </StackPanel>
             </Border>
             <Border Grid.Column="8" Padding="8" Background="#F0FAF4" BorderBrush="#ABEFC6" BorderThickness="1" CornerRadius="4">
@@ -67,7 +67,7 @@
                         <TextBlock FontFamily="Segoe MDL2 Assets" FontSize="22" Foreground="{StaticResource SuccessBrush}" Text="&#xE73E;" />
                         <TextBlock Margin="8,0,0,0" VerticalAlignment="Center" FontSize="18" FontWeight="SemiBold" Foreground="{StaticResource SuccessBrush}" Text="В допуске" />
                     </StackPanel>
-                    <TextBlock Margin="0,5,0,0" Style="{StaticResource CaptionStyle}" Text="|ΔЗСЭ| / I_plate = 0,003" />
+                    <TextBlock Margin="0,5,0,0" Style="{StaticResource CaptionStyle}" Text="{Binding Energy.LocalBalanceResidualDisplay}" />
                 </StackPanel>
             </Border>
         </Grid>
@@ -82,32 +82,32 @@
                     <Border Margin="0,0,3,3" Padding="7" Style="{StaticResource PanelBorderStyle}">
                         <StackPanel HorizontalAlignment="Center">
                             <controls:InfoLabel HorizontalAlignment="Center" FontSize="11.5" Text="R_scat — обратно" HelpText="Поток рассеянного поля вверх; не полный коэффициент отражения." />
-                            <TextBlock Margin="0,2,0,0" HorizontalAlignment="Center" FontSize="21" FontWeight="SemiBold" Text="0,628" />
+                            <TextBlock Margin="0,2,0,0" HorizontalAlignment="Center" FontSize="21" FontWeight="SemiBold" Text="{Binding Energy.ReflectedDisplay}" />
                         </StackPanel>
                     </Border>
                     <Border Margin="3,0,0,3" Padding="7" Style="{StaticResource PanelBorderStyle}">
                         <StackPanel HorizontalAlignment="Center">
                             <controls:InfoLabel HorizontalAlignment="Center" FontSize="11.5" Text="T_scat — вперёд" HelpText="Поток рассеянного поля вниз; не полная прошедшая энергия." />
-                            <TextBlock Margin="0,2,0,0" HorizontalAlignment="Center" FontSize="21" FontWeight="SemiBold" Text="0,251" />
+                            <TextBlock Margin="0,2,0,0" HorizontalAlignment="Center" FontSize="21" FontWeight="SemiBold" Text="{Binding Energy.ForwardDisplay}" />
                         </StackPanel>
                     </Border>
                     <Border Margin="0,3,3,0" Padding="7" Style="{StaticResource PanelBorderStyle}">
                         <StackPanel HorizontalAlignment="Center">
                             <controls:InfoLabel HorizontalAlignment="Center" FontSize="11.5" Text="A_J — поглощение" HelpText="Джоулево поглощение, интегрированное по пластине." />
-                            <TextBlock Margin="0,2,0,0" HorizontalAlignment="Center" FontSize="21" FontWeight="SemiBold" Text="0,121" />
+                            <TextBlock Margin="0,2,0,0" HorizontalAlignment="Center" FontSize="21" FontWeight="SemiBold" Text="{Binding Energy.AbsorbedDisplay}" />
                         </StackPanel>
                     </Border>
                     <Border Margin="3,3,0,0" Padding="7" Style="{StaticResource PanelBorderStyle}">
                         <StackPanel HorizontalAlignment="Center">
                             <controls:InfoLabel HorizontalAlignment="Center" FontSize="11.5" Text="Невязка ЗСЭ" HelpText="Относительная невязка локального энергетического равенства." />
-                            <TextBlock Margin="0,2,0,0" HorizontalAlignment="Center" FontSize="21" FontWeight="SemiBold" Text="0,3%" />
+                            <TextBlock Margin="0,2,0,0" HorizontalAlignment="Center" FontSize="21" FontWeight="SemiBold" Text="{Binding Energy.LocalBalanceErrorDisplay}" />
                         </StackPanel>
                     </Border>
                 </UniformGrid>
                 <Border Grid.Row="1" Margin="0,6,0,0" Padding="8" Background="#F0FAF4" BorderBrush="#ABEFC6" BorderThickness="1" CornerRadius="4">
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
                         <TextBlock FontFamily="Segoe MDL2 Assets" Foreground="{StaticResource SuccessBrush}" Text="&#xE73E;" />
-                        <TextBlock Margin="7,0,0,0" Foreground="{StaticResource SuccessBrush}" FontWeight="SemiBold" Text="ЗСЭ в допуске  •  |Δ| / I_plate = 0,003" TextWrapping="Wrap" />
+                        <TextBlock Margin="7,0,0,0" Foreground="{StaticResource SuccessBrush}" FontWeight="SemiBold" Text="{Binding Energy.CompactBalanceDisplay}" TextWrapping="Wrap" />
                     </StackPanel>
                 </Border>
             </Grid>
@@ -155,7 +155,11 @@
                         <TextBlock Style="{StaticResource CaptionStyle}" Text="α₁ = −1,500" />
                         <TextBlock Grid.Column="1" HorizontalAlignment="Right" Style="{StaticResource CaptionStyle}" Text="β₁ = −0,500" />
                     </Grid>
-                    <TextBlock Grid.Row="3" Margin="0,3,0,6" Foreground="{StaticResource WarningBrush}" FontSize="10.5" Text="Толщина δ показана условно: 0,010000 мкм" />
+                    <TextBlock Grid.Row="3" Margin="0,3,0,6" Foreground="{StaticResource WarningBrush}" FontSize="10.5">
+                        <Run Text="Толщина δ показана условно: " />
+                        <Run Text="{Binding Energy.SkinDepthDisplay, Mode=OneWay}" />
+                        <Run Text=" мкм" />
+                    </TextBlock>
                     <Grid Grid.Row="4" MinHeight="116">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
@@ -184,7 +188,7 @@
                     </Grid.RowDefinitions>
                     <TextBlock FontWeight="SemiBold" Text="Энергии в зависимости от толщины скин-слоя" />
                     <controls:ScientificPlot Grid.Row="1" Margin="0,8,0,8" MinHeight="280" PlotKind="Energy" />
-                    <TextBlock Grid.Row="2" Style="{StaticResource CaptionStyle}" Text="График показывает R_scat, T_scat и A_J, нормированные на падающий поток через пластину. Для каждой точки контролируется локальная невязка ЗСЭ." TextWrapping="Wrap" />
+                    <TextBlock Grid.Row="2" Style="{StaticResource CaptionStyle}" Text="R_scat и T_scat совпадают: зелёная пунктирная линия наложена на синюю. Значения нормированы на падающий поток через пластину." TextWrapping="Wrap" />
                 </Grid>
             </Border>
 
@@ -198,7 +202,7 @@
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
-                    <TextBlock FontWeight="SemiBold" Text="Сравнение потоков на границах" />
+                    <TextBlock FontWeight="SemiBold" Text="Сравнение контрольных величин" />
                     <Grid Grid.Row="1" Margin="0,8,0,8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
@@ -213,12 +217,12 @@
                     </Grid>
                     <DataGrid Grid.Row="2" x:Name="FluxGrid" ItemsSource="{Binding FluxView}" AutoGenerateColumns="False" MinHeight="230">
                         <DataGrid.Columns>
-                            <DataGridTextColumn Header="Показатель" Binding="{Binding Metric}" MinWidth="100" Width="1.7*" />
-                            <DataGridTextColumn Header="Сверху" Binding="{Binding Top, StringFormat=0.000}" MinWidth="55" Width="*" />
-                            <DataGridTextColumn Header="Снизу" Binding="{Binding Bottom, StringFormat=0.000}" MinWidth="55" Width="*" />
-                            <DataGridTextColumn Header="Разность" Binding="{Binding DifferencePercent, StringFormat={}{0:0.00}%}" MinWidth="65" Width="*" />
-                            <DataGridTextColumn Header="Допуск" Binding="{Binding TolerancePercent, StringFormat={}{0:0.0}%}" MinWidth="55" Width="*" />
-                            <DataGridTextColumn Header="Статус" Binding="{Binding Status}" ElementStyle="{StaticResource StatusCellTextStyle}" MinWidth="75" Width="*" />
+                            <DataGridTextColumn Header="Показатель" Binding="{Binding Metric}" MinWidth="100" Width="1.55*" />
+                            <DataGridTextColumn Header="Пара 1" Binding="{Binding Top, StringFormat=0.000000}" MinWidth="52" Width="0.9*" />
+                            <DataGridTextColumn Header="Пара 2" Binding="{Binding Bottom, StringFormat=0.000000}" MinWidth="52" Width="0.9*" />
+                            <DataGridTextColumn Header="Δ, %" Binding="{Binding DifferencePercent, StringFormat={}{0:0.######}%}" MinWidth="52" Width="0.75*" />
+                            <DataGridTextColumn Header="Допуск" Binding="{Binding TolerancePercent, StringFormat={}{0:0.######}%}" MinWidth="55" Width="0.8*" />
+                            <DataGridTextColumn Header="Статус" Binding="{Binding Status}" ElementStyle="{StaticResource StatusCellTextStyle}" MinWidth="65" Width="*" />
                         </DataGrid.Columns>
                         <DataGrid.ContextMenu>
                             <ContextMenu>
@@ -226,16 +230,16 @@
                             </ContextMenu>
                         </DataGrid.ContextMenu>
                     </DataGrid>
-                    <TextBlock Grid.Row="3" Margin="0,7,0,8" Style="{StaticResource CaptionStyle}" Text="Доступны сортировка, перестановка столбцов, поиск, фильтрация и копирование. Верхний и нижний потоки сопоставляются с учётом направления нормали." TextWrapping="Wrap" />
-                    <Border Grid.Row="4" Padding="9" Background="#FFFAEB" BorderBrush="#FEC84B" BorderThickness="1" CornerRadius="3">
+                    <TextBlock Grid.Row="3" Margin="0,7,0,8" Style="{StaticResource CaptionStyle}" Text="Порядок сравниваемой пары указан в названии строки. R_scat/T_scat и потоки у листа проверяются отдельно от локального баланса A_flux/A_J." TextWrapping="Wrap" />
+                    <Border Grid.Row="4" Padding="9" Background="#F0FAF4" BorderBrush="#ABEFC6" BorderThickness="1" CornerRadius="3">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <TextBlock FontFamily="Segoe MDL2 Assets" Foreground="{StaticResource WarningBrush}" Text="&#xE7BA;" />
-                            <TextBlock Grid.Column="1" Margin="8,0" VerticalAlignment="Center" Text="Проверить знаки потоков и ориентацию нормалей" TextWrapping="Wrap" />
+                            <TextBlock FontFamily="Segoe MDL2 Assets" Foreground="{StaticResource SuccessBrush}" Text="&#xE73E;" />
+                            <TextBlock Grid.Column="1" Margin="8,0" VerticalAlignment="Center" Foreground="{StaticResource SuccessBrush}" FontWeight="SemiBold" Text="R_scat и T_scat совпадают в допуске" TextWrapping="Wrap" />
                             <Button Grid.Column="2" Padding="9,4" MinHeight="27" Style="{StaticResource SecondaryButtonStyle}" Content="Открыть диагностику" Click="OpenDiagnostics_Click" />
                         </Grid>
                     </Border>
