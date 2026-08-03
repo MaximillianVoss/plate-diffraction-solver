@@ -17,6 +17,7 @@
             <StackPanel>
                 <TextBlock FontSize="18" FontWeight="SemiBold" Text="Серийный анализ" />
                 <TextBlock Margin="0,3,0,0" Style="{StaticResource CaptionStyle}" Text="R_scat, T_scat, A_J и ЗСЭ по толщине скин-слоя и углу падения" />
+                <TextBlock Margin="0,2,0,0" Style="{StaticResource CaptionStyle}" Text="{Binding ContextSummary}" TextTrimming="CharacterEllipsis" ToolTip="{Binding ContextSummary}" />
             </StackPanel>
             <ComboBox Grid.Column="1" Width="105" Margin="0,0,9,0" ItemsSource="{Binding Backends}" SelectedItem="{Binding SelectedBackend}" ToolTip="Вычислительный backend" />
             <Button Grid.Column="2" Style="{StaticResource PrimaryButtonStyle}" Command="{Binding RunCommand}">
@@ -29,7 +30,7 @@
 
         <StackPanel Grid.Row="0" x:Name="CompactSeriesHeader" Margin="1,0,1,8" Visibility="Collapsed">
             <TextBlock FontSize="17" FontWeight="SemiBold" Text="Серийный анализ" />
-            <TextBlock Margin="0,3,0,0" Style="{StaticResource CaptionStyle}" Text="R_scat, T_scat, A_J и ЗСЭ по δ и θ" />
+            <TextBlock Margin="0,3,0,0" Style="{StaticResource CaptionStyle}" Text="{Binding ContextSummary}" TextTrimming="CharacterEllipsis" ToolTip="{Binding ContextSummary}" />
             <WrapPanel Margin="0,8,0,0">
                 <ComboBox Width="102" Margin="0,0,7,6" ItemsSource="{Binding Backends}" SelectedItem="{Binding SelectedBackend}" />
                 <Button Margin="0,0,0,6" Style="{StaticResource PrimaryButtonStyle}" Padding="11,7" Command="{Binding RunCommand}">
@@ -70,6 +71,9 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
@@ -77,21 +81,32 @@
                     <Grid Grid.Row="1" Margin="0,8,0,0">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="78" /></Grid.ColumnDefinitions>
                         <TextBlock VerticalAlignment="Center" Text="Длина волны λ" />
-                        <TextBox Grid.Column="1" Text="1,000" />
+                        <TextBox Grid.Column="1" Text="{Binding Parameters.WavelengthMicrometers, Mode=TwoWay, StringFormat={}{0:0.000}, ValidatesOnExceptions=True}" />
                     </Grid>
                     <Grid Grid.Row="2" Margin="0,6,0,0">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="78" /></Grid.ColumnDefinitions>
                         <TextBlock VerticalAlignment="Center" Text="Угол θ, °" />
-                        <TextBox Grid.Column="1" Text="45,0" />
+                        <TextBox Grid.Column="1" Text="{Binding Parameters.IncidenceAngleDegrees, Mode=TwoWay, StringFormat={}{0:0.0}, ValidatesOnExceptions=True}" />
                     </Grid>
                     <Grid Grid.Row="3" Margin="0,6,0,0">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="78" /></Grid.ColumnDefinitions>
                         <TextBlock VerticalAlignment="Center" Text="Параметр N" />
-                        <TextBox Grid.Column="1" Text="30" />
+                        <TextBox Grid.Column="1" Text="{Binding Parameters.HarmonicCount, Mode=TwoWay, ValidatesOnExceptions=True}" />
                     </Grid>
 
-                    <TextBlock Grid.Row="4" Margin="0,14,0,0" FontWeight="SemiBold" Text="Диапазон толщины δ" />
-                    <Grid Grid.Row="5" Margin="0,8,0,0">
+                    <Expander Grid.Row="4" Margin="0,10,0,0" Header="{Binding GeometryRegionSummary}" ToolTip="Геометрия пластины и границы области вывода">
+                        <UniformGrid Columns="2" Margin="0,7,0,3">
+                            <StackPanel Margin="0,0,4,6"><TextBlock Style="{StaticResource CaptionStyle}" Text="α₁" /><TextBox Text="{Binding Parameters.PlateStart, Mode=TwoWay, StringFormat={}{0:0.000}, ValidatesOnExceptions=True}" /></StackPanel>
+                            <StackPanel Margin="4,0,0,6"><TextBlock Style="{StaticResource CaptionStyle}" Text="β₁" /><TextBox Text="{Binding Parameters.PlateEnd, Mode=TwoWay, StringFormat={}{0:0.000}, ValidatesOnExceptions=True}" /></StackPanel>
+                            <StackPanel Margin="0,0,4,6"><TextBlock Style="{StaticResource CaptionStyle}" Text="xL" /><TextBox Text="{Binding Parameters.OutputLeft, Mode=TwoWay, StringFormat={}{0:0.00}, ValidatesOnExceptions=True}" /></StackPanel>
+                            <StackPanel Margin="4,0,0,6"><TextBlock Style="{StaticResource CaptionStyle}" Text="xR" /><TextBox Text="{Binding Parameters.OutputRight, Mode=TwoWay, StringFormat={}{0:0.00}, ValidatesOnExceptions=True}" /></StackPanel>
+                            <StackPanel Margin="0,0,4,0"><TextBlock Style="{StaticResource CaptionStyle}" Text="yDn" /><TextBox Text="{Binding Parameters.OutputBottom, Mode=TwoWay, StringFormat={}{0:0.00}, ValidatesOnExceptions=True}" /></StackPanel>
+                            <StackPanel Margin="4,0,0,0"><TextBlock Style="{StaticResource CaptionStyle}" Text="yUp" /><TextBox Text="{Binding Parameters.OutputTop, Mode=TwoWay, StringFormat={}{0:0.00}, ValidatesOnExceptions=True}" /></StackPanel>
+                        </UniformGrid>
+                    </Expander>
+
+                    <TextBlock Grid.Row="5" Margin="0,14,0,0" FontWeight="SemiBold" Text="Диапазон толщины δ" />
+                    <Grid Grid.Row="6" Margin="0,8,0,0">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
@@ -100,18 +115,34 @@
                         </Grid.RowDefinitions>
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="86" /></Grid.ColumnDefinitions>
                         <TextBlock VerticalAlignment="Center" Text="Начало" />
-                        <TextBox Grid.Column="1" Text="0,000" />
+                        <TextBox Grid.Column="1" Text="{Binding Parameters.SeriesSkinDepthStart, Mode=TwoWay, StringFormat={}{0:0.000}, ValidatesOnExceptions=True}" />
                         <TextBlock Grid.Row="1" Margin="0,6,0,0" VerticalAlignment="Center" Text="Конец" />
-                        <TextBox Grid.Row="1" Grid.Column="1" Margin="0,6,0,0" Text="0,100" />
+                        <TextBox Grid.Row="1" Grid.Column="1" Margin="0,6,0,0" Text="{Binding Parameters.SeriesSkinDepthEnd, Mode=TwoWay, StringFormat={}{0:0.000}, ValidatesOnExceptions=True}" />
                         <TextBlock Grid.Row="2" Margin="0,6,0,0" VerticalAlignment="Center" Text="Точек" />
-                        <TextBox Grid.Row="2" Grid.Column="1" Margin="0,6,0,0" Text="21" />
-                        <Slider Grid.Row="3" Grid.ColumnSpan="2" Margin="0,10,0,0" Minimum="5" Maximum="101" Value="21" TickFrequency="4" IsSnapToTickEnabled="True" />
+                        <TextBox Grid.Row="2" Grid.Column="1" Margin="0,6,0,0" Text="{Binding Parameters.SeriesPointCount, Mode=TwoWay, ValidatesOnExceptions=True}" />
+                        <Slider Grid.Row="3" Grid.ColumnSpan="2" Margin="0,10,0,0" Minimum="5" Maximum="101" Value="{Binding Parameters.SeriesPointCount, Mode=TwoWay}" TickFrequency="1" IsSnapToTickEnabled="True" />
                     </Grid>
 
-                    <controls:PlateGeometryView Grid.Row="6" Margin="0,12,0,5" MinHeight="180" />
-                    <StackPanel Grid.Row="7">
+                    <TextBlock Grid.Row="7" Margin="0,14,0,0" FontWeight="SemiBold" Text="Диапазон угла θ" />
+                    <Grid Grid.Row="8" Margin="0,8,0,0">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="86" /></Grid.ColumnDefinitions>
+                        <TextBlock VerticalAlignment="Center" Text="Начало, °" />
+                        <TextBox Grid.Column="1" Text="{Binding Parameters.SeriesAngleStartDegrees, Mode=TwoWay, StringFormat={}{0:0.#}, ValidatesOnExceptions=True}" />
+                        <TextBlock Grid.Row="1" Margin="0,6,0,0" VerticalAlignment="Center" Text="Конец, °" />
+                        <TextBox Grid.Row="1" Grid.Column="1" Margin="0,6,0,0" Text="{Binding Parameters.SeriesAngleEndDegrees, Mode=TwoWay, StringFormat={}{0:0.#}, ValidatesOnExceptions=True}" />
+                        <TextBlock Grid.Row="2" Margin="0,6,0,0" VerticalAlignment="Center" Text="Шаг, °" />
+                        <TextBox Grid.Row="2" Grid.Column="1" Margin="0,6,0,0" Text="{Binding Parameters.SeriesAngleStepDegrees, Mode=TwoWay, StringFormat={}{0:0.#}, ValidatesOnExceptions=True}" />
+                    </Grid>
+
+                    <controls:PlateGeometryView Grid.Row="9" Margin="0,12,0,5" MinHeight="150" />
+                    <StackPanel Grid.Row="10">
                         <TextBlock Style="{StaticResource CaptionStyle}" Text="Толщина на схеме отображается условно." />
-                        <TextBlock Margin="0,5,0,0" Foreground="{StaticResource SuccessBrush}" FontWeight="SemiBold" Text="21 расчёт  •  ориентировочно 18 с" />
+                        <TextBlock Margin="0,5,0,0" Foreground="{StaticResource SuccessBrush}" FontWeight="SemiBold" Text="{Binding SeriesEstimateText}" />
                     </StackPanel>
                 </Grid>
             </Border>
@@ -135,7 +166,7 @@
                             <Grid Margin="0,8,0,0">
                                 <Grid.RowDefinitions><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                                 <controls:ScientificPlot Margin="0,0,0,6" PlotKind="AngleEnergy" />
-                                <TextBlock Grid.Row="1" Style="{StaticResource CaptionStyle}" Text="Контрольная серия: δ=0,010, N=30. Углы ниже 10° исключены из масштаба из-за нормировки I_plate ∝ sin θ." TextWrapping="Wrap" />
+                                <TextBlock Grid.Row="1" Style="{StaticResource CaptionStyle}" Text="{Binding SeriesAngleCaption}" TextWrapping="Wrap" />
                             </Grid>
                         </TabItem>
                     </TabControl>
@@ -163,7 +194,7 @@
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
-                    <TextBlock FontWeight="SemiBold" Text="Выбранная точка: δ = 0,010" />
+                    <TextBlock FontWeight="SemiBold" Text="{Binding SeriesPointTitle}" />
                     <Separator Grid.Row="1" Margin="0,8" />
                     <Grid Grid.Row="2">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
@@ -191,11 +222,7 @@
                         <TextBlock Grid.Row="2" Grid.Column="1" Margin="0,6,0,0" Foreground="{StaticResource SuccessBrush}" FontWeight="SemiBold" Text="0,000000% — совпадают" />
                     </Grid>
 
-                    <DataGrid Grid.Row="7" Margin="0,14,0,8" AutoGenerateColumns="False" MinHeight="135">
-                        <DataGrid.Items>
-                            <sys:String xmlns:sys="clr-namespace:System;assembly=System.Runtime">Толщина δ 0...0,100  •  нарушений не найдено</sys:String>
-                            <sys:String xmlns:sys="clr-namespace:System;assembly=System.Runtime">Угол θ 10...90°  •  R_scat и T_scat совпадают</sys:String>
-                        </DataGrid.Items>
+                    <DataGrid Grid.Row="7" Margin="0,14,0,8" AutoGenerateColumns="False" MinHeight="135" ItemsSource="{Binding SeriesCheckSummaries}">
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="Контроль серии" Binding="{Binding}" Width="*" />
                         </DataGrid.Columns>

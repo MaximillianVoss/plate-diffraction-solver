@@ -20,8 +20,8 @@
             </Grid.ColumnDefinitions>
 
             <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                <TextBlock FontSize="17" FontWeight="SemiBold" Text="{Binding SelectedRun.Title}" TextTrimming="CharacterEllipsis" />
-                <TextBlock Margin="0,3,0,0" Style="{StaticResource CaptionStyle}" Text="{Binding SelectedRun.ParameterSummary}" TextTrimming="CharacterEllipsis" />
+                <TextBlock FontSize="17" FontWeight="SemiBold" Text="{Binding ContextTitle}" TextTrimming="CharacterEllipsis" />
+                <TextBlock Margin="0,3,0,0" Style="{StaticResource CaptionStyle}" Text="{Binding ContextSummary}" TextTrimming="CharacterEllipsis" ToolTip="{Binding ContextSummary}" />
             </StackPanel>
 
             <StackPanel Grid.Column="1" Margin="18,0,0,0" Orientation="Horizontal" VerticalAlignment="Center">
@@ -65,8 +65,8 @@
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
             <StackPanel>
-                <TextBlock FontSize="17" FontWeight="SemiBold" Text="{Binding SelectedRun.Title}" TextTrimming="CharacterEllipsis" />
-                <TextBlock Margin="0,3,0,0" Style="{StaticResource CaptionStyle}" Text="{Binding SelectedRun.ParameterSummary}" TextTrimming="CharacterEllipsis" />
+                <TextBlock FontSize="17" FontWeight="SemiBold" Text="{Binding ContextTitle}" TextTrimming="CharacterEllipsis" />
+                <TextBlock Margin="0,3,0,0" Style="{StaticResource CaptionStyle}" Text="{Binding ContextSummary}" TextTrimming="CharacterEllipsis" ToolTip="{Binding ContextSummary}" />
             </StackPanel>
             <WrapPanel Grid.Row="1" Margin="0,6,0,0">
                 <StackPanel Width="148" Margin="0,2,8,0">
@@ -125,43 +125,43 @@
 
                 <StackPanel Grid.Column="0" Margin="0,0,7,0">
                     <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="λ, мкм" HelpText="Длина волны падающего поля в микрометрах." />
-                    <TextBox Margin="0,4,0,0" Text="1,000" ToolTip="Нормированная длина волны" />
+                    <TextBox Margin="0,4,0,0" Text="{Binding Parameters.WavelengthMicrometers, Mode=TwoWay, StringFormat={}{0:0.000}, ValidatesOnExceptions=True}" ToolTip="Нормированная длина волны" />
                 </StackPanel>
                 <StackPanel Grid.Column="1" Margin="0,0,7,0">
                     <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="θ, °" HelpText="Угол падения относительно нормали к пластине." />
-                    <TextBox Margin="0,4,0,0" Text="45,0" ToolTip="Угол падения" />
+                    <TextBox Margin="0,4,0,0" Text="{Binding Parameters.IncidenceAngleDegrees, Mode=TwoWay, StringFormat={}{0:0.0}, ValidatesOnExceptions=True}" ToolTip="Угол падения" />
                 </StackPanel>
                 <StackPanel Grid.Column="2" Margin="0,0,7,0">
                     <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="α₁" HelpText="Левая координата границы пластины." />
-                    <TextBox Margin="0,4,0,0" Text="-1,500" ToolTip="Левая граница пластины" />
+                    <TextBox Margin="0,4,0,0" Text="{Binding Parameters.PlateStart, Mode=TwoWay, StringFormat={}{0:0.000}, ValidatesOnExceptions=True}" ToolTip="Левая граница пластины" />
                 </StackPanel>
                 <StackPanel Grid.Column="3" Margin="0,0,7,0">
                     <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="β₁" HelpText="Правая координата границы пластины." />
-                    <TextBox Margin="0,4,0,0" Text="-0,500" ToolTip="Правая граница пластины" />
+                    <TextBox Margin="0,4,0,0" Text="{Binding Parameters.PlateEnd, Mode=TwoWay, StringFormat={}{0:0.000}, ValidatesOnExceptions=True}" ToolTip="Правая граница пластины" />
                 </StackPanel>
                 <StackPanel Grid.Column="4" Margin="0,0,7,0">
                     <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="N" HelpText="Порядок усечения ряда в численном решении." />
-                    <TextBox Margin="0,4,0,0" Text="{Binding SelectedRun.N, Mode=OneWay}" ToolTip="Параметр усечения" />
+                    <TextBox Margin="0,4,0,0" Text="{Binding Parameters.HarmonicCount, Mode=TwoWay, ValidatesOnExceptions=True}" ToolTip="Параметр усечения" />
                 </StackPanel>
                 <StackPanel Grid.Column="5" Margin="0,0,7,0">
                     <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="δ, мкм" HelpText="Толщина скин-слоя пластины в микрометрах." />
-                    <TextBox Margin="0,4,0,0" Text="{Binding SelectedRun.SkinDepthValue, Mode=OneWay}" ToolTip="Толщина скин-слоя" />
+                    <TextBox Margin="0,4,0,0" Text="{Binding Parameters.SkinDepthMicrometers, Mode=TwoWay, StringFormat={}{0:0.000000}, ValidatesOnExceptions=True}" ToolTip="Толщина скин-слоя" />
                 </StackPanel>
                 <StackPanel Grid.Column="6" Margin="0,0,7,0">
                     <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="xL" HelpText="Левая граница области вывода по оси x." />
-                    <TextBox Margin="0,4,0,0" Text="-2,00" />
+                    <TextBox Margin="0,4,0,0" Text="{Binding Parameters.OutputLeft, Mode=TwoWay, StringFormat={}{0:0.00}, ValidatesOnExceptions=True}" />
                 </StackPanel>
                 <StackPanel Grid.Column="7" Margin="0,0,7,0">
                     <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="xR" HelpText="Правая граница области вывода по оси x." />
-                    <TextBox Margin="0,4,0,0" Text="2,00" />
+                    <TextBox Margin="0,4,0,0" Text="{Binding Parameters.OutputRight, Mode=TwoWay, StringFormat={}{0:0.00}, ValidatesOnExceptions=True}" />
                 </StackPanel>
                 <StackPanel Grid.Column="8" Margin="0,0,7,0">
                     <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="yDn" HelpText="Нижняя граница области вывода по оси y." />
-                    <TextBox Margin="0,4,0,0" Text="-3,00" />
+                    <TextBox Margin="0,4,0,0" Text="{Binding Parameters.OutputBottom, Mode=TwoWay, StringFormat={}{0:0.00}, ValidatesOnExceptions=True}" />
                 </StackPanel>
                 <StackPanel Grid.Column="9" Margin="0,0,7,0">
                     <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="yUp" HelpText="Верхняя граница области вывода по оси y." />
-                    <TextBox Margin="0,4,0,0" Text="3,00" />
+                    <TextBox Margin="0,4,0,0" Text="{Binding Parameters.OutputTop, Mode=TwoWay, StringFormat={}{0:0.00}, ValidatesOnExceptions=True}" />
                 </StackPanel>
                 <StackPanel Grid.Column="10" Margin="12,17,0,0" Orientation="Horizontal" VerticalAlignment="Center">
                     <TextBlock FontFamily="Segoe MDL2 Assets" FontSize="16" Foreground="{StaticResource SuccessBrush}" Text="&#xE73E;" />
@@ -176,43 +176,43 @@
                 <UniformGrid Columns="2" Margin="9,7,9,9">
                     <StackPanel Margin="3,3,5,5">
                         <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="λ, мкм" HelpText="Длина волны падающего поля в микрометрах." />
-                        <TextBox Margin="0,4,0,0" Text="1,000" />
+                        <TextBox Margin="0,4,0,0" Text="{Binding Parameters.WavelengthMicrometers, Mode=TwoWay, StringFormat={}{0:0.000}, ValidatesOnExceptions=True}" />
                     </StackPanel>
                     <StackPanel Margin="5,3,3,5">
                         <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="θ, °" HelpText="Угол падения относительно нормали к пластине." />
-                        <TextBox Margin="0,4,0,0" Text="45,0" />
+                        <TextBox Margin="0,4,0,0" Text="{Binding Parameters.IncidenceAngleDegrees, Mode=TwoWay, StringFormat={}{0:0.0}, ValidatesOnExceptions=True}" />
                     </StackPanel>
                     <StackPanel Margin="3,3,5,5">
                         <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="α₁" HelpText="Левая координата границы пластины." />
-                        <TextBox Margin="0,4,0,0" Text="-1,500" />
+                        <TextBox Margin="0,4,0,0" Text="{Binding Parameters.PlateStart, Mode=TwoWay, StringFormat={}{0:0.000}, ValidatesOnExceptions=True}" />
                     </StackPanel>
                     <StackPanel Margin="5,3,3,5">
                         <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="β₁" HelpText="Правая координата границы пластины." />
-                        <TextBox Margin="0,4,0,0" Text="-0,500" />
+                        <TextBox Margin="0,4,0,0" Text="{Binding Parameters.PlateEnd, Mode=TwoWay, StringFormat={}{0:0.000}, ValidatesOnExceptions=True}" />
                     </StackPanel>
                     <StackPanel Margin="3,3,5,5">
                         <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="N" HelpText="Порядок усечения ряда в численном решении." />
-                        <TextBox Margin="0,4,0,0" Text="{Binding SelectedRun.N, Mode=OneWay}" />
+                        <TextBox Margin="0,4,0,0" Text="{Binding Parameters.HarmonicCount, Mode=TwoWay, ValidatesOnExceptions=True}" />
                     </StackPanel>
                     <StackPanel Margin="5,3,3,5">
                         <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="δ, мкм" HelpText="Толщина скин-слоя пластины в микрометрах." />
-                        <TextBox Margin="0,4,0,0" Text="{Binding SelectedRun.SkinDepthValue, Mode=OneWay}" />
+                        <TextBox Margin="0,4,0,0" Text="{Binding Parameters.SkinDepthMicrometers, Mode=TwoWay, StringFormat={}{0:0.000000}, ValidatesOnExceptions=True}" />
                     </StackPanel>
                     <StackPanel Margin="3,3,5,5">
                         <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="xL" HelpText="Левая граница области вывода по оси x." />
-                        <TextBox Margin="0,4,0,0" Text="-2,00" />
+                        <TextBox Margin="0,4,0,0" Text="{Binding Parameters.OutputLeft, Mode=TwoWay, StringFormat={}{0:0.00}, ValidatesOnExceptions=True}" />
                     </StackPanel>
                     <StackPanel Margin="5,3,3,5">
                         <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="xR" HelpText="Правая граница области вывода по оси x." />
-                        <TextBox Margin="0,4,0,0" Text="2,00" />
+                        <TextBox Margin="0,4,0,0" Text="{Binding Parameters.OutputRight, Mode=TwoWay, StringFormat={}{0:0.00}, ValidatesOnExceptions=True}" />
                     </StackPanel>
                     <StackPanel Margin="3,3,5,5">
                         <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="yDn" HelpText="Нижняя граница области вывода по оси y." />
-                        <TextBox Margin="0,4,0,0" Text="-3,00" />
+                        <TextBox Margin="0,4,0,0" Text="{Binding Parameters.OutputBottom, Mode=TwoWay, StringFormat={}{0:0.00}, ValidatesOnExceptions=True}" />
                     </StackPanel>
                     <StackPanel Margin="5,3,3,5">
                         <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="yUp" HelpText="Верхняя граница области вывода по оси y." />
-                        <TextBox Margin="0,4,0,0" Text="3,00" />
+                        <TextBox Margin="0,4,0,0" Text="{Binding Parameters.OutputTop, Mode=TwoWay, StringFormat={}{0:0.00}, ValidatesOnExceptions=True}" />
                     </StackPanel>
                 </UniformGrid>
             </ScrollViewer>

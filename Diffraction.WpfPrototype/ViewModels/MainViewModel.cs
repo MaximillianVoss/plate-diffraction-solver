@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Windows.Data;
 using System.Windows.Input;
@@ -23,9 +24,15 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private string _statusDetail = "CPU  •  0,84 с";
     private double _progress;
     private CancellationTokenSource? _calculationCancellation;
+    private bool _isRestoringParameters;
+    private bool _parametersModified;
 
     public MainViewModel()
     {
+        Parameters = CalculationParameters.CreateDefault();
+        SeriesCheckSummaries = new ObservableCollection<string>();
+        Parameters.PropertyChanged += (_, _) => HandleParameterChanged();
+
         Runs = new ObservableCollection<CalculationRun>(CreateRuns());
         FluxRows = new ObservableCollection<FluxRow>(CreateFluxRows());
         Coefficients = new ObservableCollection<CoefficientRow>(CreateCoefficients());
@@ -65,12 +72,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ObservableCollection<CoefficientRow> Coefficients { get; }
     public ObservableCollection<DiagnosticRow> Diagnostics { get; }
     public ObservableCollection<string> JournalEntries { get; }
+    public ObservableCollection<string> SeriesCheckSummaries { get; }
 
     public ICollectionView RunsView { get; }
     public ICollectionView FluxView { get; }
     public ICollectionView CoefficientsView { get; }
 
     public EnergyDemoSnapshot Energy { get; } = ValidatedEnergyDemo.Selected;
+    public CalculationParameters Parameters { get; }
 
     public IReadOnlyList<string> Backends { get; } = new[] { "Авто", "CPU", "CUDA" };
     public IReadOnlyList<string> Modes { get; } = new[] { "Один расчёт", "Серия" };
@@ -133,7 +142,16 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public CalculationRun? SelectedRun
     {
         get => _selectedRun;
-        set => SetProperty(ref _selectedRun, value);
+        set
+        {
+            if (!SetProperty(ref _selectedRun, value))
+                return;
+
+            if (value is not null)
+                RestoreRunParameters(value);
+            else
+                NotifyParameterContextChanged();
+        }
     }
 
     public bool IsBusy
@@ -155,6 +173,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 return;
             OnPropertyChanged(nameof(IsSeriesMode));
             OnPropertyChanged(nameof(SelectedMode));
+            MarkParameterContextModified();
+
+            if (!_isRestoringParameters)
+                CurrentSection = value ? "Calculations" : "Series";
         }
     }
 
@@ -183,8 +205,42 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public string SelectedBackend
     {
         get => _selectedBackend;
-        set => SetProperty(ref _selectedBackend, value);
+        set
+        {
+            if (SetProperty(ref _selectedBackend, value))
+                MarkParameterContextModified();
+        }
     }
+
+    public string ContextTitle
+    {
+        get
+        {
+            if (SelectedRun is null)
+                return IsSeriesMode ? "Новая серия — тонкая пластина" : "Новый расчёт — тонкая пластина";
+
+            return _parametersModified
+                ? $"{SelectedRun.Title} — параметры изменены"
+                : SelectedRun.Title;
+        }
+    }
+
+    public string ContextSummary => BuildContextSummary();
+
+    public string SeriesPointTitle =>
+        $"Выбранная точка: δ = {Format(Parameters.SkinDepthMicrometers, "0.000")}";
+
+    public string SeriesAngleCaption =>
+        $"Контрольная серия: δ={Format(Parameters.SkinDepthMicrometers, "0.000")}, N={Parameters.HarmonicCount}. " +
+        $"Углы {Format(Parameters.SeriesAngleStartDegrees, "0.#")}…{Format(Parameters.SeriesAngleEndDegrees, "0.#")}° с шагом {Format(Parameters.SeriesAngleStepDegrees, "0.#")}°.";
+
+    public string SeriesEstimateText =>
+        $"{Parameters.SeriesPointCount} точек по δ  •  {GetAnglePointCount()} по θ";
+
+    public string GeometryRegionSummary =>
+        $"Пластина [{Format(Parameters.PlateStart, "0.000")}; {Format(Parameters.PlateEnd, "0.000")}]  •  " +
+        $"x [{Format(Parameters.OutputLeft, "0.00")}; {Format(Parameters.OutputRight, "0.00")}], " +
+        $"y [{Format(Parameters.OutputBottom, "0.00")}; {Format(Parameters.OutputTop, "0.00")}]";
 
     public string StatusText
     {
@@ -206,18 +262,27 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private void Navigate(object? parameter)
     {
-        if (parameter is string section)
-            CurrentSection = section;
+        if (parameter is not string section)
+            return;
+
+        CurrentSection = section;
+        if (section == "Calculations")
+            IsSingleMode = true;
+        else if (section == "Series")
+            IsSingleMode = false;
     }
 
     public void OpenRun(CalculationRun run)
     {
-        SelectedRun = run;
-        CurrentSection = "Calculations";
-        SelectedBackend = run.Backend;
-        StatusText = $"Открыт расчёт #{run.RunNumber:000}";
+        if (ReferenceEquals(SelectedRun, run))
+            RestoreRunParameters(run);
+        else
+            SelectedRun = run;
+
+        CurrentSection = run.IsSeries ? "Series" : "Calculations";
+        StatusText = $"Открыт{(run.IsSeries ? "а серия" : " расчёт")} #{run.RunNumber:000}";
         StatusDetail = $"{run.DateLabel}  •  {run.Status}";
-        JournalEntries.Add($"[{DateTime.Now:HH:mm:ss}] Открыт расчёт #{run.RunNumber:000} из истории.");
+        JournalEntries.Add($"[{DateTime.Now:HH:mm:ss}] Параметры {(run.IsSeries ? "серии" : "расчёта")} #{run.RunNumber:000} восстановлены из истории.");
     }
 
     private async Task RunCalculationAsync()
@@ -254,8 +319,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
             {
                 RunNumber = Runs.Count == 0 ? 1 : Runs.Max(run => run.RunNumber) + 1,
                 DateLabel = $"Сегодня {DateTime.Now:HH:mm}",
-                SkinDepth = "δ 0,010000",
-                N = 30,
+                Parameters = Parameters.Clone(),
+                IsSeries = IsSeriesMode || CurrentSection == "Series",
                 Backend = SelectedBackend == "Авто" ? "CPU" : SelectedBackend,
                 Status = "В допуске",
                 StatusKind = "Success"
@@ -284,7 +349,23 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private void PrepareNewRun()
     {
+        _isRestoringParameters = true;
+        try
+        {
+            Parameters.CopyFrom(CalculationParameters.CreateDefault());
+            SelectedBackend = "Авто";
+            IsSingleMode = true;
+            SelectedRun = null;
+            _parametersModified = false;
+        }
+        finally
+        {
+            _isRestoringParameters = false;
+        }
+
         CurrentSection = "Calculations";
+        RefreshSeriesCheckSummaries();
+        NotifyParameterContextChanged();
         StatusText = "Новый расчёт";
         StatusDetail = "Проверьте параметры и нажмите «Рассчитать»";
         JournalEntries.Add($"[{DateTime.Now:HH:mm:ss}] Подготовлен новый набор параметров.");
@@ -332,13 +413,131 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         return new[]
         {
-            new CalculationRun { RunNumber = 24, DateLabel = "Сегодня 14:32", SkinDepth = "δ 0,010000", N = 30, Backend = "CPU", Status = "В допуске", StatusKind = "Success" },
-            new CalculationRun { RunNumber = 23, DateLabel = "Сегодня 11:18", SkinDepth = "δ 0,010000", N = 20, Backend = "CPU", Status = "В допуске", StatusKind = "Success" },
-            new CalculationRun { RunNumber = 22, DateLabel = "Вчера 16:47", SkinDepth = "δ 0,020000", N = 30, Backend = "CPU", Status = "Предупреждение", StatusKind = "Warning" },
-            new CalculationRun { RunNumber = 21, DateLabel = "Вчера 10:05", SkinDepth = "δ 0,010000", N = 10, Backend = "CPU", Status = "В допуске", StatusKind = "Success" },
-            new CalculationRun { RunNumber = 20, DateLabel = "12.05.2026 09:22", SkinDepth = "δ 0,005000", N = 30, Backend = "CPU", Status = "В допуске", StatusKind = "Success" },
-            new CalculationRun { RunNumber = 19, DateLabel = "11.05.2026 18:31", SkinDepth = "δ 0,010000", N = 30, Backend = "CUDA", Status = "Аномалия", StatusKind = "Error" },
-            new CalculationRun { RunNumber = 18, DateLabel = "10.05.2026 15:09", SkinDepth = "δ 0,015000", N = 40, Backend = "CPU", Status = "В допуске", StatusKind = "Success" }
+            new CalculationRun
+            {
+                RunNumber = 24,
+                DateLabel = "Сегодня 14:32",
+                Parameters = CreateParameters(0.010, 30),
+                IsSeries = false,
+                Backend = "CPU",
+                Status = "В допуске",
+                StatusKind = "Success"
+            },
+            new CalculationRun
+            {
+                RunNumber = 23,
+                DateLabel = "Сегодня 11:18",
+                Parameters = CreateParameters(0.010, 20, wavelength: 1.200, angle: 30.0),
+                IsSeries = false,
+                Backend = "CPU",
+                Status = "В допуске",
+                StatusKind = "Success"
+            },
+            new CalculationRun
+            {
+                RunNumber = 22,
+                DateLabel = "Вчера 16:47",
+                Parameters = CreateParameters(
+                    0.020,
+                    30,
+                    wavelength: 0.800,
+                    angle: 30.0,
+                    plateStart: -2.000,
+                    plateEnd: -0.750,
+                    outputLeft: -3.0,
+                    outputRight: 3.0,
+                    outputBottom: -4.0,
+                    outputTop: 4.0,
+                    seriesStart: 0.005,
+                    seriesEnd: 0.080,
+                    seriesPoints: 16,
+                    angleStart: 15.0,
+                    angleEnd: 75.0,
+                    angleStep: 5.0),
+                IsSeries = true,
+                Backend = "CPU",
+                Status = "Предупреждение",
+                StatusKind = "Warning"
+            },
+            new CalculationRun
+            {
+                RunNumber = 21,
+                DateLabel = "Вчера 10:05",
+                Parameters = CreateParameters(0.010, 10, angle: 60.0),
+                IsSeries = false,
+                Backend = "CPU",
+                Status = "В допуске",
+                StatusKind = "Success"
+            },
+            new CalculationRun
+            {
+                RunNumber = 20,
+                DateLabel = "12.05.2026 09:22",
+                Parameters = CreateParameters(0.005, 30, seriesEnd: 0.050, seriesPoints: 11, angleStart: 20.0, angleEnd: 80.0, angleStep: 5.0),
+                IsSeries = true,
+                Backend = "CPU",
+                Status = "В допуске",
+                StatusKind = "Success"
+            },
+            new CalculationRun
+            {
+                RunNumber = 19,
+                DateLabel = "11.05.2026 18:31",
+                Parameters = CreateParameters(0.010, 30),
+                IsSeries = false,
+                Backend = "CUDA",
+                Status = "Аномалия",
+                StatusKind = "Error"
+            },
+            new CalculationRun
+            {
+                RunNumber = 18,
+                DateLabel = "10.05.2026 15:09",
+                Parameters = CreateParameters(0.015, 40, seriesStart: 0.005, seriesEnd: 0.125, seriesPoints: 25),
+                IsSeries = true,
+                Backend = "CPU",
+                Status = "В допуске",
+                StatusKind = "Success"
+            }
+        };
+    }
+
+    private static CalculationParameters CreateParameters(
+        double skinDepth,
+        int harmonicCount,
+        double wavelength = 1.0,
+        double angle = 45.0,
+        double plateStart = -1.5,
+        double plateEnd = -0.5,
+        double outputLeft = -2.0,
+        double outputRight = 2.0,
+        double outputBottom = -3.0,
+        double outputTop = 3.0,
+        double seriesStart = 0.0,
+        double seriesEnd = 0.1,
+        int seriesPoints = 21,
+        double angleStart = 10.0,
+        double angleEnd = 90.0,
+        double angleStep = 2.0)
+    {
+        return new CalculationParameters
+        {
+            WavelengthMicrometers = wavelength,
+            IncidenceAngleDegrees = angle,
+            PlateStart = plateStart,
+            PlateEnd = plateEnd,
+            HarmonicCount = harmonicCount,
+            SkinDepthMicrometers = skinDepth,
+            OutputLeft = outputLeft,
+            OutputRight = outputRight,
+            OutputBottom = outputBottom,
+            OutputTop = outputTop,
+            SeriesSkinDepthStart = seriesStart,
+            SeriesSkinDepthEnd = seriesEnd,
+            SeriesPointCount = seriesPoints,
+            SeriesAngleStartDegrees = angleStart,
+            SeriesAngleEndDegrees = angleEnd,
+            SeriesAngleStepDegrees = angleStep
         };
     }
 
@@ -411,6 +610,101 @@ public sealed class MainViewModel : INotifyPropertyChanged
             new DiagnosticRow { Group = "Методы", Check = "Коллокация / Галеркин", Value = "4,70E-02", Tolerance = "справочно", Status = "Проверить" }
         };
     }
+
+    private void RestoreRunParameters(CalculationRun run)
+    {
+        _isRestoringParameters = true;
+        try
+        {
+            Parameters.CopyFrom(run.Parameters);
+            SelectedBackend = run.Backend;
+            IsSingleMode = !run.IsSeries;
+            _parametersModified = false;
+        }
+        finally
+        {
+            _isRestoringParameters = false;
+        }
+
+        RefreshSeriesCheckSummaries();
+        NotifyParameterContextChanged();
+    }
+
+    private void HandleParameterChanged()
+    {
+        RefreshSeriesCheckSummaries();
+        MarkParameterContextModified();
+        OnPropertyChanged(nameof(ContextSummary));
+        OnPropertyChanged(nameof(SeriesPointTitle));
+        OnPropertyChanged(nameof(SeriesAngleCaption));
+        OnPropertyChanged(nameof(SeriesEstimateText));
+        OnPropertyChanged(nameof(GeometryRegionSummary));
+    }
+
+    private void MarkParameterContextModified()
+    {
+        if (_isRestoringParameters)
+            return;
+
+        _parametersModified = true;
+        NotifyParameterContextChanged();
+    }
+
+    private void NotifyParameterContextChanged()
+    {
+        OnPropertyChanged(nameof(ContextTitle));
+        OnPropertyChanged(nameof(ContextSummary));
+        OnPropertyChanged(nameof(SeriesPointTitle));
+        OnPropertyChanged(nameof(SeriesAngleCaption));
+        OnPropertyChanged(nameof(SeriesEstimateText));
+        OnPropertyChanged(nameof(GeometryRegionSummary));
+    }
+
+    private string BuildContextSummary()
+    {
+        string geometry =
+            $"λ {Format(Parameters.WavelengthMicrometers, "0.000")} мкм  •  " +
+            $"θ {Format(Parameters.IncidenceAngleDegrees, "0.0")}°  •  " +
+            $"α₁ {Format(Parameters.PlateStart, "0.000")}  •  β₁ {Format(Parameters.PlateEnd, "0.000")}  •  " +
+            $"N {Parameters.HarmonicCount}";
+
+        if (IsSeriesMode)
+        {
+            return geometry +
+                $"  •  δ {Format(Parameters.SeriesSkinDepthStart, "0.000")}…{Format(Parameters.SeriesSkinDepthEnd, "0.000")} ({Parameters.SeriesPointCount})" +
+                $"  •  θ {Format(Parameters.SeriesAngleStartDegrees, "0.#")}…{Format(Parameters.SeriesAngleEndDegrees, "0.#")}° / {Format(Parameters.SeriesAngleStepDegrees, "0.#")}°" +
+                $"  •  {SelectedBackend}";
+        }
+
+        return geometry +
+            $"  •  δ {Format(Parameters.SkinDepthMicrometers, "0.000000")}" +
+            $"  •  {SelectedBackend}";
+    }
+
+    private void RefreshSeriesCheckSummaries()
+    {
+        SeriesCheckSummaries.Clear();
+        SeriesCheckSummaries.Add(
+            $"Толщина δ {Format(Parameters.SeriesSkinDepthStart, "0.000")}…{Format(Parameters.SeriesSkinDepthEnd, "0.000")}  •  {Parameters.SeriesPointCount} точек");
+        SeriesCheckSummaries.Add(
+            $"Угол θ {Format(Parameters.SeriesAngleStartDegrees, "0.#")}…{Format(Parameters.SeriesAngleEndDegrees, "0.#")}°  •  шаг {Format(Parameters.SeriesAngleStepDegrees, "0.#")}°  •  R_scat ≈ T_scat");
+    }
+
+    private int GetAnglePointCount()
+    {
+        if (Parameters.SeriesAngleStepDegrees <= 0 ||
+            Parameters.SeriesAngleEndDegrees < Parameters.SeriesAngleStartDegrees)
+        {
+            return 0;
+        }
+
+        return (int)Math.Floor(
+            (Parameters.SeriesAngleEndDegrees - Parameters.SeriesAngleStartDegrees) /
+            Parameters.SeriesAngleStepDegrees + 1e-9) + 1;
+    }
+
+    private static string Format(double value, string format) =>
+        value.ToString(format, CultureInfo.GetCultureInfo("ru-RU"));
 
     private bool SetProperty<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
     {
