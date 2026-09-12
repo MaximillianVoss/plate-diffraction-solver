@@ -14,6 +14,7 @@
         MinHeight="640"
         WindowStartupLocation="CenterScreen"
         Validation.Error="ParameterValidation_Error"
+        SourceUpdated="ParameterSourceUpdated"
         Background="{StaticResource WindowBrush}">
     <Grid>
         <Grid.RowDefinitions>
@@ -127,6 +128,7 @@
                                 <ListBox Grid.Row="2"
                                          ItemsSource="{Binding RunsView}"
                                          SelectedItem="{Binding SelectedRun}"
+                                         IsEnabled="{Binding CanEditParameters}"
                                          BorderBrush="{StaticResource BorderBrush}"
                                          BorderThickness="1"
                                          ScrollViewer.HorizontalScrollBarVisibility="Disabled">
@@ -311,6 +313,7 @@
                     <ListBox Grid.Row="2"
                              ItemsSource="{Binding RunsView}"
                              SelectedItem="{Binding SelectedRun}"
+                             IsEnabled="{Binding CanEditParameters}"
                              BorderThickness="0"
                              Background="White"
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled">

@@ -44,6 +44,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private bool _parametersModified;
     private string _errorMessage = string.Empty;
     private string _errorTitle = string.Empty;
+    private bool _isParameterError;
     private readonly Dictionary<object, (string PropertyName, string Message)> _inputErrors = new();
 
     public MainViewModel()
@@ -68,7 +69,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         CoefficientsView = CollectionViewSource.GetDefaultView(Coefficients);
         CoefficientsView.Filter = FilterCoefficient;
 
-        NavigateCommand = new RelayCommand(Navigate);
+        NavigateCommand = new RelayCommand(Navigate, CanNavigate);
         RunCommand = new AsyncRelayCommand(CalculateAsync, ReportCalculationError, () => !IsBusy);
         DismissErrorCommand = new RelayCommand(_ => ClearError());
         CancelCommand = new RelayCommand(_ => CancelCalculation(), _ => IsBusy);
@@ -256,14 +257,19 @@ public sealed class MainViewModel : INotifyPropertyChanged
         get => _selectedRun;
         set
         {
-            if (!SetProperty(ref _selectedRun, value))
-                return;
-
-            if (value is not null)
-                RestoreRunParameters(value);
-            else
-                NotifyParameterContextChanged();
+            if (!IsBusy)
+                SelectRun(value);
         }
+    }
+
+    private void SelectRun(CalculationRun? value)
+    {
+        if (!SetProperty(ref _selectedRun, value, nameof(SelectedRun)))
+            return;
+        if (value is not null)
+            RestoreRunParameters(value);
+        else
+            NotifyParameterContextChanged();
     }
 
     public bool IsBusy
@@ -287,6 +293,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         get => _isSingleMode;
         set
         {
+            if (IsBusy && !_isRestoringParameters)
+                return;
             if (!SetProperty(ref _isSingleMode, value))
                 return;
             OnPropertyChanged(nameof(IsSeriesMode));
@@ -294,7 +302,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
             MarkParameterContextModified();
 
             if (!_isRestoringParameters)
+            {
                 CurrentSection = value ? "Calculations" : "Series";
+                RefreshParameterError();
+            }
         }
     }
 
@@ -325,6 +336,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         get => _selectedBackend;
         set
         {
+            if (IsBusy && !_isRestoringParameters)
+                return;
             if (SetProperty(ref _selectedBackend, value))
                 MarkParameterContextModified();
         }
@@ -378,9 +391,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
         private set => SetProperty(ref _progress, value);
     }
 
+    private bool CanNavigate(object? parameter) =>
+        !IsBusy || parameter is not ("Calculations" or "Series") ||
+        Equals(parameter, IsSeriesMode ? "Series" : "Calculations");
+
     private void Navigate(object? parameter)
     {
-        if (parameter is not string section)
+        if (parameter is not string section || !CanNavigate(parameter))
             return;
 
         CurrentSection = section;
@@ -392,6 +409,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public void OpenRun(CalculationRun run)
     {
+        if (IsBusy)
+            return;
         if (ReferenceEquals(SelectedRun, run))
             RestoreRunParameters(run);
         else
@@ -419,7 +438,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 DiffractionCalculationService.GetValidationError(parameters, includeSeries);
             if (validationError is not null)
             {
-                ReportError("Проверьте параметры", validationError);
+                ReportError("Проверьте параметры", validationError, isParameterError: true);
                 return;
             }
 
@@ -451,7 +470,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
             // No await after publication: cancellation must preserve the previous complete result.
             Runs.Insert(0, completedRun);
-            SelectedRun = completedRun;
+            SelectRun(completedRun);
             RunsView.Refresh();
             StatusText = "Расчёт завершён";
             StatusDetail = $"{output.BackendName}  •  {(DateTime.Now - startedAt).TotalSeconds:0.00} с";
@@ -481,22 +500,33 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public void SetInputError(object source, string propertyName, string? message)
     {
         if (message is null)
-        {
-            if (_inputErrors.Remove(source, out var removed) &&
-                ErrorMessage.StartsWith(removed.Message, StringComparison.Ordinal))
-            {
-                string? remainingError = GetInputError(IsSeriesMode);
-                if (remainingError is null)
-                    ClearError();
-                else
-                    ReportError("Проверьте ввод", remainingError);
-            }
-            return;
-        }
+            _inputErrors.Remove(source);
+        else
+            _inputErrors[source] = (propertyName, message);
+        RefreshParameterError();
+    }
 
-        _inputErrors[source] = (propertyName, message);
-        if (IsSeriesMode || !propertyName.StartsWith("Series", StringComparison.Ordinal))
-            ReportError("Проверьте ввод", message);
+    public void RefreshParameterError()
+    {
+        string? inputError = GetInputError(IsSeriesMode);
+        if (inputError is not null)
+            ReportError("Проверьте ввод", inputError, isParameterError: true);
+        else if (_isParameterError)
+        {
+            string? validationError = DiffractionCalculationService.GetValidationError(Parameters, IsSeriesMode);
+            if (validationError is null)
+            {
+                bool showingErrorStatus = StatusText == ErrorTitle;
+                ClearError();
+                if (showingErrorStatus)
+                {
+                    StatusText = "Готов к расчёту";
+                    StatusDetail = Energy.IsAvailable ? "Результаты предыдущего расчёта сохранены" : "Ошибок ввода нет";
+                }
+            }
+            else
+                ReportError("Проверьте параметры", validationError, isParameterError: true);
+        }
     }
 
     private string? GetInputError(bool includeSeries) =>
@@ -515,8 +545,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
         Progress = 0;
     }
 
-    private void ReportError(string title, string message, Exception? exception = null)
+    private void ReportError(string title, string message, Exception? exception = null, bool isParameterError = false)
     {
+        _isParameterError = isParameterError;
         ErrorTitle = title;
         ErrorMessage = message + (Energy.IsAvailable
             ? " Показаны результаты предыдущего успешного расчёта."
@@ -528,6 +559,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private void ClearError()
     {
+        _isParameterError = false;
         ErrorMessage = string.Empty;
         ErrorTitle = string.Empty;
     }
@@ -590,6 +622,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private void PrepareNewRun()
     {
+        if (IsBusy)
+            return;
         ClearError();
         _isRestoringParameters = true;
         try

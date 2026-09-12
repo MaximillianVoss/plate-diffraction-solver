@@ -11,6 +11,7 @@ public partial class MainWindow : Window
 {
     private const double PhoneBreakpoint = 720;
     private const double TabletBreakpoint = 1100;
+    private readonly HashSet<BindingExpression> _invalidParameterBindings = new();
 
     public MainWindow()
     {
@@ -58,6 +59,10 @@ public partial class MainWindow : Window
             return;
 
         string propertyName = path["Parameters.".Length..];
+        if (e.Action == ValidationErrorEventAction.Added)
+            _invalidParameterBindings.Add(binding);
+        else
+            _invalidParameterBindings.Remove(binding);
         string label = propertyName switch
         {
             nameof(CalculationParameters.WavelengthMicrometers) => "Длина волны λ",
@@ -83,6 +88,25 @@ public partial class MainWindow : Window
         viewModel.SetInputError(binding, propertyName,
             e.Action == ValidationErrorEventAction.Added ? message : null);
         e.Handled = true;
+    }
+
+    private void ParameterSourceUpdated(object sender, DataTransferEventArgs e)
+    {
+        if (DataContext is not MainViewModel viewModel ||
+            BindingOperations.GetBindingExpression(e.TargetObject, e.Property) is not BindingExpression updated ||
+            updated.ParentBinding.Path?.Path is not string path ||
+            !path.StartsWith("Parameters.", StringComparison.Ordinal))
+            return;
+
+        // A parameter has several editors (desktop, compact, series). Refresh only the
+        // other invalid editors, so the active editor can keep partially typed decimals.
+        foreach (BindingExpression invalid in _invalidParameterBindings.ToArray())
+        {
+            if (!ReferenceEquals(invalid, updated) && ReferenceEquals(invalid.DataItem, updated.DataItem) &&
+                invalid.ParentBinding.Path?.Path == path && invalid.Status != BindingStatus.Detached)
+                invalid.UpdateTarget();
+        }
+        viewModel.RefreshParameterError();
     }
 
     private void HistoryItem_Click(object sender, MouseButtonEventArgs e)

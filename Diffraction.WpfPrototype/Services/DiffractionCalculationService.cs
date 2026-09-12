@@ -168,13 +168,12 @@ public static class DiffractionCalculationService
             return "Некорректный диапазон углов серии.";
         }
 
-        int anglePointCount = GetAnglePointCount(parameters);
-        if (anglePointCount == 0)
-            return "Серия по углу должна содержать от 1 до 181 точки. Увеличьте шаг или уменьшите диапазон.";
+        double[] angles = BuildAngleValues(parameters);
+        if (angles.Length == 0)
+            return "Серия по углу должна содержать от 1 до 181 точки с различными углами. Увеличьте шаг или уменьшите диапазон.";
 
-        for (int i = 0; i < anglePointCount; i++)
+        foreach (double angle in angles)
         {
-            double angle = parameters.SeriesAngleStartDegrees + i * parameters.SeriesAngleStepDegrees;
             if (Math.Abs(Math.Sin(DegreesToRadians(angle))) < 1e-8)
                 return "Диапазон углов содержит точку с нулевым падающим потоком.";
         }
@@ -421,7 +420,7 @@ public static class DiffractionCalculationService
         foreach (double skinDepth in skinDepths)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            bool useSelected = Math.Abs(skinDepth - parameters.SkinDepthMicrometers) <= 1e-12;
+            bool useSelected = skinDepth == parameters.SkinDepthMicrometers;
             DifrOnLenta solver = useSelected
                 ? selectedSolver
                 : SolveCollocation(parameters, DegreesToRadians(parameters.IncidenceAngleDegrees), skinDepth, cancellationToken);
@@ -432,15 +431,12 @@ public static class DiffractionCalculationService
                 plateSamples: 160));
         }
 
-        int anglePointCount = GetAnglePointCount(parameters);
-        double[] angles = new double[anglePointCount];
-        List<EnergySnapshot> angleSnapshots = new(anglePointCount);
-        for (int i = 0; i < anglePointCount; i++)
+        double[] angles = BuildAngleValues(parameters);
+        List<EnergySnapshot> angleSnapshots = new(angles.Length);
+        foreach (double angle in angles)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            double angle = parameters.SeriesAngleStartDegrees + i * parameters.SeriesAngleStepDegrees;
-            angles[i] = angle;
-            bool useSelected = Math.Abs(angle - parameters.IncidenceAngleDegrees) <= 1e-12;
+            bool useSelected = angle == parameters.IncidenceAngleDegrees;
             DifrOnLenta solver = useSelected
                 ? selectedSolver
                 : SolveCollocation(parameters, DegreesToRadians(angle), parameters.SkinDepthMicrometers, cancellationToken);
@@ -754,19 +750,39 @@ public static class DiffractionCalculationService
         return values;
     }
 
-    public static int GetAnglePointCount(CalculationParameters parameters)
+    public static int GetAnglePointCount(CalculationParameters parameters) => BuildAngleValues(parameters).Length;
+
+    private static double[] BuildAngleValues(CalculationParameters parameters)
     {
         if (!double.IsFinite(parameters.SeriesAngleStartDegrees) ||
             !double.IsFinite(parameters.SeriesAngleEndDegrees) ||
             !double.IsFinite(parameters.SeriesAngleStepDegrees) ||
             parameters.SeriesAngleStepDegrees <= 0 ||
             parameters.SeriesAngleStartDegrees > parameters.SeriesAngleEndDegrees)
-            return 0;
+            return Array.Empty<double>();
 
-        double count = Math.Floor(
-            (parameters.SeriesAngleEndDegrees - parameters.SeriesAngleStartDegrees) /
-            parameters.SeriesAngleStepDegrees + 1e-9) + 1;
-        return double.IsFinite(count) && count >= 1 && count <= 181 ? (int)count : 0;
+        var angles = new List<double>();
+        double end = parameters.SeriesAngleEndDegrees;
+        for (int i = 0; i <= 181; i++)
+        {
+            double angle = Math.FusedMultiplyAdd(i, parameters.SeriesAngleStepDegrees, parameters.SeriesAngleStartDegrees);
+            if (!double.IsFinite(angle))
+                break;
+            if (angle > end)
+            {
+                // Permit one rounding step at an inclusive endpoint, without emitting a value beyond it.
+                if (angle == Math.BitIncrement(end))
+                    angle = end;
+                else
+                    break;
+            }
+            if (angles.Count == 181 || (angles.Count > 0 && angle <= angles[^1]))
+                return Array.Empty<double>();
+            angles.Add(angle);
+            if (angle == end)
+                break;
+        }
+        return angles.ToArray();
     }
 
     private static double Normalize(double value, double incident) => value / incident;

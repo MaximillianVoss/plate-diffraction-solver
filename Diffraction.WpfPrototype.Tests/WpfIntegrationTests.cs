@@ -1,10 +1,12 @@
 using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Diffraction.WpfPrototype.Controls;
 using Diffraction.WpfPrototype.Infrastructure;
+using Diffraction.WpfPrototype.Models;
 using Diffraction.WpfPrototype.ViewModels;
 using Diffraction.WpfPrototype.Views;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -172,6 +174,7 @@ public sealed class WpfIntegrationTests
                         window.UpdateLayout();
                         Assert.IsFalse(Validation.GetHasError(wavelengthInput), "Restoring the same values must also clear invalid input text.");
                         Assert.IsFalse(viewModel.HasError);
+                        await CheckAdditionalWorkflowsAsync(window);
                         scenarioCompleted = true;
                     }
                     catch (Exception ex)
@@ -199,7 +202,7 @@ public sealed class WpfIntegrationTests
         uiThread.SetApartmentState(ApartmentState.STA);
         uiThread.Start();
 
-        Assert.IsTrue(completed.Wait(TimeSpan.FromSeconds(30)), "WPF integration test timed out.");
+        Assert.IsTrue(completed.Wait(TimeSpan.FromSeconds(90)), "WPF integration test timed out.");
         Assert.IsTrue(uiThread.Join(TimeSpan.FromSeconds(5)), "WPF UI thread did not stop.");
         if (failure is not null)
             throw new AssertFailedException("WPF integration failed: " + failure);
@@ -220,6 +223,233 @@ public sealed class WpfIntegrationTests
                 yield return descendant;
         }
     }
+
+    private async Task CheckAdditionalWorkflowsAsync(MainWindow window)
+    {
+        var failures = new List<Exception>();
+        CalculationsView calculationsView = Descendants<CalculationsView>(window).Single();
+        SeriesView seriesView = Descendants<SeriesView>(window).Single();
+        var parametersExpander = (Expander)calculationsView.FindName("ParametersExpander");
+
+        async Task Check(string name, Func<MainViewModel, Task> scenario)
+        {
+            var model = new MainViewModel();
+            model.Parameters.HarmonicCount = 2;
+            window.DataContext = model;
+            window.Width = 1440;
+            parametersExpander.IsExpanded = true;
+            window.UpdateLayout();
+            try
+            {
+                await scenario(model);
+                TestContext.WriteLine("PASS: " + name);
+            }
+            catch (Exception error)
+            {
+                failures.Add(new InvalidOperationException(name, error));
+            }
+        }
+
+        await Check("Editing the same value in another view clears an earlier parse error", model =>
+        {
+            FindInput(calculationsView, nameof(CalculationParameters.WavelengthMicrometers)).Text = "abc";
+            Assert.IsTrue(model.HasError);
+            model.IsSeriesMode = true;
+            window.UpdateLayout();
+            FindInput(seriesView, nameof(CalculationParameters.WavelengthMicrometers)).Text = "1,0000";
+            Assert.IsFalse(model.HasError, "A corrected shared parameter must not retain an error from its hidden editor.");
+            return Task.CompletedTask;
+        });
+
+        await Check("Editing after a resize clears an earlier parse error", model =>
+        {
+            FindInput(calculationsView, nameof(CalculationParameters.WavelengthMicrometers)).Text = "abc";
+            window.Width = 390;
+            parametersExpander.IsExpanded = true;
+            window.UpdateLayout();
+            FindInput(calculationsView, nameof(CalculationParameters.WavelengthMicrometers)).Text = "1,0000";
+            Assert.IsFalse(model.HasError, "A hidden desktop input must not block the compact editor.");
+            return Task.CompletedTask;
+        });
+
+        await Check("An inactive series input error does not remain on the single mode screen", model =>
+        {
+            model.IsSeriesMode = true;
+            window.UpdateLayout();
+            FindInput(seriesView, nameof(CalculationParameters.SeriesAngleStepDegrees)).Text = "abc";
+            Assert.IsTrue(model.HasError);
+            model.IsSingleMode = true;
+            window.UpdateLayout();
+            Assert.IsFalse(model.HasError, "An inactive series-only error must not describe the single calculation as invalid.");
+            Assert.AreNotEqual("Проверьте ввод", model.StatusText, "The status bar must not keep an inactive input error.");
+            model.IsSeriesMode = true;
+            window.UpdateLayout();
+            Assert.IsTrue(model.HasError, "Returning to the invalid series must restore its input error.");
+            return Task.CompletedTask;
+        });
+
+        await Check("Two-point series is preserved by the slider", model =>
+        {
+            model.IsSeriesMode = true;
+            model.Parameters.SeriesPointCount = 2;
+            window.UpdateLayout();
+            Assert.AreEqual(2, model.Parameters.SeriesPointCount);
+            Slider slider = Descendants<Slider>(seriesView).Single();
+            Assert.AreEqual(2.0, slider.Value, "The slider must represent every valid point count.");
+            return Task.CompletedTask;
+        });
+
+        await Check("Series has a usable cancellation control at both widths", async model =>
+        {
+            model.IsSeriesMode = true;
+            model.Parameters.SeriesPointCount = 2;
+            model.Parameters.SeriesAngleStartDegrees = 40;
+            model.Parameters.SeriesAngleEndDegrees = 50;
+            model.Parameters.SeriesAngleStepDegrees = 10;
+            window.UpdateLayout();
+            Task calculation;
+            SynchronizationContext? originalContext = SynchronizationContext.Current;
+            try
+            {
+                // Keep the first calculation yield behind the UI checks, independent of CPU speed.
+                SynchronizationContext.SetSynchronizationContext(new System.Windows.Threading.DispatcherSynchronizationContext(
+                    window.Dispatcher, System.Windows.Threading.DispatcherPriority.SystemIdle));
+                calculation = model.CalculateAsync();
+            }
+            finally
+            {
+                SynchronizationContext.SetSynchronizationContext(originalContext);
+            }
+            try
+            {
+                foreach (double width in new[] { 1440.0, 390.0 })
+                {
+                    window.Width = width;
+                    window.UpdateLayout();
+                    await window.Dispatcher.InvokeAsync(() => { },
+                        System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+                    Assert.IsTrue(Descendants<Button>(seriesView).Any(button => button.IsVisible &&
+                        button.IsEnabled && ReferenceEquals(button.Command, model.CancelCommand)),
+                        "Cancellation must be available on the running series screen at width " + width);
+                    SavePreview(window, width > 1000 ? "series-running-desktop.png" : "series-running-compact.png");
+                }
+            }
+            finally
+            {
+                model.CancelCommand.Execute(null);
+                await calculation;
+            }
+            Assert.AreEqual("Расчёт отменён", model.StatusText);
+            Assert.AreEqual(0, model.Runs.Count);
+        });
+
+        await Check("History cannot overwrite the active parameter set while running", async model =>
+        {
+            await model.CalculateAsync();
+            var previousRun = model.Runs[0];
+            model.Parameters.WavelengthMicrometers = 1.3;
+            Task calculation = model.CalculateAsync();
+            try
+            {
+                model.OpenRun(previousRun);
+                Assert.AreEqual(1.3, model.Parameters.WavelengthMicrometers, 1e-12);
+            }
+            finally
+            {
+                model.CancelCommand.Execute(null);
+                await calculation;
+            }
+            Assert.AreSame(previousRun, model.Runs[0]);
+            Assert.AreEqual(1, model.Runs.Count);
+        });
+
+        await Check("Repeated commands start only one calculation", async model =>
+        {
+            var command = (AsyncRelayCommand)model.RunCommand;
+            Task first = command.ExecuteAsync();
+            Assert.IsFalse(command.CanExecute(null));
+            await command.ExecuteAsync();
+            await model.CalculateAsync();
+            await first;
+            Assert.AreEqual(1, model.Runs.Count);
+            Assert.IsTrue(command.CanExecute(null));
+        });
+
+        await Check("History filtering does not detach the displayed result", async model =>
+        {
+            await model.CalculateAsync();
+            model.HistorySearch = "no matching runs";
+            model.Parameters.WavelengthMicrometers = 1.3;
+            await model.CalculateAsync();
+            Assert.AreEqual(2, model.Runs.Count);
+            Assert.AreSame(model.Runs[0], model.SelectedRun);
+            Assert.AreSame(model.SelectedRun!.Output!.SlicePlot, model.SlicePlot);
+        });
+
+        await Check("The calculation mode cannot change while its result is being computed", async model =>
+        {
+            Task calculation = model.CalculateAsync();
+            try
+            {
+                model.IsSeriesMode = true;
+                model.NavigateCommand.Execute("Series");
+                Assert.IsTrue(model.IsSingleMode);
+                Assert.AreEqual("Calculations", model.CurrentSection);
+                model.NavigateCommand.Execute("Settings");
+                Assert.AreEqual("Settings", model.CurrentSection);
+                model.NavigateCommand.Execute("Calculations");
+                Assert.AreEqual("Calculations", model.CurrentSection, "The user must be able to return to the running task and cancel it.");
+            }
+            finally
+            {
+                model.CancelCommand.Execute(null);
+                await calculation;
+            }
+        });
+
+        await Check("A new run clears invalid text and previous output", async model =>
+        {
+            await model.CalculateAsync();
+            FindInput(calculationsView, nameof(CalculationParameters.WavelengthMicrometers)).Text = "abc";
+            model.NewRunCommand.Execute(null);
+            window.UpdateLayout();
+            Assert.IsFalse(model.HasError);
+            Assert.IsFalse(Validation.GetHasError(FindInput(calculationsView, nameof(CalculationParameters.WavelengthMicrometers))));
+            Assert.IsFalse(model.Energy.IsAvailable);
+            Assert.IsNull(model.SelectedRun);
+            Assert.AreEqual(1, model.Runs.Count);
+        });
+
+        await Check("Input formatting does not hide valid small coordinates", model =>
+        {
+            model.Parameters.OutputLeft = 0.00001;
+            window.UpdateLayout();
+            TextBox input = FindInput(calculationsView, nameof(CalculationParameters.OutputLeft));
+            Assert.AreEqual(model.Parameters.OutputLeft,
+                double.Parse(input.Text, input.Language.GetSpecificCulture()), 1e-15);
+            return Task.CompletedTask;
+        });
+
+        await Check("Typing decimal and exponent prefixes does not replace the active text", model =>
+        {
+            TextBox input = FindInput(calculationsView, nameof(CalculationParameters.WavelengthMicrometers));
+            foreach (string text in new[] { "0", "0,", "0,0", "0,01", "1E", "1E-", "1E-2" })
+            {
+                input.Text = text;
+                Assert.AreEqual(text, input.Text, "The user must be able to finish typing a number.");
+            }
+            Assert.IsFalse(model.HasError);
+            Assert.AreEqual(0.01, model.Parameters.WavelengthMicrometers, 1e-15);
+            return Task.CompletedTask;
+        });
+
+        if (failures.Count != 0)
+            throw new AggregateException(failures);
+    }
+
+    private static TextBox FindInput(DependencyObject root, string propertyName) =>
+        Descendants<TextBox>(root).First(input => input.IsVisible &&
+            BindingOperations.GetBinding(input, TextBox.TextProperty)?.Path?.Path == "Parameters." + propertyName);
 
     private void SavePreview(Window window, string fileName)
     {
