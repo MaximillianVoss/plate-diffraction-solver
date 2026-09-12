@@ -13,17 +13,17 @@
                     <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <TextBlock FontWeight="SemiBold" Text="Версия интерфейса" />
-                <TextBlock Grid.Column="1" Text="WPF-прототип 0.1" />
+                <TextBlock Grid.Column="1" Text="WPF 1.0 — одна пластина" />
                 <TextBlock Grid.Row="1" Margin="0,10,0,0" FontWeight="SemiBold" Text="Платформа" />
-                <TextBlock Grid.Row="1" Grid.Column="1" Margin="0,10,0,0" Text="C# / WPF / .NET 10" />
+                <TextBlock Grid.Row="1" Grid.Column="1" Margin="0,10,0,0" Text="C# / WPF / .NET 9" />
                 <TextBlock Grid.Row="2" Margin="0,10,0,0" FontWeight="SemiBold" Text="Текущий расчётный код" />
-                <TextBlock Grid.Row="2" Grid.Column="1" Margin="0,10,0,0" Text="Diffraction.Core, C#; CUDA backend — отдельный нативный модуль" />
+                <TextBlock Grid.Row="2" Grid.Column="1" Margin="0,10,0,0" Text="Diffraction.Core, C#; режим одной пластины выполняется на CPU" />
                 <TextBlock Grid.Row="3" Margin="0,10,0,0" FontWeight="SemiBold" Text="Модель" />
                 <TextBlock Grid.Row="3" Grid.Column="1" Margin="0,10,0,0" Text="Тонкий лист с импедансным граничным условием" />
                 <TextBlock Grid.Row="4" Margin="0,10,0,0" FontWeight="SemiBold" Text="Методы" />
                 <TextBlock Grid.Row="4" Grid.Column="1" Margin="0,10,0,0" Text="Коллокация и метод Галеркина, полиномы Чебышёва" />
                 <TextBlock Grid.Row="5" Margin="0,10,0,0" FontWeight="SemiBold" Text="Статус" />
-                <TextBlock Grid.Row="5" Grid.Column="1" Margin="0,10,0,0" Foreground="{StaticResource WarningBrush}" Text="Черновой UX-прототип; численные данные демонстрационные" />
+                <TextBlock Grid.Row="5" Grid.Column="1" Margin="0,10,0,0" Foreground="{StaticResource SuccessBrush}" Text="Параметры, поля, коэффициенты и диагностика вычисляются Diffraction.Core" />
             </Grid>
         </Border>
     </StackPanel>

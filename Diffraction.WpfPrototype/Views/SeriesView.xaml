@@ -81,27 +81,27 @@
                     <Grid Grid.Row="1" Margin="0,8,0,0">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="78" /></Grid.ColumnDefinitions>
                         <TextBlock VerticalAlignment="Center" Text="Длина волны λ" />
-                        <TextBox Grid.Column="1" Text="{Binding Parameters.WavelengthMicrometers, Mode=TwoWay, StringFormat={}{0:0.000}, ValidatesOnExceptions=True}" />
+                        <TextBox Grid.Column="1" Text="{Binding Parameters.WavelengthMicrometers, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.000}, ValidatesOnExceptions=True}" />
                     </Grid>
                     <Grid Grid.Row="2" Margin="0,6,0,0">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="78" /></Grid.ColumnDefinitions>
                         <TextBlock VerticalAlignment="Center" Text="Угол θ, °" />
-                        <TextBox Grid.Column="1" Text="{Binding Parameters.IncidenceAngleDegrees, Mode=TwoWay, StringFormat={}{0:0.0}, ValidatesOnExceptions=True}" />
+                        <TextBox Grid.Column="1" Text="{Binding Parameters.IncidenceAngleDegrees, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.0}, ValidatesOnExceptions=True}" />
                     </Grid>
                     <Grid Grid.Row="3" Margin="0,6,0,0">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="78" /></Grid.ColumnDefinitions>
                         <TextBlock VerticalAlignment="Center" Text="Параметр N" />
-                        <TextBox Grid.Column="1" Text="{Binding Parameters.HarmonicCount, Mode=TwoWay, ValidatesOnExceptions=True}" />
+                        <TextBox Grid.Column="1" Text="{Binding Parameters.HarmonicCount, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}" />
                     </Grid>
 
                     <Expander Grid.Row="4" Margin="0,10,0,0" Header="{Binding GeometryRegionSummary}" ToolTip="Геометрия пластины и границы области вывода">
                         <UniformGrid Columns="2" Margin="0,7,0,3">
-                            <StackPanel Margin="0,0,4,6"><TextBlock Style="{StaticResource CaptionStyle}" Text="α₁" /><TextBox Text="{Binding Parameters.PlateStart, Mode=TwoWay, StringFormat={}{0:0.000}, ValidatesOnExceptions=True}" /></StackPanel>
-                            <StackPanel Margin="4,0,0,6"><TextBlock Style="{StaticResource CaptionStyle}" Text="β₁" /><TextBox Text="{Binding Parameters.PlateEnd, Mode=TwoWay, StringFormat={}{0:0.000}, ValidatesOnExceptions=True}" /></StackPanel>
-                            <StackPanel Margin="0,0,4,6"><TextBlock Style="{StaticResource CaptionStyle}" Text="xL" /><TextBox Text="{Binding Parameters.OutputLeft, Mode=TwoWay, StringFormat={}{0:0.00}, ValidatesOnExceptions=True}" /></StackPanel>
-                            <StackPanel Margin="4,0,0,6"><TextBlock Style="{StaticResource CaptionStyle}" Text="xR" /><TextBox Text="{Binding Parameters.OutputRight, Mode=TwoWay, StringFormat={}{0:0.00}, ValidatesOnExceptions=True}" /></StackPanel>
-                            <StackPanel Margin="0,0,4,0"><TextBlock Style="{StaticResource CaptionStyle}" Text="yDn" /><TextBox Text="{Binding Parameters.OutputBottom, Mode=TwoWay, StringFormat={}{0:0.00}, ValidatesOnExceptions=True}" /></StackPanel>
-                            <StackPanel Margin="4,0,0,0"><TextBlock Style="{StaticResource CaptionStyle}" Text="yUp" /><TextBox Text="{Binding Parameters.OutputTop, Mode=TwoWay, StringFormat={}{0:0.00}, ValidatesOnExceptions=True}" /></StackPanel>
+                            <StackPanel Margin="0,0,4,6"><TextBlock Style="{StaticResource CaptionStyle}" Text="α₁" /><TextBox Text="{Binding Parameters.PlateStart, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.000}, ValidatesOnExceptions=True}" /></StackPanel>
+                            <StackPanel Margin="4,0,0,6"><TextBlock Style="{StaticResource CaptionStyle}" Text="β₁" /><TextBox Text="{Binding Parameters.PlateEnd, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.000}, ValidatesOnExceptions=True}" /></StackPanel>
+                            <StackPanel Margin="0,0,4,6"><TextBlock Style="{StaticResource CaptionStyle}" Text="xL" /><TextBox Text="{Binding Parameters.OutputLeft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.00}, ValidatesOnExceptions=True}" /></StackPanel>
+                            <StackPanel Margin="4,0,0,6"><TextBlock Style="{StaticResource CaptionStyle}" Text="xR" /><TextBox Text="{Binding Parameters.OutputRight, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.00}, ValidatesOnExceptions=True}" /></StackPanel>
+                            <StackPanel Margin="0,0,4,0"><TextBlock Style="{StaticResource CaptionStyle}" Text="yDn" /><TextBox Text="{Binding Parameters.OutputBottom, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.00}, ValidatesOnExceptions=True}" /></StackPanel>
+                            <StackPanel Margin="4,0,0,0"><TextBlock Style="{StaticResource CaptionStyle}" Text="yUp" /><TextBox Text="{Binding Parameters.OutputTop, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.00}, ValidatesOnExceptions=True}" /></StackPanel>
                         </UniformGrid>
                     </Expander>
 
@@ -115,11 +115,11 @@
                         </Grid.RowDefinitions>
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="86" /></Grid.ColumnDefinitions>
                         <TextBlock VerticalAlignment="Center" Text="Начало" />
-                        <TextBox Grid.Column="1" Text="{Binding Parameters.SeriesSkinDepthStart, Mode=TwoWay, StringFormat={}{0:0.000}, ValidatesOnExceptions=True}" />
+                        <TextBox Grid.Column="1" Text="{Binding Parameters.SeriesSkinDepthStart, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.000}, ValidatesOnExceptions=True}" />
                         <TextBlock Grid.Row="1" Margin="0,6,0,0" VerticalAlignment="Center" Text="Конец" />
-                        <TextBox Grid.Row="1" Grid.Column="1" Margin="0,6,0,0" Text="{Binding Parameters.SeriesSkinDepthEnd, Mode=TwoWay, StringFormat={}{0:0.000}, ValidatesOnExceptions=True}" />
+                        <TextBox Grid.Row="1" Grid.Column="1" Margin="0,6,0,0" Text="{Binding Parameters.SeriesSkinDepthEnd, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.000}, ValidatesOnExceptions=True}" />
                         <TextBlock Grid.Row="2" Margin="0,6,0,0" VerticalAlignment="Center" Text="Точек" />
-                        <TextBox Grid.Row="2" Grid.Column="1" Margin="0,6,0,0" Text="{Binding Parameters.SeriesPointCount, Mode=TwoWay, ValidatesOnExceptions=True}" />
+                        <TextBox Grid.Row="2" Grid.Column="1" Margin="0,6,0,0" Text="{Binding Parameters.SeriesPointCount, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}" />
                         <Slider Grid.Row="3" Grid.ColumnSpan="2" Margin="0,10,0,0" Minimum="5" Maximum="101" Value="{Binding Parameters.SeriesPointCount, Mode=TwoWay}" TickFrequency="1" IsSnapToTickEnabled="True" />
                     </Grid>
 
@@ -132,11 +132,11 @@
                         </Grid.RowDefinitions>
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="86" /></Grid.ColumnDefinitions>
                         <TextBlock VerticalAlignment="Center" Text="Начало, °" />
-                        <TextBox Grid.Column="1" Text="{Binding Parameters.SeriesAngleStartDegrees, Mode=TwoWay, StringFormat={}{0:0.#}, ValidatesOnExceptions=True}" />
+                        <TextBox Grid.Column="1" Text="{Binding Parameters.SeriesAngleStartDegrees, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.#}, ValidatesOnExceptions=True}" />
                         <TextBlock Grid.Row="1" Margin="0,6,0,0" VerticalAlignment="Center" Text="Конец, °" />
-                        <TextBox Grid.Row="1" Grid.Column="1" Margin="0,6,0,0" Text="{Binding Parameters.SeriesAngleEndDegrees, Mode=TwoWay, StringFormat={}{0:0.#}, ValidatesOnExceptions=True}" />
+                        <TextBox Grid.Row="1" Grid.Column="1" Margin="0,6,0,0" Text="{Binding Parameters.SeriesAngleEndDegrees, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.#}, ValidatesOnExceptions=True}" />
                         <TextBlock Grid.Row="2" Margin="0,6,0,0" VerticalAlignment="Center" Text="Шаг, °" />
-                        <TextBox Grid.Row="2" Grid.Column="1" Margin="0,6,0,0" Text="{Binding Parameters.SeriesAngleStepDegrees, Mode=TwoWay, StringFormat={}{0:0.#}, ValidatesOnExceptions=True}" />
+                        <TextBox Grid.Row="2" Grid.Column="1" Margin="0,6,0,0" Text="{Binding Parameters.SeriesAngleStepDegrees, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.#}, ValidatesOnExceptions=True}" />
                     </Grid>
 
                     <controls:PlateGeometryView Grid.Row="9" Margin="0,12,0,5" MinHeight="150" />
@@ -158,14 +158,14 @@
                         <TabItem Header="По толщине δ">
                             <Grid Margin="0,8,0,0">
                                 <Grid.RowDefinitions><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-                                <controls:ScientificPlot Margin="0,0,0,6" PlotKind="Energy" />
-                                <TextBlock Grid.Row="1" Style="{StaticResource CaptionStyle}" Text="R_scat и T_scat совпадают и уменьшаются вместе. Пунктирная T_scat наложена на сплошную R_scat." TextWrapping="Wrap" />
+                                <controls:ScientificPlot Margin="0,0,0,6" Data="{Binding SkinEnergyPlot}" />
+                                <TextBlock Grid.Row="1" Style="{StaticResource CaptionStyle}" Text="Каждая точка рассчитана заново для указанной толщины δ; R_scat, T_scat и A_J вычисляются независимо." TextWrapping="Wrap" />
                             </Grid>
                         </TabItem>
                         <TabItem Header="По углу θ">
                             <Grid Margin="0,8,0,0">
                                 <Grid.RowDefinitions><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-                                <controls:ScientificPlot Margin="0,0,0,6" PlotKind="AngleEnergy" />
+                                <controls:ScientificPlot Margin="0,0,0,6" Data="{Binding AngleEnergyPlot}" />
                                 <TextBlock Grid.Row="1" Style="{StaticResource CaptionStyle}" Text="{Binding SeriesAngleCaption}" TextWrapping="Wrap" />
                             </Grid>
                         </TabItem>
@@ -175,8 +175,8 @@
                     <Grid>
                         <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                         <TextBlock FontWeight="SemiBold" Text="Невязка ЗСЭ и различие потоков" />
-                        <controls:ScientificPlot Grid.Row="1" Margin="0,7,0,5" PlotKind="EnergyDiagnostics" />
-                        <TextBlock Grid.Row="2" Style="{StaticResource CaptionStyle}" Text="Невязка ЗСЭ остаётся ниже 0,05%; различие R_scat/T_scat находится на уровне машинного округления." />
+                        <controls:ScientificPlot Grid.Row="1" Margin="0,7,0,5" Data="{Binding SeriesDiagnosticsPlot}" />
+                        <TextBlock Grid.Row="2" Style="{StaticResource CaptionStyle}" Text="{Binding SeriesDiagnosticsCaption}" TextWrapping="Wrap" />
                     </Grid>
                 </Border>
             </Grid>
@@ -219,7 +219,7 @@
                         <TextBlock Grid.Row="1" Margin="0,7,0,0" Text="Сверху / снизу" />
                         <TextBlock Grid.Row="1" Grid.Column="1" Margin="0,7,0,0" Text="{Binding Energy.SheetPairDisplay}" />
                         <TextBlock Grid.Row="2" Margin="0,6,0,0" Text="Разность" />
-                        <TextBlock Grid.Row="2" Grid.Column="1" Margin="0,6,0,0" Foreground="{StaticResource SuccessBrush}" FontWeight="SemiBold" Text="0,000000% — совпадают" />
+                        <TextBlock Grid.Row="2" Grid.Column="1" Margin="0,6,0,0" Foreground="{StaticResource SuccessBrush}" FontWeight="SemiBold" Text="{Binding Energy.SheetMismatchDisplay}" />
                     </Grid>
 
                     <DataGrid Grid.Row="7" Margin="0,14,0,8" AutoGenerateColumns="False" MinHeight="135" ItemsSource="{Binding SeriesCheckSummaries}">

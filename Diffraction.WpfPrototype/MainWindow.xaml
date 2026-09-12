@@ -6,7 +6,7 @@
         xmlns:views="clr-namespace:Diffraction.WpfPrototype.Views"
         mc:Ignorable="d"
         Language="ru-RU"
-        Title="Решатель дифракции — WPF-прототип"
+        Title="Решатель дифракции — одна пластина"
         Icon="Resources/AppIcon.ico"
         Width="1440"
         Height="900"
@@ -487,7 +487,7 @@
                              Value="{Binding Progress, Mode=OneWay}"
                              Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}" />
                 <StackPanel Grid.Column="2" x:Name="BuildCaption" Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Style="{StaticResource CaptionStyle}" Text="WPF-прототип  •  эталонный набор Diffraction.Core" />
+                    <TextBlock Style="{StaticResource CaptionStyle}" Text="Одна пластина  •  реальные вычисления Diffraction.Core" />
                 </StackPanel>
             </Grid>
         </Border>

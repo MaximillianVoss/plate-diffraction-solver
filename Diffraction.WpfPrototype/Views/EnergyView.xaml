@@ -61,11 +61,11 @@
                     <TextBlock Style="{StaticResource CaptionStyle}" Text="допуск 2,0%" />
                 </StackPanel>
             </Border>
-            <Border Grid.Column="8" Padding="8" Background="#F0FAF4" BorderBrush="#ABEFC6" BorderThickness="1" CornerRadius="4">
+            <Border Grid.Column="8" Padding="8" Background="{Binding Energy.BalanceBackground}" BorderBrush="{Binding Energy.BalanceBorder}" BorderThickness="1" CornerRadius="4">
                 <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
                     <StackPanel Orientation="Horizontal">
-                        <TextBlock FontFamily="Segoe MDL2 Assets" FontSize="22" Foreground="{StaticResource SuccessBrush}" Text="&#xE73E;" />
-                        <TextBlock Margin="8,0,0,0" VerticalAlignment="Center" FontSize="18" FontWeight="SemiBold" Foreground="{StaticResource SuccessBrush}" Text="В допуске" />
+                        <TextBlock FontFamily="Segoe MDL2 Assets" FontSize="22" Foreground="{Binding Energy.BalanceForeground}" Text="&#xE73E;" />
+                        <TextBlock Margin="8,0,0,0" VerticalAlignment="Center" FontSize="18" FontWeight="SemiBold" Foreground="{Binding Energy.BalanceForeground}" Text="{Binding Energy.BalanceStatus}" />
                     </StackPanel>
                     <TextBlock Margin="0,5,0,0" Style="{StaticResource CaptionStyle}" Text="{Binding Energy.LocalBalanceResidualDisplay}" />
                 </StackPanel>
@@ -104,10 +104,10 @@
                         </StackPanel>
                     </Border>
                 </UniformGrid>
-                <Border Grid.Row="1" Margin="0,6,0,0" Padding="8" Background="#F0FAF4" BorderBrush="#ABEFC6" BorderThickness="1" CornerRadius="4">
+                <Border Grid.Row="1" Margin="0,6,0,0" Padding="8" Background="{Binding Energy.BalanceBackground}" BorderBrush="{Binding Energy.BalanceBorder}" BorderThickness="1" CornerRadius="4">
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                        <TextBlock FontFamily="Segoe MDL2 Assets" Foreground="{StaticResource SuccessBrush}" Text="&#xE73E;" />
-                        <TextBlock Margin="7,0,0,0" Foreground="{StaticResource SuccessBrush}" FontWeight="SemiBold" Text="{Binding Energy.CompactBalanceDisplay}" TextWrapping="Wrap" />
+                        <TextBlock FontFamily="Segoe MDL2 Assets" Foreground="{Binding Energy.BalanceForeground}" Text="&#xE73E;" />
+                        <TextBlock Margin="7,0,0,0" Foreground="{Binding Energy.BalanceForeground}" FontWeight="SemiBold" Text="{Binding Energy.CompactBalanceDisplay}" TextWrapping="Wrap" />
                     </StackPanel>
                 </Border>
             </Grid>
@@ -152,8 +152,12 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
-                        <TextBlock Style="{StaticResource CaptionStyle}" Text="α₁ = −1,500" />
-                        <TextBlock Grid.Column="1" HorizontalAlignment="Right" Style="{StaticResource CaptionStyle}" Text="β₁ = −0,500" />
+                        <TextBlock Style="{StaticResource CaptionStyle}">
+                            <Run Text="α₁ = " /><Run Text="{Binding Parameters.PlateStart, StringFormat={}{0:0.000}}" />
+                        </TextBlock>
+                        <TextBlock Grid.Column="1" HorizontalAlignment="Right" Style="{StaticResource CaptionStyle}">
+                            <Run Text="β₁ = " /><Run Text="{Binding Parameters.PlateEnd, StringFormat={}{0:0.000}}" />
+                        </TextBlock>
                     </Grid>
                     <TextBlock Grid.Row="3" Margin="0,3,0,6" Foreground="{StaticResource WarningBrush}" FontSize="10.5">
                         <Run Text="Толщина δ показана условно: " />
@@ -168,11 +172,11 @@
                         </Grid.ColumnDefinitions>
                         <StackPanel Grid.Column="0">
                             <TextBlock Margin="0,0,0,3" FontSize="10.5" Text="Идеал" />
-                            <controls:FieldMapView />
+                            <controls:FieldMapView Data="{Binding IdealFieldMap}" />
                         </StackPanel>
                         <StackPanel Grid.Column="2">
                             <TextBlock Margin="0,0,0,3" FontSize="10.5" Text="Скин-слой" />
-                            <controls:FieldMapView SkinEnabled="True" />
+                            <controls:FieldMapView Data="{Binding SkinFieldMap}" />
                         </StackPanel>
                     </Grid>
                     <TextBlock Grid.Row="5" Margin="0,6,0,0" Style="{StaticResource CaptionStyle}" Text="Полное синхронное сравнение с общей шкалой доступно на вкладке «Карта поля»." TextWrapping="Wrap" />
@@ -186,9 +190,9 @@
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
-                    <TextBlock FontWeight="SemiBold" Text="Энергии в зависимости от толщины скин-слоя" />
-                    <controls:ScientificPlot Grid.Row="1" Margin="0,8,0,8" MinHeight="280" PlotKind="Energy" />
-                    <TextBlock Grid.Row="2" Style="{StaticResource CaptionStyle}" Text="R_scat и T_scat совпадают: зелёная пунктирная линия наложена на синюю. Значения нормированы на падающий поток через пластину." TextWrapping="Wrap" />
+                    <TextBlock FontWeight="SemiBold" Text="Энергетика текущего расчёта" />
+                    <controls:ScientificPlot Grid.Row="1" Margin="0,8,0,8" MinHeight="280" Data="{Binding CurrentEnergyPlot}" />
+                    <TextBlock Grid.Row="2" Style="{StaticResource CaptionStyle}" Text="Точки рассчитаны независимо для текущей толщины δ и нормированы на падающий поток через пластину." TextWrapping="Wrap" />
                 </Grid>
             </Border>
 
@@ -231,15 +235,15 @@
                         </DataGrid.ContextMenu>
                     </DataGrid>
                     <TextBlock Grid.Row="3" Margin="0,7,0,8" Style="{StaticResource CaptionStyle}" Text="Порядок сравниваемой пары указан в названии строки. R_scat/T_scat и потоки у листа проверяются отдельно от локального баланса A_flux/A_J." TextWrapping="Wrap" />
-                    <Border Grid.Row="4" Padding="9" Background="#F0FAF4" BorderBrush="#ABEFC6" BorderThickness="1" CornerRadius="3">
+                    <Border Grid.Row="4" Padding="9" Background="{Binding Energy.FarFieldBackground}" BorderBrush="{Binding Energy.FarFieldBorder}" BorderThickness="1" CornerRadius="3">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <TextBlock FontFamily="Segoe MDL2 Assets" Foreground="{StaticResource SuccessBrush}" Text="&#xE73E;" />
-                            <TextBlock Grid.Column="1" Margin="8,0" VerticalAlignment="Center" Foreground="{StaticResource SuccessBrush}" FontWeight="SemiBold" Text="R_scat и T_scat совпадают в допуске" TextWrapping="Wrap" />
+                            <TextBlock FontFamily="Segoe MDL2 Assets" Foreground="{Binding Energy.FarFieldForeground}" Text="&#xE73E;" />
+                            <TextBlock Grid.Column="1" Margin="8,0" VerticalAlignment="Center" Foreground="{Binding Energy.FarFieldForeground}" FontWeight="SemiBold" Text="{Binding Energy.FarFieldStatus}" TextWrapping="Wrap" />
                             <Button Grid.Column="2" Padding="9,4" MinHeight="27" Style="{StaticResource SecondaryButtonStyle}" Content="Открыть диагностику" Click="OpenDiagnostics_Click" />
                         </Grid>
                     </Border>

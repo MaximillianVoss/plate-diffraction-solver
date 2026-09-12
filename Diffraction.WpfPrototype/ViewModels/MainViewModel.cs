@@ -1,17 +1,33 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Globalization;
+using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using System.Windows.Data;
 using System.Windows.Input;
 using Diffraction.WpfPrototype.Infrastructure;
 using Diffraction.WpfPrototype.Models;
+using Diffraction.WpfPrototype.Services;
 
 namespace Diffraction.WpfPrototype.ViewModels;
 
 public sealed class MainViewModel : INotifyPropertyChanged
 {
     private string _currentSection = "Calculations";
+    private EnergySnapshot _energy = EnergySnapshot.Empty;
+    private PlotData _slicePlot = PlotData.Empty("x", "Re u(x, λ/10)");
+    private PlotData _methodPlot = PlotData.Empty("x", "Re u(x, λ/10)");
+    private PlotData _methodDifferencePlot = PlotData.Empty("x", "|u_col − u_gal|");
+    private PlotData _skinDifferencePlot = PlotData.Empty("x", "|u_skin − u_ideal|");
+    private PlotData _currentEnergyPlot = PlotData.Empty("Толщина δ", "Доля падающей энергии");
+    private PlotData _skinEnergyPlot = PlotData.Empty("Толщина δ", "Доля падающей энергии", "Запустите расчёт в режиме «Серия»");
+    private PlotData _angleEnergyPlot = PlotData.Empty("Угол θ, °", "Доля падающей энергии", "Запустите расчёт в режиме «Серия»");
+    private PlotData _seriesDiagnosticsPlot = PlotData.Empty("Толщина δ", "Отклонение, %", "Запустите расчёт в режиме «Серия»");
+    private FieldMapData? _idealFieldMap;
+    private FieldMapData? _skinFieldMap;
+    private string _diagnosticsSummary = "Расчёт ещё не выполнен.";
+    private string _seriesDiagnosticsCaption = "Серийная диагностика ещё не рассчитана.";
     private string _historySearch = string.Empty;
     private string _fluxSearch = string.Empty;
     private string _fluxCategory = "Все показатели";
@@ -20,8 +36,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private bool _isBusy;
     private bool _isSingleMode = true;
     private string _selectedBackend = "Авто";
-    private string _statusText = "Расчёт завершён";
-    private string _statusDetail = "CPU  •  0,84 с";
+    private string _statusText = "Готов к расчёту";
+    private string _statusDetail = "Задайте параметры и нажмите «Рассчитать»";
     private double _progress;
     private CancellationTokenSource? _calculationCancellation;
     private bool _isRestoringParameters;
@@ -33,18 +49,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
         SeriesCheckSummaries = new ObservableCollection<string>();
         Parameters.PropertyChanged += (_, _) => HandleParameterChanged();
 
-        Runs = new ObservableCollection<CalculationRun>(CreateRuns());
-        FluxRows = new ObservableCollection<FluxRow>(CreateFluxRows());
-        Coefficients = new ObservableCollection<CoefficientRow>(CreateCoefficients());
-        Diagnostics = new ObservableCollection<DiagnosticRow>(CreateDiagnostics());
+        Runs = new ObservableCollection<CalculationRun>();
+        FluxRows = new ObservableCollection<FluxRow>();
+        Coefficients = new ObservableCollection<CoefficientRow>();
+        Diagnostics = new ObservableCollection<DiagnosticRow>();
         JournalEntries = new ObservableCollection<string>
         {
-            "[14:32:01] Инициализация параметров...",
-            "[14:32:01] Построение сетки гармоник... (N = 30)",
-            "[14:32:01] Проверка сходимости и баланса энергии...",
-            "[14:32:01] R_scat и T_scat совпадают в пределах машинной точности.",
-            "[14:32:01] Локальная невязка ЗСЭ: 0,047% — в допуске (2%).",
-            "[14:32:01] Расчёт завершён успешно."
+            $"[{DateTime.Now:HH:mm:ss}] Программа готова. Введите параметры одной пластины и запустите расчёт."
         };
 
         RunsView = CollectionViewSource.GetDefaultView(Runs);
@@ -54,14 +65,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
         CoefficientsView = CollectionViewSource.GetDefaultView(Coefficients);
         CoefficientsView.Filter = FilterCoefficient;
 
-        SelectedRun = Runs.FirstOrDefault();
-
         NavigateCommand = new RelayCommand(Navigate);
-        RunCommand = new AsyncRelayCommand(RunCalculationAsync, () => !IsBusy);
+        RunCommand = new AsyncRelayCommand(CalculateAsync, () => !IsBusy);
         CancelCommand = new RelayCommand(_ => CancelCalculation(), _ => IsBusy);
         NewRunCommand = new RelayCommand(_ => PrepareNewRun(), _ => !IsBusy);
-        ExportCommand = new RelayCommand(_ => RegisterAction("Подготовлен пакет экспорта: CSV, PNG и отчёт."));
-        CompareCommand = new RelayCommand(_ => RegisterAction("Открыто сравнение с предыдущим расчётом."));
+        ExportCommand = new RelayCommand(_ => RegisterAction("Экспорт будет доступен после отдельной настройки формата файла."));
+        CompareCommand = new RelayCommand(_ => RegisterAction("Графики сравнения находятся на вкладке «Галеркин/коллокация»."));
         ClearJournalCommand = new RelayCommand(_ => JournalEntries.Clear());
     }
 
@@ -78,10 +87,87 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ICollectionView FluxView { get; }
     public ICollectionView CoefficientsView { get; }
 
-    public EnergyDemoSnapshot Energy { get; } = ValidatedEnergyDemo.Selected;
+    public EnergySnapshot Energy
+    {
+        get => _energy;
+        private set => SetProperty(ref _energy, value);
+    }
+
+    public PlotData SlicePlot
+    {
+        get => _slicePlot;
+        private set => SetProperty(ref _slicePlot, value);
+    }
+
+    public PlotData MethodPlot
+    {
+        get => _methodPlot;
+        private set => SetProperty(ref _methodPlot, value);
+    }
+
+    public PlotData MethodDifferencePlot
+    {
+        get => _methodDifferencePlot;
+        private set => SetProperty(ref _methodDifferencePlot, value);
+    }
+
+    public PlotData SkinDifferencePlot
+    {
+        get => _skinDifferencePlot;
+        private set => SetProperty(ref _skinDifferencePlot, value);
+    }
+
+    public PlotData CurrentEnergyPlot
+    {
+        get => _currentEnergyPlot;
+        private set => SetProperty(ref _currentEnergyPlot, value);
+    }
+
+    public PlotData SkinEnergyPlot
+    {
+        get => _skinEnergyPlot;
+        private set => SetProperty(ref _skinEnergyPlot, value);
+    }
+
+    public PlotData AngleEnergyPlot
+    {
+        get => _angleEnergyPlot;
+        private set => SetProperty(ref _angleEnergyPlot, value);
+    }
+
+    public PlotData SeriesDiagnosticsPlot
+    {
+        get => _seriesDiagnosticsPlot;
+        private set => SetProperty(ref _seriesDiagnosticsPlot, value);
+    }
+
+    public FieldMapData? IdealFieldMap
+    {
+        get => _idealFieldMap;
+        private set => SetProperty(ref _idealFieldMap, value);
+    }
+
+    public FieldMapData? SkinFieldMap
+    {
+        get => _skinFieldMap;
+        private set => SetProperty(ref _skinFieldMap, value);
+    }
+
+    public string DiagnosticsSummary
+    {
+        get => _diagnosticsSummary;
+        private set => SetProperty(ref _diagnosticsSummary, value);
+    }
+
+    public string SeriesDiagnosticsCaption
+    {
+        get => _seriesDiagnosticsCaption;
+        private set => SetProperty(ref _seriesDiagnosticsCaption, value);
+    }
+
     public CalculationParameters Parameters { get; }
 
-    public IReadOnlyList<string> Backends { get; } = new[] { "Авто", "CPU", "CUDA" };
+    public IReadOnlyList<string> Backends { get; } = new[] { "Авто", "CPU" };
     public IReadOnlyList<string> Modes { get; } = new[] { "Один расчёт", "Серия" };
     public IReadOnlyList<string> FluxCategories { get; } = new[] { "Все показатели", "Рассеяние", "Потоки", "Баланс" };
 
@@ -285,52 +371,65 @@ public sealed class MainViewModel : INotifyPropertyChanged
         JournalEntries.Add($"[{DateTime.Now:HH:mm:ss}] Параметры {(run.IsSeries ? "серии" : "расчёта")} #{run.RunNumber:000} восстановлены из истории.");
     }
 
-    private async Task RunCalculationAsync()
+    public async Task CalculateAsync()
     {
         _calculationCancellation?.Dispose();
         _calculationCancellation = new CancellationTokenSource();
         CancellationToken token = _calculationCancellation.Token;
         IsBusy = true;
         Progress = 0;
-
-        var phases = new[]
-        {
-            ("Проверка параметров...", 12d),
-            ("Решение без скин-слоя на CPU...", 34d),
-            ("Решение со скин-слоем на CPU...", 58d),
-            ("Расчёт энергетического баланса...", 76d),
-            ("Обновление таблиц и графиков...", 92d),
-            ("Диагностика завершена.", 100d)
-        };
+        DateTime startedAt = DateTime.Now;
+        CalculationParameters parameters = Parameters.Clone();
+        string section = CurrentSection;
+        bool includeSeries = section == "Series";
+        StatusDetail = "Подготовка к расчёту";
+        JournalEntries.Add($"[{DateTime.Now:HH:mm:ss}] Запуск расчёта по параметрам: λ={parameters.WavelengthMicrometers:0.000}, θ={parameters.IncidenceAngleDegrees:0.###}°, δ={parameters.SkinDepthMicrometers:0.000000}, N={parameters.HarmonicCount}");
 
         try
         {
-            foreach ((string phase, double progress) in phases)
+            await SetPhaseAsync(token, "Проверка параметров...", 12);
+            token.ThrowIfCancellationRequested();
+
+            CalculationOutput output = await Task.Run(() =>
             {
                 token.ThrowIfCancellationRequested();
-                StatusText = phase;
-                StatusDetail = $"{SelectedBackend}  •  {progress:0}%";
-                JournalEntries.Add($"[{DateTime.Now:HH:mm:ss}] {phase}");
-                Progress = progress;
-                await Task.Delay(330, token);
-            }
+                return DiffractionCalculationService.Calculate(
+                    parameters,
+                    includeSeries,
+                    token,
+                    includeFieldMaps: true);
+            }, token);
 
+            ApplyCalculationOutput(output);
+            OnPropertyChanged(nameof(GeometryRegionSummary));
+            await SetPhaseAsync(token, "Обновление таблиц и графиков...", 92);
+
+            bool toleranceExceeded = output.Energy.LocalBalanceErrorPercent > 2.0;
+            double elapsed = (DateTime.Now - startedAt).TotalSeconds;
             var completedRun = new CalculationRun
             {
                 RunNumber = Runs.Count == 0 ? 1 : Runs.Max(run => run.RunNumber) + 1,
                 DateLabel = $"Сегодня {DateTime.Now:HH:mm}",
-                Parameters = Parameters.Clone(),
-                IsSeries = IsSeriesMode || CurrentSection == "Series",
-                Backend = SelectedBackend == "Авто" ? "CPU" : SelectedBackend,
-                Status = "В допуске",
-                StatusKind = "Success"
+                Parameters = parameters,
+                IsSeries = includeSeries,
+                Backend = "CPU",
+                Status = toleranceExceeded ? "Предупреждение" : "В допуске",
+                StatusKind = toleranceExceeded ? "Warning" : "Success",
+                Output = output
             };
+
+            await SetPhaseAsync(token, "Расчёт завершён", 100);
+
             Runs.Insert(0, completedRun);
             SelectedRun = completedRun;
             RunsView.Refresh();
+
             StatusText = "Расчёт завершён";
-            StatusDetail = $"{completedRun.Backend}  •  0,84 с";
-            JournalEntries.Add($"[{DateTime.Now:HH:mm:ss}] Расчёт завершён успешно.");
+            StatusDetail = $"{output.BackendName}  •  {elapsed:0.00} с";
+            JournalEntries.Add(
+                $"[{DateTime.Now:HH:mm:ss}] Расчёт завершён: A_J={output.Energy.Absorbed:0.000000}, ΔЗСЭ={output.Energy.LocalBalanceErrorPercent:0.000}%.");
+            _parametersModified = false;
+            NotifyParameterContextChanged();
         }
         catch (OperationCanceledException)
         {
@@ -338,11 +437,71 @@ public sealed class MainViewModel : INotifyPropertyChanged
             StatusDetail = "Результаты не изменены";
             JournalEntries.Add($"[{DateTime.Now:HH:mm:ss}] Расчёт отменён пользователем.");
         }
+        catch (Exception ex)
+        {
+            StatusText = "Ошибка расчёта";
+            StatusDetail = "Не удалось обновить результаты";
+            JournalEntries.Add($"[{DateTime.Now:HH:mm:ss}] Ошибка: {ex.Message}");
+        }
         finally
         {
             IsBusy = false;
             Progress = 0;
         }
+    }
+
+    private async Task SetPhaseAsync(CancellationToken token, string message, double progress)
+    {
+        token.ThrowIfCancellationRequested();
+        StatusText = message;
+        StatusDetail = $"{(SelectedBackend == "Авто" ? "CPU" : SelectedBackend)}  •  {progress:0}%";
+        JournalEntries.Add($"[{DateTime.Now:HH:mm:ss}] {message}");
+        Progress = progress;
+        await Task.Yield();
+        token.ThrowIfCancellationRequested();
+    }
+
+    private void RefreshFluxRows(EnergySnapshot energy)
+    {
+        FluxRows.Clear();
+        foreach (FluxRow row in CreateFluxRows(energy))
+            FluxRows.Add(row);
+    }
+
+    private void RefreshDiagnostics(IEnumerable<DiagnosticRow> rows)
+    {
+        Diagnostics.Clear();
+        foreach (DiagnosticRow row in rows)
+            Diagnostics.Add(row);
+    }
+
+    private void ApplyCalculationOutput(CalculationOutput output)
+    {
+        Energy = output.Energy;
+        SlicePlot = output.SlicePlot;
+        MethodPlot = output.MethodPlot;
+        MethodDifferencePlot = output.MethodDifferencePlot;
+        SkinDifferencePlot = output.SkinDifferencePlot;
+        CurrentEnergyPlot = output.CurrentEnergyPlot;
+        SkinEnergyPlot = output.SkinEnergyPlot;
+        AngleEnergyPlot = output.AngleEnergyPlot;
+        SeriesDiagnosticsPlot = output.SeriesDiagnosticsPlot;
+        IdealFieldMap = output.IdealFieldMap;
+        SkinFieldMap = output.SkinFieldMap;
+        DiagnosticsSummary = output.DiagnosticsSummary;
+        SeriesDiagnosticsCaption = output.SeriesDiagnosticsCaption;
+
+        RefreshFluxRows(output.Energy);
+        RefreshDiagnostics(output.Diagnostics);
+
+        Coefficients.Clear();
+        foreach (CoefficientRow row in output.Coefficients)
+            Coefficients.Add(row);
+        CoefficientsView.Refresh();
+
+        SeriesCheckSummaries.Clear();
+        foreach (string summary in output.SeriesCheckSummaries)
+            SeriesCheckSummaries.Add(summary);
     }
 
     private void CancelCalculation() => _calculationCancellation?.Cancel();
@@ -364,7 +523,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
 
         CurrentSection = "Calculations";
-        RefreshSeriesCheckSummaries();
+        ClearCalculationOutput();
         NotifyParameterContextChanged();
         StatusText = "Новый расчёт";
         StatusDetail = "Проверьте параметры и нажмите «Рассчитать»";
@@ -374,7 +533,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private void RegisterAction(string message)
     {
         StatusText = message;
-        StatusDetail = "Черновой интерфейс";
+        StatusDetail = "Результаты расчёта не изменены";
         JournalEntries.Add($"[{DateTime.Now:HH:mm:ss}] {message}");
     }
 
@@ -409,141 +568,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
                row.GalerkinRe.ToString("G5").Contains(CoefficientSearch, StringComparison.CurrentCultureIgnoreCase);
     }
 
-    private static IEnumerable<CalculationRun> CreateRuns()
+    private static IEnumerable<FluxRow> CreateFluxRows(EnergySnapshot energy)
     {
-        return new[]
-        {
-            new CalculationRun
-            {
-                RunNumber = 24,
-                DateLabel = "Сегодня 14:32",
-                Parameters = CreateParameters(0.010, 30),
-                IsSeries = false,
-                Backend = "CPU",
-                Status = "В допуске",
-                StatusKind = "Success"
-            },
-            new CalculationRun
-            {
-                RunNumber = 23,
-                DateLabel = "Сегодня 11:18",
-                Parameters = CreateParameters(0.010, 20, wavelength: 1.200, angle: 30.0),
-                IsSeries = false,
-                Backend = "CPU",
-                Status = "В допуске",
-                StatusKind = "Success"
-            },
-            new CalculationRun
-            {
-                RunNumber = 22,
-                DateLabel = "Вчера 16:47",
-                Parameters = CreateParameters(
-                    0.020,
-                    30,
-                    wavelength: 0.800,
-                    angle: 30.0,
-                    plateStart: -2.000,
-                    plateEnd: -0.750,
-                    outputLeft: -3.0,
-                    outputRight: 3.0,
-                    outputBottom: -4.0,
-                    outputTop: 4.0,
-                    seriesStart: 0.005,
-                    seriesEnd: 0.080,
-                    seriesPoints: 16,
-                    angleStart: 15.0,
-                    angleEnd: 75.0,
-                    angleStep: 5.0),
-                IsSeries = true,
-                Backend = "CPU",
-                Status = "Предупреждение",
-                StatusKind = "Warning"
-            },
-            new CalculationRun
-            {
-                RunNumber = 21,
-                DateLabel = "Вчера 10:05",
-                Parameters = CreateParameters(0.010, 10, angle: 60.0),
-                IsSeries = false,
-                Backend = "CPU",
-                Status = "В допуске",
-                StatusKind = "Success"
-            },
-            new CalculationRun
-            {
-                RunNumber = 20,
-                DateLabel = "12.05.2026 09:22",
-                Parameters = CreateParameters(0.005, 30, seriesEnd: 0.050, seriesPoints: 11, angleStart: 20.0, angleEnd: 80.0, angleStep: 5.0),
-                IsSeries = true,
-                Backend = "CPU",
-                Status = "В допуске",
-                StatusKind = "Success"
-            },
-            new CalculationRun
-            {
-                RunNumber = 19,
-                DateLabel = "11.05.2026 18:31",
-                Parameters = CreateParameters(0.010, 30),
-                IsSeries = false,
-                Backend = "CUDA",
-                Status = "Аномалия",
-                StatusKind = "Error"
-            },
-            new CalculationRun
-            {
-                RunNumber = 18,
-                DateLabel = "10.05.2026 15:09",
-                Parameters = CreateParameters(0.015, 40, seriesStart: 0.005, seriesEnd: 0.125, seriesPoints: 25),
-                IsSeries = true,
-                Backend = "CPU",
-                Status = "В допуске",
-                StatusKind = "Success"
-            }
-        };
-    }
-
-    private static CalculationParameters CreateParameters(
-        double skinDepth,
-        int harmonicCount,
-        double wavelength = 1.0,
-        double angle = 45.0,
-        double plateStart = -1.5,
-        double plateEnd = -0.5,
-        double outputLeft = -2.0,
-        double outputRight = 2.0,
-        double outputBottom = -3.0,
-        double outputTop = 3.0,
-        double seriesStart = 0.0,
-        double seriesEnd = 0.1,
-        int seriesPoints = 21,
-        double angleStart = 10.0,
-        double angleEnd = 90.0,
-        double angleStep = 2.0)
-    {
-        return new CalculationParameters
-        {
-            WavelengthMicrometers = wavelength,
-            IncidenceAngleDegrees = angle,
-            PlateStart = plateStart,
-            PlateEnd = plateEnd,
-            HarmonicCount = harmonicCount,
-            SkinDepthMicrometers = skinDepth,
-            OutputLeft = outputLeft,
-            OutputRight = outputRight,
-            OutputBottom = outputBottom,
-            OutputTop = outputTop,
-            SeriesSkinDepthStart = seriesStart,
-            SeriesSkinDepthEnd = seriesEnd,
-            SeriesPointCount = seriesPoints,
-            SeriesAngleStartDegrees = angleStart,
-            SeriesAngleEndDegrees = angleEnd,
-            SeriesAngleStepDegrees = angleStep
-        };
-    }
-
-    private static IEnumerable<FluxRow> CreateFluxRows()
-    {
-        EnergyDemoSnapshot energy = ValidatedEnergyDemo.Selected;
         return new[]
         {
             new FluxRow
@@ -554,7 +580,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 Bottom = energy.ForwardScattered,
                 DifferencePercent = energy.FarFieldMismatchPercent,
                 TolerancePercent = 0.000001,
-                Status = "Совпадают"
+                Status = BuildStatusText(energy.FarFieldMismatchPercent, 0.000001)
             },
             new FluxRow
             {
@@ -564,7 +590,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 Bottom = energy.SheetBelow,
                 DifferencePercent = energy.SheetMismatchPercent,
                 TolerancePercent = 0.000001,
-                Status = "Совпадают"
+                Status = BuildStatusText(energy.SheetMismatchPercent, 0.000001)
             },
             new FluxRow
             {
@@ -574,42 +600,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 Bottom = energy.Absorbed,
                 DifferencePercent = energy.LocalBalanceErrorPercent,
                 TolerancePercent = 2.0,
-                Status = "В допуске"
+                Status = BuildStatusText(energy.LocalBalanceErrorPercent, 2.0)
             }
         };
     }
 
-    private static IEnumerable<CoefficientRow> CreateCoefficients()
-    {
-        for (int i = 0; i < 60; i++)
-        {
-            double decay = Math.Exp(-i / 7.5);
-            double phase = i * 0.57;
-            double collRe = decay * Math.Cos(phase);
-            double collIm = decay * Math.Sin(phase);
-            yield return new CoefficientRow
-            {
-                Index = i + 1,
-                CollocationRe = collRe,
-                CollocationIm = collIm,
-                GalerkinRe = collRe * (1.0 - 0.004 * Math.Sin(i * 0.3)),
-                GalerkinIm = collIm * (1.0 + 0.004 * Math.Cos(i * 0.4))
-            };
-        }
-    }
-
-    private static IEnumerable<DiagnosticRow> CreateDiagnostics()
-    {
-        return new[]
-        {
-            new DiagnosticRow { Group = "Граничное условие", Check = "Невязка на пластине", Value = "0,00%", Tolerance = "≤ 1,00%", Status = "В допуске" },
-            new DiagnosticRow { Group = "Уравнение Гельмгольца", Check = "Относительная невязка", Value = "1,65E-04", Tolerance = "≤ 1,00E-03", Status = "В допуске" },
-            new DiagnosticRow { Group = "Энергетика", Check = "Локальная невязка ЗСЭ", Value = "0,047%", Tolerance = "≤ 2,00%", Status = "В допуске" },
-            new DiagnosticRow { Group = "Рассеяние", Check = "Разность R_scat/T_scat", Value = "< 1,0E-12%", Tolerance = "≤ 1,0E-06%", Status = "Совпадают" },
-            new DiagnosticRow { Group = "Потоки", Check = "Разность сверху/снизу у листа", Value = "0,000000%", Tolerance = "≤ 1,0E-06%", Status = "Совпадают" },
-            new DiagnosticRow { Group = "Методы", Check = "Коллокация / Галеркин", Value = "4,70E-02", Tolerance = "справочно", Status = "Проверить" }
-        };
-    }
+    private static string BuildStatusText(double differencePercent, double tolerancePercent) =>
+        differencePercent <= tolerancePercent ? "В допуске" : "Проверить";
 
     private void RestoreRunParameters(CalculationRun run)
     {
@@ -626,14 +623,19 @@ public sealed class MainViewModel : INotifyPropertyChanged
             _isRestoringParameters = false;
         }
 
-        RefreshSeriesCheckSummaries();
+        if (run.Output is not null)
+            ApplyCalculationOutput(run.Output);
         NotifyParameterContextChanged();
     }
 
     private void HandleParameterChanged()
     {
-        RefreshSeriesCheckSummaries();
         MarkParameterContextModified();
+        if (!_isRestoringParameters && Energy.IsAvailable)
+        {
+            StatusText = "Параметры изменены";
+            StatusDetail = "Нажмите «Рассчитать», чтобы обновить результаты";
+        }
         OnPropertyChanged(nameof(ContextSummary));
         OnPropertyChanged(nameof(SeriesPointTitle));
         OnPropertyChanged(nameof(SeriesAngleCaption));
@@ -681,13 +683,26 @@ public sealed class MainViewModel : INotifyPropertyChanged
             $"  •  {SelectedBackend}";
     }
 
-    private void RefreshSeriesCheckSummaries()
+    private void ClearCalculationOutput()
     {
+        Energy = EnergySnapshot.Empty;
+        SlicePlot = PlotData.Empty("x", "Re u(x, λ/10)");
+        MethodPlot = PlotData.Empty("x", "Re u(x, λ/10)");
+        MethodDifferencePlot = PlotData.Empty("x", "|u_col − u_gal|");
+        SkinDifferencePlot = PlotData.Empty("x", "|u_skin − u_ideal|");
+        CurrentEnergyPlot = PlotData.Empty("Толщина δ", "Доля падающей энергии");
+        SkinEnergyPlot = PlotData.Empty("Толщина δ", "Доля падающей энергии", "Запустите расчёт в режиме «Серия»");
+        AngleEnergyPlot = PlotData.Empty("Угол θ, °", "Доля падающей энергии", "Запустите расчёт в режиме «Серия»");
+        SeriesDiagnosticsPlot = PlotData.Empty("Толщина δ", "Отклонение, %", "Запустите расчёт в режиме «Серия»");
+        IdealFieldMap = null;
+        SkinFieldMap = null;
+        DiagnosticsSummary = "Расчёт ещё не выполнен.";
+        SeriesDiagnosticsCaption = "Серийная диагностика ещё не рассчитана.";
+
+        FluxRows.Clear();
+        Coefficients.Clear();
+        Diagnostics.Clear();
         SeriesCheckSummaries.Clear();
-        SeriesCheckSummaries.Add(
-            $"Толщина δ {Format(Parameters.SeriesSkinDepthStart, "0.000")}…{Format(Parameters.SeriesSkinDepthEnd, "0.000")}  •  {Parameters.SeriesPointCount} точек");
-        SeriesCheckSummaries.Add(
-            $"Угол θ {Format(Parameters.SeriesAngleStartDegrees, "0.#")}…{Format(Parameters.SeriesAngleEndDegrees, "0.#")}°  •  шаг {Format(Parameters.SeriesAngleStepDegrees, "0.#")}°  •  R_scat ≈ T_scat");
     }
 
     private int GetAnglePointCount()

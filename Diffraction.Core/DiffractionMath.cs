@@ -522,6 +522,7 @@ namespace Diffraction.Core
             public Compl f(double x) => -2 * Math.PI * u0(x, 0);
 
             private double[][] tau_q, t_q, w_q;
+            private Compl[][] phi_q;
             private int M_quad;
             private double[][] tau_c, x_c;
             private bool useSingularWeight;
@@ -532,6 +533,7 @@ namespace Diffraction.Core
                 tau_q = null;
                 t_q = null;
                 w_q = null;
+                phi_q = null;
                 tau_c = null;
                 x_c = null;
                 useSingularWeight = true;
@@ -597,6 +599,8 @@ namespace Diffraction.Core
                 for (int i = 0; i < coefficients.Length; i++)
                     y[i] = new Compl(coefficients[i].Re, coefficients[i].Im);
 
+                BuildQuadratureDensityCache();
+
                 LastMatrixA = null;
                 LastSolvePerformance = new SolvePerformance
                 {
@@ -629,10 +633,33 @@ namespace Diffraction.Core
 
             private Compl PhiAtQuadrature(int plateIndex, int quadIndex)
             {
+                if (phi_q != null)
+                    return phi_q[plateIndex][quadIndex];
+
                 Compl phi = new Compl(0, 0);
                 for (int j = 0; j < N; j++)
                     phi += y[CoeffIndex(plateIndex, j)] * Cheb(j, tau_q[plateIndex][quadIndex]);
                 return phi;
+            }
+
+            private void BuildQuadratureDensityCache()
+            {
+                phi_q = new Compl[PlateCount][];
+                for (int plateIndex = 0; plateIndex < PlateCount; plateIndex++)
+                {
+                    phi_q[plateIndex] = new Compl[M_quad];
+                    for (int quadratureIndex = 0; quadratureIndex < M_quad; quadratureIndex++)
+                    {
+                        Compl value = new Compl(0, 0);
+                        for (int basisIndex = 0; basisIndex < N; basisIndex++)
+                        {
+                            value += y[CoeffIndex(plateIndex, basisIndex)] *
+                                Cheb(basisIndex, tau_q[plateIndex][quadratureIndex]);
+                        }
+
+                        phi_q[plateIndex][quadratureIndex] = value;
+                    }
+                }
             }
 
             private static void GaussLegendre(int n, out double[] nodes, out double[] weights)
@@ -656,6 +683,7 @@ namespace Diffraction.Core
                 try
                 {
                     LastSolveCancelled = false;
+                    phi_q = null;
                     Stopwatch totalWatch = Stopwatch.StartNew();
                     cancellationToken.ThrowIfCancellationRequested();
                     EnsurePreparedState();
@@ -733,6 +761,8 @@ namespace Diffraction.Core
                     int output = Gauss(A_mat, B_vec, w, cancellationToken);
                     solveWatch.Stop();
                     for (int ik = 0; ik < totalUnknowns; ik++) y[ik] = w[ik];
+                    if (output == 1)
+                        BuildQuadratureDensityCache();
 
                     totalWatch.Stop();
                     LastSolvePerformance = new SolvePerformance

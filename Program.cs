@@ -388,100 +388,13 @@ namespace Diffraction
             int n,
             double skinDepth)
         {
-            const double mu0 = 4 * Math.PI * 1e-7;
-            const double speedOfLight = 299792458.0;
-            double frequency = speedOfLight / lambda;
-            double kWave = 2.0 * Math.PI / lambda;
-            Compl chi = new Compl(Math.PI * mu0 * frequency * skinDepth, Math.PI * mu0 * frequency * skinDepth);
-            Compl sheetQ = -ci * chi / (kWave * mu0 * speedOfLight);
-            double plateLength = beta - alpha;
-            double halfL = plateLength / 2.0;
-            double mid = (alpha + beta) / 2.0;
-            int mQuad = Math.Max(8 * n, 80);
-
-            double[] tau = new double[mQuad];
-            double[] x = new double[mQuad];
-            double[] weights = new double[mQuad];
-            for (int m = 0; m < mQuad; m++)
-            {
-                tau[m] = Math.Cos((2.0 * m + 1.0) / (2.0 * mQuad) * Math.PI);
-                x[m] = halfL * tau[m] + mid;
-                weights[m] = Math.PI / mQuad * halfL;
-            }
-
-            CMatr matrix = new CMatr(n);
-            CVect rhs = new CVect(n);
-            double projectionWeight = Math.PI / mQuad;
-            double lnConst = Math.Log(kWave * halfL / 2.0);
-
-            for (int k = 0; k < n; k++)
-            {
-                for (int j = 0; j < n; j++)
-                {
-                    Compl projected = new Compl(0, 0);
-                    for (int m = 0; m < mQuad; m++)
-                    {
-                        Compl op = BoundaryOperatorBasisAtTau(tau[m], j, tau, weights, halfL, kWave, lnConst, sheetQ);
-                        projected += op * Cheb(k, tau[m]);
-                    }
-                    matrix[k][j] = projected * projectionWeight;
-                }
-
-                Compl rhsProjected = new Compl(0, 0);
-                for (int m = 0; m < mQuad; m++)
-                {
-                    Compl u0Raw = IncidentField(x[m], 0, kWave, theta);
-                    rhsProjected += -u0Raw * Cheb(k, tau[m]);
-                }
-                rhs[k] = rhsProjected * projectionWeight;
-            }
-
-            CVect coefficients = new CVect(n);
-            int status = Gauss(matrix, rhs, coefficients);
-            if (status != 1)
-                throw new InvalidOperationException("Galerkin projection solve failed with status " + status);
-
-            Compl[] y = new Compl[n];
-            for (int i = 0; i < n; i++)
-                y[i] = new Compl(coefficients[i].Re, coefficients[i].Im);
-
-            DifrOnLenta solver = new DifrOnLenta(alpha, beta, lambda, theta, n, skinDepth);
-            solver.ApplySolvedCoefficients(y, "Galerkin projection", 0, 0, 0, usedCuda: false);
-            return solver;
-        }
-
-        private static Compl BoundaryOperatorBasisAtTau(
-            double targetTau,
-            int basisIndex,
-            double[] tau,
-            double[] weights,
-            double halfL,
-            double kWave,
-            double lnConst,
-            Compl sheetQ)
-        {
-            Compl sumReg = new Compl(0, 0);
-            for (int m = 0; m < tau.Length; m++)
-            {
-                double kd = kWave * halfL * Math.Abs(targetTau - tau[m]);
-                sumReg += R_H0(kd) * Cheb(basisIndex, tau[m]) * weights[m];
-            }
-
-            double iOrtho = basisIndex == 0 ? Math.PI : 0.0;
-            double iLog = basisIndex == 0
-                ? -Math.PI * Math.Log(2.0)
-                : -(Math.PI / basisIndex) * Cheb(basisIndex, targetTau);
-            Compl sLog = ci * (-2.0 / Math.PI) * halfL * (lnConst * iOrtho + iLog);
-            Compl value = ci / 4.0 * (sumReg + sLog);
-
-            double sqrtWeight = Math.Sqrt(Math.Max(1.0 - targetTau * targetTau, 1e-10));
-            value -= sheetQ / halfL * Cheb(basisIndex, targetTau) / sqrtWeight;
-            return value;
-        }
-
-        private static Compl IncidentField(double x, double z, double kWave, double theta)
-        {
-            return Compl.Exp(kWave * Math.Cos(theta) * ci * x + kWave * Math.Sin(theta) * ci * z);
+            return Diffraction.Core.GalerkinSolver.SolveSinglePlate(
+                alpha,
+                beta,
+                lambda,
+                theta,
+                n,
+                skinDepth);
         }
 
         private static void WriteMethodComparisonCsv(string outputFilePath, MethodComparisonSample[] rows)

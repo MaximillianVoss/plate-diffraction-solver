@@ -9,11 +9,11 @@ namespace Diffraction.WpfPrototype.Controls;
 
 public sealed class ScientificPlot : FrameworkElement
 {
-    public static readonly DependencyProperty PlotKindProperty = DependencyProperty.Register(
-        nameof(PlotKind),
-        typeof(string),
+    public static readonly DependencyProperty DataProperty = DependencyProperty.Register(
+        nameof(Data),
+        typeof(PlotData),
         typeof(ScientificPlot),
-        new FrameworkPropertyMetadata("Energy", FrameworkPropertyMetadataOptions.AffectsRender));
+        new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender));
 
     private Point? _cursor;
 
@@ -28,10 +28,10 @@ public sealed class ScientificPlot : FrameworkElement
         };
     }
 
-    public string PlotKind
+    public PlotData? Data
     {
-        get => (string)GetValue(PlotKindProperty);
-        set => SetValue(PlotKindProperty, value);
+        get => (PlotData?)GetValue(DataProperty);
+        set => SetValue(DataProperty, value);
     }
 
     protected override void OnRender(DrawingContext drawingContext)
@@ -44,22 +44,51 @@ public sealed class ScientificPlot : FrameworkElement
 
         const double left = 54;
         const double right = 18;
-        double top = PlotKind == "Energy" && width < 390 ? 54 : 36;
+        PlotData data = Data ?? PlotData.Empty("x", "y");
+        double top = data.Series.Count > 2 && width < 390 ? 54 : 36;
         const double bottom = 44;
         Rect plot = new(left, top, Math.Max(20, width - left - right), Math.Max(20, height - top - bottom));
 
-        (double xMin, double xMax, double yMin, double yMax, string xLabel, string yLabel, PlotSeries[] series) = GetDefinition();
-        DrawGrid(drawingContext, plot, xMin, xMax, yMin, yMax);
+        DrawGrid(drawingContext, plot, data.XMinimum, data.XMaximum, data.YMinimum, data.YMaximum);
 
-        foreach (PlotSeries item in series)
-            DrawSeries(drawingContext, plot, xMin, xMax, yMin, yMax, item);
+        if (data.HasData)
+        {
+            drawingContext.PushClip(new RectangleGeometry(plot));
+            foreach (PlotSeriesData item in data.Series)
+                DrawSeries(
+                    drawingContext,
+                    plot,
+                    data.XMinimum,
+                    data.XMaximum,
+                    data.YMinimum,
+                    data.YMaximum,
+                    item);
+            drawingContext.Pop();
+            DrawLegend(drawingContext, plot, data.Series);
+        }
+        else
+        {
+            DrawText(
+                drawingContext,
+                data.EmptyMessage,
+                new Point(plot.Left + plot.Width / 2, plot.Top + plot.Height / 2 - 8),
+                11,
+                ToBrush("#667085"),
+                centered: true);
+        }
 
-        DrawLegend(drawingContext, plot, series);
-        DrawText(drawingContext, xLabel, new Point(plot.Left + plot.Width / 2, height - 20), 11, ToBrush("#364152"), centered: true);
-        DrawRotatedText(drawingContext, yLabel, new Point(15, plot.Top + plot.Height / 2), 11, ToBrush("#364152"));
+        DrawText(drawingContext, data.XAxisTitle, new Point(plot.Left + plot.Width / 2, height - 20), 11, ToBrush("#364152"), centered: true);
+        DrawRotatedText(drawingContext, data.YAxisTitle, new Point(15, plot.Top + plot.Height / 2), 11, ToBrush("#364152"));
 
         if (_cursor is Point cursor && plot.Contains(cursor))
-            DrawCursor(drawingContext, plot, cursor, xMin, xMax, yMin, yMax);
+            DrawCursor(
+                drawingContext,
+                plot,
+                cursor,
+                data.XMinimum,
+                data.XMaximum,
+                data.YMinimum,
+                data.YMaximum);
     }
 
     private void DrawGrid(DrawingContext dc, Rect plot, double xMin, double xMax, double yMin, double yMax)
@@ -92,16 +121,19 @@ public sealed class ScientificPlot : FrameworkElement
         double xMax,
         double yMin,
         double yMax,
-        PlotSeries series)
+        PlotSeriesData series)
     {
+        if (series.Points.Count == 0)
+            return;
+
         var geometry = new StreamGeometry();
         using (StreamGeometryContext context = geometry.Open())
         {
-            const int samples = 220;
-            for (int i = 0; i < samples; i++)
+            for (int i = 0; i < series.Points.Count; i++)
             {
-                double xValue = xMin + (xMax - xMin) * i / (samples - 1);
-                double yValue = series.Evaluate(xValue);
+                PlotPointData source = series.Points[i];
+                double xValue = source.X;
+                double yValue = source.Y;
                 double x = plot.Left + (xValue - xMin) / (xMax - xMin) * plot.Width;
                 double y = plot.Bottom - (yValue - yMin) / (yMax - yMin) * plot.Height;
                 Point point = new(x, y);
@@ -113,7 +145,8 @@ public sealed class ScientificPlot : FrameworkElement
         }
 
         geometry.Freeze();
-        Pen pen = new(new SolidColorBrush(series.Color), series.Thickness)
+        Brush seriesBrush = ToBrush(series.Color);
+        Pen pen = new(seriesBrush, series.Thickness)
         {
             LineJoin = PenLineJoin.Round,
             StartLineCap = PenLineCap.Round,
@@ -122,13 +155,23 @@ public sealed class ScientificPlot : FrameworkElement
         };
         pen.Freeze();
         dc.DrawGeometry(null, pen, geometry);
+
+        if (!series.ShowMarkers)
+            return;
+
+        foreach (PlotPointData source in series.Points)
+        {
+            double x = plot.Left + (source.X - xMin) / (xMax - xMin) * plot.Width;
+            double y = plot.Bottom - (source.Y - yMin) / (yMax - yMin) * plot.Height;
+            dc.DrawEllipse(seriesBrush, new Pen(Brushes.White, 1), new Point(x, y), 3.5, 3.5);
+        }
     }
 
-    private void DrawLegend(DrawingContext dc, Rect plot, IReadOnlyList<PlotSeries> series)
+    private void DrawLegend(DrawingContext dc, Rect plot, IReadOnlyList<PlotSeriesData> series)
     {
         double x = plot.Left + 6;
         double y = 13;
-        foreach (PlotSeries item in series)
+        foreach (PlotSeriesData item in series)
         {
             double itemWidth = Math.Max(112, 35 + MeasureText(item.Name, 10));
             if (x > plot.Left + 6 && x + itemWidth > plot.Right)
@@ -137,7 +180,7 @@ public sealed class ScientificPlot : FrameworkElement
                 y += 18;
             }
 
-            Pen pen = new(new SolidColorBrush(item.Color), 2) { DashStyle = item.IsDashed ? DashStyles.Dash : DashStyles.Solid };
+            Pen pen = new(ToBrush(item.Color), 2) { DashStyle = item.IsDashed ? DashStyles.Dash : DashStyles.Solid };
             dc.DrawLine(pen, new Point(x, y + 5), new Point(x + 22, y + 5));
             DrawText(dc, item.Name, new Point(x + 28, y), 10, ToBrush("#475467"));
             x += itemWidth;
@@ -158,43 +201,6 @@ public sealed class ScientificPlot : FrameworkElement
         double boxY = Math.Max(plot.Top + 4, cursor.Y - 29);
         dc.DrawRoundedRectangle(ToBrush("#F9FAFB"), new Pen(ToBrush("#98A2B3"), 1), new Rect(boxX, boxY, boxWidth, 24), 3, 3);
         DrawText(dc, value, new Point(boxX + 8, boxY + 5), 10, ToBrush("#344054"));
-    }
-
-    private (double, double, double, double, string, string, PlotSeries[]) GetDefinition()
-    {
-        return PlotKind switch
-        {
-            "Slice" => (-1.5, -0.5, -1.05, 0.65, "x", "Re u(x, λ/10)", new[]
-            {
-                new PlotSeries("Без скин-слоя", Color.FromRgb(37, 99, 235), x => 0.18 * Math.Cos(9 * (x + 1.5)) - 0.78 + 0.55 * Math.Pow(x + 1, 2), 2.2),
-                new PlotSeries("Со скин-слоем", Color.FromRgb(220, 38, 38), x => 0.16 * Math.Cos(9 * (x + 1.5) + 0.08) - 0.80 + 0.51 * Math.Pow(x + 1, 2), 2.2)
-            }),
-            "Method" => (-1.5, -0.5, -1.0, 0.65, "x", "Re u(x, λ/10)", new[]
-            {
-                new PlotSeries("Коллокация", Color.FromRgb(37, 99, 235), x => -0.82 + 2.7 * Math.Pow(x + 1, 2) + 0.05 * Math.Sin(12 * x), 2.2),
-                new PlotSeries("Галеркин", Color.FromRgb(219, 39, 119), x => -0.81 + 2.62 * Math.Pow(x + 1, 2), 2.2, true)
-            }),
-            "Difference" => (-1.5, -0.5, 0, 0.09, "x", "|Δu|", new[]
-            {
-                new PlotSeries("|u_col − u_gal|", Color.FromRgb(234, 88, 12), x => 0.047 + 0.012 * Math.Pow(Math.Sin(7 * x), 2) + 0.010 * (x + 1.5), 2.2)
-            }),
-            "AngleEnergy" => (10, 90, 0.75, 2.4, "Угол θ, °", "Доля падающей энергии", new[]
-            {
-                new PlotSeries("R_scat обратно", Color.FromRgb(37, 99, 235), ValidatedEnergyDemo.ScatteringAtAngle, 2.3),
-                new PlotSeries("T_scat вперёд", Color.FromRgb(22, 163, 74), ValidatedEnergyDemo.ScatteringAtAngle, 2.3, true)
-            }),
-            "EnergyDiagnostics" => (0, 0.1, 0, 0.055, "Толщина δ", "Отклонение, %", new[]
-            {
-                new PlotSeries("Невязка ЗСЭ", Color.FromRgb(234, 88, 12), ValidatedEnergyDemo.BalanceErrorPercentAtSkinDepth, 2.3),
-                new PlotSeries("|R_scat − T_scat|", Color.FromRgb(22, 163, 74), _ => 0.0, 2.1, true)
-            }),
-            _ => (0, 0.1, 0, 1.05, "Толщина δ", "Доля падающей энергии", new[]
-            {
-                new PlotSeries("R_scat обратно", Color.FromRgb(37, 99, 235), ValidatedEnergyDemo.ScatteringAtSkinDepth, 2.3),
-                new PlotSeries("T_scat вперёд", Color.FromRgb(22, 163, 74), ValidatedEnergyDemo.ScatteringAtSkinDepth, 2.3, true),
-                new PlotSeries("A_J пластина", Color.FromRgb(234, 88, 12), ValidatedEnergyDemo.AbsorptionAtSkinDepth, 2.3)
-            })
-        };
     }
 
     private void OnMouseMove(object sender, MouseEventArgs e)
@@ -231,24 +237,31 @@ public sealed class ScientificPlot : FrameworkElement
 
     private double MeasureText(string text, double size) => CreateText(text, size, Brushes.Black).Width;
 
-    private sealed record PlotSeries(string Name, Color Color, Func<double, double> Evaluate, double Thickness, bool IsDashed = false);
 }
 
 public sealed class FieldMapView : FrameworkElement
 {
-    public static readonly DependencyProperty SkinEnabledProperty = DependencyProperty.Register(
-        nameof(SkinEnabled),
-        typeof(bool),
+    public static readonly DependencyProperty DataProperty = DependencyProperty.Register(
+        nameof(Data),
+        typeof(FieldMapData),
         typeof(FieldMapView),
-        new FrameworkPropertyMetadata(false, FrameworkPropertyMetadataOptions.AffectsRender, (_, _) => { }));
+        new FrameworkPropertyMetadata(
+            null,
+            FrameworkPropertyMetadataOptions.AffectsRender,
+            (dependencyObject, _) =>
+            {
+                FieldMapView view = (FieldMapView)dependencyObject;
+                view._bitmap = null;
+                view._bitmapData = null;
+            }));
 
     private WriteableBitmap? _bitmap;
-    private Size _bitmapSize;
-    private bool _bitmapSkinMode;
+    private FieldMapData? _bitmapData;
     private Point? _cursor;
 
     public FieldMapView()
     {
+        RenderOptions.SetBitmapScalingMode(this, BitmapScalingMode.HighQuality);
         MouseMove += (_, e) =>
         {
             Point position = e.GetPosition(this);
@@ -272,10 +285,10 @@ public sealed class FieldMapView : FrameworkElement
 
     public event EventHandler<FieldCursorChangedEventArgs>? CursorChanged;
 
-    public bool SkinEnabled
+    public FieldMapData? Data
     {
-        get => (bool)GetValue(SkinEnabledProperty);
-        set => SetValue(SkinEnabledProperty, value);
+        get => (FieldMapData?)GetValue(DataProperty);
+        set => SetValue(DataProperty, value);
     }
 
     public void SetLinkedCursor(Point? normalizedPosition)
@@ -295,30 +308,40 @@ public sealed class FieldMapView : FrameworkElement
         dc.DrawRectangle(Brushes.White, new Pen(ToBrush("#D7DEE7"), 1), new Rect(0.5, 0.5, width - 1, height - 1));
 
         Rect plot = GetPlotRect();
-        int bitmapWidth = Math.Max(80, Math.Min(620, (int)Math.Round(plot.Width)));
-        int bitmapHeight = Math.Max(80, Math.Min(420, (int)Math.Round(plot.Height)));
-
-        if (_bitmap == null || _bitmapSize.Width != bitmapWidth || _bitmapSize.Height != bitmapHeight || _bitmapSkinMode != SkinEnabled)
+        FieldMapData? data = Data;
+        if (data is null)
         {
-            _bitmap = BuildBitmap(bitmapWidth, bitmapHeight, SkinEnabled);
-            _bitmapSize = new Size(bitmapWidth, bitmapHeight);
-            _bitmapSkinMode = SkinEnabled;
+            dc.DrawRectangle(ToBrush("#F9FAFB"), new Pen(ToBrush("#D7DEE7"), 1), plot);
+            DrawText(dc, "Выполните расчёт", new Point(plot.Left + 12, plot.Top + 12), 10.5, ToBrush("#667085"));
+            return;
+        }
+
+        if (_bitmap == null || !ReferenceEquals(_bitmapData, data))
+        {
+            _bitmap = BuildBitmap(data);
+            _bitmapData = data;
         }
 
         dc.DrawImage(_bitmap, plot);
         dc.DrawRectangle(null, new Pen(ToBrush("#667085"), 1), plot);
 
-        double plateY = plot.Top + plot.Height / 2;
-        double plateLeft = plot.Left + plot.Width * 0.125;
-        double plateRight = plot.Left + plot.Width * 0.375;
-        dc.DrawLine(new Pen(ToBrush("#111827"), 4), new Point(plateLeft, plateY), new Point(plateRight, plateY));
-        dc.DrawLine(new Pen(Brushes.White, 1), new Point(plateLeft, plateY), new Point(plateRight, plateY));
+        if (data.YMinimum <= 0 && data.YMaximum >= 0)
+        {
+            double plateY = ToScreenY(0, plot, data);
+            double plateLeft = ToScreenX(Math.Max(data.PlateStart, data.XMinimum), plot, data);
+            double plateRight = ToScreenX(Math.Min(data.PlateEnd, data.XMaximum), plot, data);
+            if (plateRight > plateLeft)
+            {
+                dc.DrawLine(new Pen(ToBrush("#111827"), 4), new Point(plateLeft, plateY), new Point(plateRight, plateY));
+                dc.DrawLine(new Pen(Brushes.White, 1), new Point(plateLeft, plateY), new Point(plateRight, plateY));
+            }
+        }
 
-        DrawAxisLabels(dc, plot);
-        DrawColorScale(dc, new Rect(plot.Right + 10, plot.Top, 11, plot.Height));
+        DrawAxisLabels(dc, plot, data);
+        DrawColorScale(dc, new Rect(plot.Right + 10, plot.Top, 11, plot.Height), data);
 
         if (_cursor is Point cursor && plot.Contains(cursor))
-            DrawCursor(dc, plot, cursor);
+            DrawCursor(dc, plot, cursor, data);
     }
 
     private Rect GetPlotRect()
@@ -328,24 +351,20 @@ public sealed class FieldMapView : FrameworkElement
         return new Rect(38, 18, Math.Max(40, width - 76), Math.Max(40, height - 52));
     }
 
-    private WriteableBitmap BuildBitmap(int width, int height, bool skin)
+    private static WriteableBitmap BuildBitmap(FieldMapData data)
     {
+        int width = data.Width;
+        int height = data.Height;
         int stride = width * 4;
         byte[] pixels = new byte[stride * height];
         for (int py = 0; py < height; py++)
         {
-            double y = 3.0 - 6.0 * py / Math.Max(1, height - 1);
             for (int px = 0; px < width; px++)
             {
-                double x = -2.0 + 4.0 * px / Math.Max(1, width - 1);
-                double sourceX = -1.5;
-                double radius = Math.Sqrt(Math.Pow(x - sourceX, 2) + y * y);
-                double incident = 0.52 + 0.24 * Math.Sin(7.2 * (0.68 * x + 0.73 * y));
-                double edgeWave = 0.31 * Math.Sin(12.5 * radius + (skin ? 0.16 : 0.0)) * Math.Exp(-0.11 * radius);
-                double shadow = y < 0 && x > -1.5 && x < -0.5 ? -0.22 * Math.Exp(-2.4 * Math.Abs(y)) : 0;
-                double attenuation = skin ? 0.91 : 1.0;
-                double value = Math.Clamp(Math.Abs(incident + attenuation * edgeWave + shadow), 0, 1);
-                Color color = ScientificColorMap(value);
+                double value = data.Values[py * width + px];
+                double normalized = (value - data.ScaleMinimum) /
+                    Math.Max(data.ScaleMaximum - data.ScaleMinimum, 1e-15);
+                Color color = ScientificColorMap(normalized);
                 int offset = py * stride + px * 4;
                 pixels[offset] = color.B;
                 pixels[offset + 1] = color.G;
@@ -360,16 +379,16 @@ public sealed class FieldMapView : FrameworkElement
         return bitmap;
     }
 
-    private void DrawAxisLabels(DrawingContext dc, Rect plot)
+    private void DrawAxisLabels(DrawingContext dc, Rect plot, FieldMapData data)
     {
-        DrawText(dc, "−2", new Point(plot.Left, plot.Bottom + 5), 9, ToBrush("#667085"));
-        DrawText(dc, "0", new Point(plot.Left + plot.Width / 2 - 3, plot.Bottom + 5), 9, ToBrush("#667085"));
-        DrawText(dc, "2", new Point(plot.Right - 6, plot.Bottom + 5), 9, ToBrush("#667085"));
+        DrawText(dc, FormatTick(data.XMinimum), new Point(plot.Left, plot.Bottom + 5), 9, ToBrush("#667085"));
+        DrawText(dc, FormatTick((data.XMinimum + data.XMaximum) / 2.0), new Point(plot.Left + plot.Width / 2 - 8, plot.Bottom + 5), 9, ToBrush("#667085"));
+        DrawText(dc, FormatTick(data.XMaximum), new Point(plot.Right - 18, plot.Bottom + 5), 9, ToBrush("#667085"));
         DrawText(dc, "x", new Point(plot.Left + plot.Width / 2, plot.Bottom + 18), 10, ToBrush("#344054"));
         DrawText(dc, "y", new Point(12, plot.Top + plot.Height / 2), 10, ToBrush("#344054"));
     }
 
-    private void DrawColorScale(DrawingContext dc, Rect scale)
+    private void DrawColorScale(DrawingContext dc, Rect scale, FieldMapData data)
     {
         const int segments = 80;
         for (int i = 0; i < segments; i++)
@@ -379,21 +398,30 @@ public sealed class FieldMapView : FrameworkElement
             dc.DrawRectangle(new SolidColorBrush(ScientificColorMap(t)), null, segment);
         }
         dc.DrawRectangle(null, new Pen(ToBrush("#667085"), 1), scale);
-        DrawText(dc, "1,0", new Point(scale.Right + 3, scale.Top - 4), 8.5, ToBrush("#667085"));
-        DrawText(dc, "0", new Point(scale.Right + 3, scale.Bottom - 10), 8.5, ToBrush("#667085"));
+        DrawText(dc, FormatTick(data.ScaleMaximum), new Point(scale.Right + 3, scale.Top - 4), 8.5, ToBrush("#667085"));
+        DrawText(dc, FormatTick(data.ScaleMinimum), new Point(scale.Right + 3, scale.Bottom - 10), 8.5, ToBrush("#667085"));
     }
 
-    private void DrawCursor(DrawingContext dc, Rect plot, Point cursor)
+    private void DrawCursor(DrawingContext dc, Rect plot, Point cursor, FieldMapData data)
     {
         Pen pen = new(Brushes.White, 1);
         dc.DrawLine(pen, new Point(cursor.X - 8, cursor.Y), new Point(cursor.X + 8, cursor.Y));
         dc.DrawLine(pen, new Point(cursor.X, cursor.Y - 8), new Point(cursor.X, cursor.Y + 8));
-        double x = -2 + (cursor.X - plot.Left) / plot.Width * 4;
-        double y = 3 - (cursor.Y - plot.Top) / plot.Height * 6;
+        double x = data.XMinimum + (cursor.X - plot.Left) / plot.Width * (data.XMaximum - data.XMinimum);
+        double y = data.YMaximum - (cursor.Y - plot.Top) / plot.Height * (data.YMaximum - data.YMinimum);
         string label = $"x={x:0.00}; y={y:0.00}";
         dc.DrawRoundedRectangle(ToBrush("#111827"), null, new Rect(plot.Left + 5, plot.Top + 5, 98, 22), 3, 3);
         DrawText(dc, label, new Point(plot.Left + 11, plot.Top + 9), 9, Brushes.White);
     }
+
+    private static double ToScreenX(double x, Rect plot, FieldMapData data) =>
+        plot.Left + (x - data.XMinimum) / (data.XMaximum - data.XMinimum) * plot.Width;
+
+    private static double ToScreenY(double y, Rect plot, FieldMapData data) =>
+        plot.Bottom - (y - data.YMinimum) / (data.YMaximum - data.YMinimum) * plot.Height;
+
+    private static string FormatTick(double value) =>
+        value.ToString("0.###", CultureInfo.CurrentCulture);
 
     private static Color ScientificColorMap(double value)
     {

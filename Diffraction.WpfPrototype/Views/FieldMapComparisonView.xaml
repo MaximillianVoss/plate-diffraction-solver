@@ -47,7 +47,7 @@
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
                     <TextBlock FontWeight="SemiBold" Text="Идеальный проводник, δ = 0" />
-                    <controls:FieldMapView Grid.Row="1" x:Name="IdealMap" Margin="0,7,0,7" CursorChanged="IdealMap_CursorChanged" />
+                    <controls:FieldMapView Grid.Row="1" x:Name="IdealMap" Margin="0,7,0,7" Data="{Binding IdealFieldMap}" CursorChanged="IdealMap_CursorChanged" />
                     <TextBlock Grid.Row="2" Style="{StaticResource CaptionStyle}" Text="Опорное поле для идеально проводящей тонкой пластины." />
                 </Grid>
             </Border>
@@ -58,8 +58,10 @@
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
-                    <TextBlock FontWeight="SemiBold" Text="Со скин-слоем, δ = 0,010000" />
-                    <controls:FieldMapView Grid.Row="1" x:Name="SkinMap" Margin="0,7,0,7" SkinEnabled="True" CursorChanged="SkinMap_CursorChanged" />
+                    <TextBlock FontWeight="SemiBold">
+                        <Run Text="Со скин-слоем, δ = " /><Run Text="{Binding Parameters.SkinDepthMicrometers, StringFormat={}{0:0.000000}}" />
+                    </TextBlock>
+                    <controls:FieldMapView Grid.Row="1" x:Name="SkinMap" Margin="0,7,0,7" Data="{Binding SkinFieldMap}" CursorChanged="SkinMap_CursorChanged" />
                     <TextBlock Grid.Row="2" Style="{StaticResource CaptionStyle}" Text="Поле с импедансным граничным условием и учётом скин-слоя." />
                 </Grid>
             </Border>
@@ -73,7 +75,7 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <TextBlock FontWeight="SemiBold" Text="Профиль разности решений" />
-                <controls:ScientificPlot Grid.Row="1" Margin="0,6,0,5" MinHeight="120" PlotKind="Difference" />
+                <controls:ScientificPlot Grid.Row="1" Margin="0,6,0,5" MinHeight="120" Data="{Binding SkinDifferencePlot}" />
                 <TextBlock Grid.Row="2" Style="{StaticResource CaptionStyle}" Text="График показывает |u_skin − u_ideal| на выбранном сечении. Общая шкала карт позволяет сравнивать амплитуды напрямую, а связанный курсор — проверять одну координату в обеих моделях." />
             </Grid>
         </Border>

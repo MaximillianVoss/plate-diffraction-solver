@@ -6,7 +6,7 @@
         <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
         <StackPanel Margin="2,0,0,12">
             <TextBlock FontSize="18" FontWeight="SemiBold" Text="Экспорт результатов" />
-            <TextBlock Margin="0,4,0,0" Style="{StaticResource CaptionStyle}" Text="Единый пакет сохраняет данные, изображения и условия воспроизводимости расчёта." />
+            <TextBlock Margin="0,4,0,0" Style="{StaticResource CaptionStyle}" Text="Предварительный просмотр рассчитанных данных; сохранение в файл пока не подключено." />
         </StackPanel>
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
         <Grid x:Name="ExportContentGrid" MinHeight="560">
@@ -19,23 +19,23 @@
             <Border Grid.Column="0" x:Name="ExportOptionsPanel" Style="{StaticResource PanelBorderStyle}" Padding="16">
                 <StackPanel>
                     <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Содержимое пакета" />
-                    <CheckBox Margin="0,15,0,0" IsChecked="True" Content="CSV — точки графиков и таблиц" />
-                    <CheckBox Margin="0,10,0,0" IsChecked="True" Content="PNG — карты поля и графики" />
-                    <CheckBox Margin="0,10,0,0" IsChecked="True" Content="SVG — графики для публикации" />
-                    <CheckBox Margin="0,10,0,0" IsChecked="True" Content="JSON — параметры и версия решателя" />
-                    <CheckBox Margin="0,10,0,0" IsChecked="True" Content="Отчёт — ЗСЭ, потоки и диагностика" />
+                    <CheckBox Margin="0,15,0,0" IsChecked="True" IsEnabled="False" Content="CSV — точки графиков и таблиц" />
+                    <CheckBox Margin="0,10,0,0" IsChecked="True" IsEnabled="False" Content="PNG — карты поля и графики" />
+                    <CheckBox Margin="0,10,0,0" IsChecked="True" IsEnabled="False" Content="SVG — графики для публикации" />
+                    <CheckBox Margin="0,10,0,0" IsChecked="True" IsEnabled="False" Content="JSON — параметры и версия решателя" />
+                    <CheckBox Margin="0,10,0,0" IsChecked="True" IsEnabled="False" Content="Отчёт — ЗСЭ, потоки и диагностика" />
                     <Separator Margin="0,16" />
                     <TextBlock FontWeight="SemiBold" Text="Имя пакета" />
-                    <TextBox Margin="0,7,0,0" Text="diffraction_N30_lambda1_theta45_skin0.01" />
-                    <Button Margin="0,18,0,0" Style="{StaticResource PrimaryButtonStyle}" Command="{Binding ExportCommand}" Content="Сохранить пакет" />
+                    <TextBox Margin="0,7,0,0" IsReadOnly="True" Text="Формируется из параметров расчёта" />
+                    <Button Margin="0,18,0,0" Style="{StaticResource PrimaryButtonStyle}" IsEnabled="False" Content="Сохранение пока недоступно" />
                 </StackPanel>
             </Border>
             <Border Grid.Column="2" x:Name="ExportPreviewPanel" Style="{StaticResource PanelBorderStyle}" Padding="14">
                 <Grid>
                     <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                     <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Предварительный просмотр" />
-                    <controls:ScientificPlot Grid.Row="1" Margin="0,12,0,8" PlotKind="Energy" />
-                    <controls:ScientificPlot Grid.Row="2" Margin="0,0,0,8" PlotKind="Method" />
+                    <controls:ScientificPlot Grid.Row="1" Margin="0,12,0,8" Data="{Binding CurrentEnergyPlot}" />
+                    <controls:ScientificPlot Grid.Row="2" Margin="0,0,0,8" Data="{Binding MethodPlot}" />
                     <TextBlock Grid.Row="3" Style="{StaticResource CaptionStyle}" Text="Подписи осей, легенда, краткое описание и снимок параметров включаются автоматически." />
                 </Grid>
             </Border>

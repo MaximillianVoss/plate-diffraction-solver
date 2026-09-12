@@ -1,6 +1,6 @@
 [
   {
-    "Name": "WPF Prototype",
+    "Name": "WPF — одна пластина",
     "Projects": [
       {
         "Path": "Diffraction.WpfPrototype\\Diffraction.WpfPrototype.csproj",

@@ -4,7 +4,7 @@
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel x:Name="SettingsContent" MaxWidth="820" HorizontalAlignment="Left">
             <TextBlock FontSize="18" FontWeight="SemiBold" Text="Настройки" />
-            <TextBlock Margin="0,4,0,14" Style="{StaticResource CaptionStyle}" Text="Параметры интерфейса, допусков и вычислительного backend." />
+            <TextBlock Margin="0,4,0,14" Style="{StaticResource CaptionStyle}" Text="Фактически используемые параметры расчёта и проверки." />
 
             <Border Style="{StaticResource PanelBorderStyle}" Padding="16">
                 <Grid x:Name="GeneralSettingsGrid">
@@ -16,9 +16,9 @@
                     <TextBlock x:Name="BackendLabel" FontWeight="SemiBold" Text="Backend по умолчанию" />
                     <ComboBox x:Name="BackendControl" Grid.Column="1" ItemsSource="{Binding Backends}" SelectedItem="{Binding SelectedBackend}" />
                     <TextBlock x:Name="MapLabel" Grid.Row="1" Margin="0,16,0,0" FontWeight="SemiBold" Text="Автоматически строить карту поля" />
-                    <CheckBox x:Name="MapControl" Grid.Row="1" Grid.Column="1" Margin="0,16,0,0" VerticalAlignment="Center" Content="После основного результата" />
+                    <CheckBox x:Name="MapControl" Grid.Row="1" Grid.Column="1" Margin="0,16,0,0" IsChecked="True" IsEnabled="False" VerticalAlignment="Center" Content="После основного результата" />
                     <TextBlock x:Name="HistoryLabel" Grid.Row="2" Margin="0,16,0,0" FontWeight="SemiBold" Text="Хранить историю расчётов" />
-                    <CheckBox x:Name="HistoryControl" Grid.Row="2" Grid.Column="1" Margin="0,16,0,0" IsChecked="True" VerticalAlignment="Center" Content="Включено" />
+                    <CheckBox x:Name="HistoryControl" Grid.Row="2" Grid.Column="1" Margin="0,16,0,0" IsChecked="True" IsEnabled="False" VerticalAlignment="Center" Content="В текущем сеансе" />
                 </Grid>
             </Border>
 
@@ -30,11 +30,11 @@
                         <RowDefinition x:Name="ToleranceControlRow1" Height="0" /><RowDefinition x:Name="ToleranceLabelRow2" Height="0" /><RowDefinition x:Name="ToleranceControlRow2" Height="0" />
                     </Grid.RowDefinitions>
                     <TextBlock x:Name="EnergyToleranceLabel" FontWeight="SemiBold" Text="Допуск невязки ЗСЭ, %" />
-                    <TextBox x:Name="EnergyToleranceControl" Grid.Column="1" Text="1,00" />
+                    <TextBox x:Name="EnergyToleranceControl" Grid.Column="1" IsReadOnly="True" Text="2,00" />
                     <TextBlock x:Name="FluxToleranceLabel" Grid.Row="1" Margin="0,12,0,0" FontWeight="SemiBold" Text="Допуск различия потоков, %" />
-                    <TextBox x:Name="FluxToleranceControl" Grid.Row="1" Grid.Column="1" Margin="0,12,0,0" Text="1,00" />
+                    <TextBox x:Name="FluxToleranceControl" Grid.Row="1" Grid.Column="1" Margin="0,12,0,0" IsReadOnly="True" Text="0,000001" />
                     <TextBlock x:Name="NegativeEnergyLabel" Grid.Row="2" Margin="0,12,0,0" FontWeight="SemiBold" Text="Предупреждать об отрицательной энергии" />
-                    <CheckBox x:Name="NegativeEnergyControl" Grid.Row="2" Grid.Column="1" Margin="0,12,0,0" IsChecked="True" VerticalAlignment="Center" Content="Да" />
+                    <CheckBox x:Name="NegativeEnergyControl" Grid.Row="2" Grid.Column="1" Margin="0,12,0,0" IsChecked="True" IsEnabled="False" VerticalAlignment="Center" Content="Да" />
                 </Grid>
             </Border>
         </StackPanel>
