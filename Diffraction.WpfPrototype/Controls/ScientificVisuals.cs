@@ -104,8 +104,8 @@ public sealed class ScientificPlot : FrameworkElement
             dc.DrawLine(gridPen, new Point(x, plot.Top), new Point(x, plot.Bottom));
             dc.DrawLine(gridPen, new Point(plot.Left, y), new Point(plot.Right, y));
 
-            double xValue = xMin + (xMax - xMin) * i / divisions;
-            double yValue = yMax - (yMax - yMin) * i / divisions;
+            double xValue = xMin + (xMax - xMin) * (i / (double)divisions);
+            double yValue = yMax - (yMax - yMin) * (i / (double)divisions);
             DrawText(dc, FormatTick(xValue), new Point(x, plot.Bottom + 14), 9.5, ToBrush("#667085"), centered: true);
             DrawText(dc, FormatTick(yValue), new Point(plot.Left - 8, y - 6), 9.5, ToBrush("#667085"), rightAligned: true);
         }

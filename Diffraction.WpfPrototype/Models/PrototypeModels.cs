@@ -114,6 +114,11 @@ public sealed class PlotData
         double yMaximum,
         string emptyMessage = "Выполните расчёт")
     {
+        if (!double.IsFinite(xMaximum - xMinimum) || xMinimum >= xMaximum ||
+            !double.IsFinite(yMaximum - yMinimum) || yMinimum >= yMaximum)
+            throw new ArgumentException("Оси графика должны иметь конечные границы и положительную ширину.");
+        if (series.SelectMany(item => item.Points).Any(point => !double.IsFinite(point.X) || !double.IsFinite(point.Y)))
+            throw new ArgumentException("Точки графика содержат нечисловое значение или бесконечность.", nameof(series));
         XAxisTitle = xAxisTitle;
         YAxisTitle = yAxisTitle;
         Series = series;
@@ -163,8 +168,15 @@ public sealed class FieldMapData
     {
         if (width <= 1 || height <= 1)
             throw new ArgumentOutOfRangeException(nameof(width));
-        if (values.Length != width * height)
+        if (values.LongLength != (long)width * height)
             throw new ArgumentException("Размер массива поля не совпадает с размером сетки.", nameof(values));
+        if (!double.IsFinite(xMaximum - xMinimum) || xMinimum >= xMaximum ||
+            !double.IsFinite(yMaximum - yMinimum) || yMinimum >= yMaximum ||
+            !double.IsFinite(scaleMaximum - scaleMinimum) || scaleMinimum >= scaleMaximum ||
+            !double.IsFinite(plateEnd - plateStart) || plateStart >= plateEnd)
+            throw new ArgumentException("Границы карты поля, пластины и шкалы должны быть конечными и упорядоченными.");
+        if (values.Any(value => !double.IsFinite(value)))
+            throw new ArgumentException("Карта поля содержит нечисловое значение или бесконечность.", nameof(values));
 
         Width = width;
         Height = height;

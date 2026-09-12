@@ -156,6 +156,8 @@ namespace Diffraction.WpfPrototype.Models
             SeriesAngleStartDegrees = source.SeriesAngleStartDegrees;
             SeriesAngleEndDegrees = source.SeriesAngleEndDegrees;
             SeriesAngleStepDegrees = source.SeriesAngleStepDegrees;
+            // A restore must replace invalid editor text even when the numeric value is unchanged.
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(string.Empty));
         }
 
         private void SetProperty<T>(ref T field, T value, [CallerMemberName] string propertyName = null)

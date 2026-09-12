@@ -101,6 +101,7 @@
 
         <Expander Grid.Row="1"
                   x:Name="ParametersExpander"
+                  IsEnabled="{Binding CanEditParameters}"
                   Margin="0,0,0,9"
                   IsExpanded="True"
                   Background="White"
@@ -125,43 +126,43 @@
 
                 <StackPanel Grid.Column="0" Margin="0,0,7,0">
                     <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="λ, мкм" HelpText="Длина волны падающего поля в микрометрах." />
-                    <TextBox x:Name="WavelengthInput" Margin="0,4,0,0" Text="{Binding Parameters.WavelengthMicrometers, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.000}, ValidatesOnExceptions=True}" ToolTip="Нормированная длина волны" />
+                    <TextBox x:Name="WavelengthInput" Margin="0,4,0,0" Text="{Binding Parameters.WavelengthMicrometers, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.000}, ValidatesOnExceptions=True, NotifyOnValidationError=True}" ToolTip="Нормированная длина волны" />
                 </StackPanel>
                 <StackPanel Grid.Column="1" Margin="0,0,7,0">
                     <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="θ, °" HelpText="Угол падения относительно нормали к пластине." />
-                    <TextBox Margin="0,4,0,0" Text="{Binding Parameters.IncidenceAngleDegrees, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.0}, ValidatesOnExceptions=True}" ToolTip="Угол падения" />
+                    <TextBox Margin="0,4,0,0" Text="{Binding Parameters.IncidenceAngleDegrees, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.0}, ValidatesOnExceptions=True, NotifyOnValidationError=True}" ToolTip="Угол падения" />
                 </StackPanel>
                 <StackPanel Grid.Column="2" Margin="0,0,7,0">
                     <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="α₁" HelpText="Левая координата границы пластины." />
-                    <TextBox Margin="0,4,0,0" Text="{Binding Parameters.PlateStart, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.000}, ValidatesOnExceptions=True}" ToolTip="Левая граница пластины" />
+                    <TextBox Margin="0,4,0,0" Text="{Binding Parameters.PlateStart, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.000}, ValidatesOnExceptions=True, NotifyOnValidationError=True}" ToolTip="Левая граница пластины" />
                 </StackPanel>
                 <StackPanel Grid.Column="3" Margin="0,0,7,0">
                     <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="β₁" HelpText="Правая координата границы пластины." />
-                    <TextBox Margin="0,4,0,0" Text="{Binding Parameters.PlateEnd, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.000}, ValidatesOnExceptions=True}" ToolTip="Правая граница пластины" />
+                    <TextBox Margin="0,4,0,0" Text="{Binding Parameters.PlateEnd, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.000}, ValidatesOnExceptions=True, NotifyOnValidationError=True}" ToolTip="Правая граница пластины" />
                 </StackPanel>
                 <StackPanel Grid.Column="4" Margin="0,0,7,0">
                     <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="N" HelpText="Порядок усечения ряда в численном решении." />
-                    <TextBox Margin="0,4,0,0" Text="{Binding Parameters.HarmonicCount, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}" ToolTip="Параметр усечения" />
+                    <TextBox Margin="0,4,0,0" Text="{Binding Parameters.HarmonicCount, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True, NotifyOnValidationError=True}" ToolTip="Параметр усечения" />
                 </StackPanel>
                 <StackPanel Grid.Column="5" Margin="0,0,7,0">
                     <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="δ, мкм" HelpText="Толщина скин-слоя пластины в микрометрах." />
-                    <TextBox Margin="0,4,0,0" Text="{Binding Parameters.SkinDepthMicrometers, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.000000}, ValidatesOnExceptions=True}" ToolTip="Толщина скин-слоя" />
+                    <TextBox Margin="0,4,0,0" Text="{Binding Parameters.SkinDepthMicrometers, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.000000}, ValidatesOnExceptions=True, NotifyOnValidationError=True}" ToolTip="Толщина скин-слоя" />
                 </StackPanel>
                 <StackPanel Grid.Column="6" Margin="0,0,7,0">
                     <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="xL" HelpText="Левая граница области вывода по оси x." />
-                    <TextBox Margin="0,4,0,0" Text="{Binding Parameters.OutputLeft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.00}, ValidatesOnExceptions=True}" />
+                    <TextBox Margin="0,4,0,0" Text="{Binding Parameters.OutputLeft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.00}, ValidatesOnExceptions=True, NotifyOnValidationError=True}" />
                 </StackPanel>
                 <StackPanel Grid.Column="7" Margin="0,0,7,0">
                     <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="xR" HelpText="Правая граница области вывода по оси x." />
-                    <TextBox Margin="0,4,0,0" Text="{Binding Parameters.OutputRight, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.00}, ValidatesOnExceptions=True}" />
+                    <TextBox Margin="0,4,0,0" Text="{Binding Parameters.OutputRight, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.00}, ValidatesOnExceptions=True, NotifyOnValidationError=True}" />
                 </StackPanel>
                 <StackPanel Grid.Column="8" Margin="0,0,7,0">
                     <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="yDn" HelpText="Нижняя граница области вывода по оси y." />
-                    <TextBox Margin="0,4,0,0" Text="{Binding Parameters.OutputBottom, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.00}, ValidatesOnExceptions=True}" />
+                    <TextBox Margin="0,4,0,0" Text="{Binding Parameters.OutputBottom, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.00}, ValidatesOnExceptions=True, NotifyOnValidationError=True}" />
                 </StackPanel>
                 <StackPanel Grid.Column="9" Margin="0,0,7,0">
                     <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="yUp" HelpText="Верхняя граница области вывода по оси y." />
-                    <TextBox Margin="0,4,0,0" Text="{Binding Parameters.OutputTop, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.00}, ValidatesOnExceptions=True}" />
+                    <TextBox Margin="0,4,0,0" Text="{Binding Parameters.OutputTop, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.00}, ValidatesOnExceptions=True, NotifyOnValidationError=True}" />
                 </StackPanel>
                 <StackPanel Grid.Column="10" Margin="12,17,0,0" Orientation="Horizontal" VerticalAlignment="Center">
                     <TextBlock FontFamily="Segoe MDL2 Assets" FontSize="16" Foreground="{StaticResource TextMutedBrush}" Text="&#xE946;" />
@@ -176,43 +177,43 @@
                 <UniformGrid Columns="2" Margin="9,7,9,9">
                     <StackPanel Margin="3,3,5,5">
                         <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="λ, мкм" HelpText="Длина волны падающего поля в микрометрах." />
-                        <TextBox Margin="0,4,0,0" Text="{Binding Parameters.WavelengthMicrometers, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.000}, ValidatesOnExceptions=True}" />
+                        <TextBox Margin="0,4,0,0" Text="{Binding Parameters.WavelengthMicrometers, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.000}, ValidatesOnExceptions=True, NotifyOnValidationError=True}" />
                     </StackPanel>
                     <StackPanel Margin="5,3,3,5">
                         <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="θ, °" HelpText="Угол падения относительно нормали к пластине." />
-                        <TextBox Margin="0,4,0,0" Text="{Binding Parameters.IncidenceAngleDegrees, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.0}, ValidatesOnExceptions=True}" />
+                        <TextBox Margin="0,4,0,0" Text="{Binding Parameters.IncidenceAngleDegrees, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.0}, ValidatesOnExceptions=True, NotifyOnValidationError=True}" />
                     </StackPanel>
                     <StackPanel Margin="3,3,5,5">
                         <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="α₁" HelpText="Левая координата границы пластины." />
-                        <TextBox Margin="0,4,0,0" Text="{Binding Parameters.PlateStart, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.000}, ValidatesOnExceptions=True}" />
+                        <TextBox Margin="0,4,0,0" Text="{Binding Parameters.PlateStart, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.000}, ValidatesOnExceptions=True, NotifyOnValidationError=True}" />
                     </StackPanel>
                     <StackPanel Margin="5,3,3,5">
                         <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="β₁" HelpText="Правая координата границы пластины." />
-                        <TextBox Margin="0,4,0,0" Text="{Binding Parameters.PlateEnd, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.000}, ValidatesOnExceptions=True}" />
+                        <TextBox Margin="0,4,0,0" Text="{Binding Parameters.PlateEnd, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.000}, ValidatesOnExceptions=True, NotifyOnValidationError=True}" />
                     </StackPanel>
                     <StackPanel Margin="3,3,5,5">
                         <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="N" HelpText="Порядок усечения ряда в численном решении." />
-                        <TextBox Margin="0,4,0,0" Text="{Binding Parameters.HarmonicCount, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}" />
+                        <TextBox Margin="0,4,0,0" Text="{Binding Parameters.HarmonicCount, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True, NotifyOnValidationError=True}" />
                     </StackPanel>
                     <StackPanel Margin="5,3,3,5">
                         <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="δ, мкм" HelpText="Толщина скин-слоя пластины в микрометрах." />
-                        <TextBox Margin="0,4,0,0" Text="{Binding Parameters.SkinDepthMicrometers, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.000000}, ValidatesOnExceptions=True}" />
+                        <TextBox Margin="0,4,0,0" Text="{Binding Parameters.SkinDepthMicrometers, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.000000}, ValidatesOnExceptions=True, NotifyOnValidationError=True}" />
                     </StackPanel>
                     <StackPanel Margin="3,3,5,5">
                         <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="xL" HelpText="Левая граница области вывода по оси x." />
-                        <TextBox Margin="0,4,0,0" Text="{Binding Parameters.OutputLeft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.00}, ValidatesOnExceptions=True}" />
+                        <TextBox Margin="0,4,0,0" Text="{Binding Parameters.OutputLeft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.00}, ValidatesOnExceptions=True, NotifyOnValidationError=True}" />
                     </StackPanel>
                     <StackPanel Margin="5,3,3,5">
                         <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="xR" HelpText="Правая граница области вывода по оси x." />
-                        <TextBox Margin="0,4,0,0" Text="{Binding Parameters.OutputRight, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.00}, ValidatesOnExceptions=True}" />
+                        <TextBox Margin="0,4,0,0" Text="{Binding Parameters.OutputRight, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.00}, ValidatesOnExceptions=True, NotifyOnValidationError=True}" />
                     </StackPanel>
                     <StackPanel Margin="3,3,5,5">
                         <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="yDn" HelpText="Нижняя граница области вывода по оси y." />
-                        <TextBox Margin="0,4,0,0" Text="{Binding Parameters.OutputBottom, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.00}, ValidatesOnExceptions=True}" />
+                        <TextBox Margin="0,4,0,0" Text="{Binding Parameters.OutputBottom, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.00}, ValidatesOnExceptions=True, NotifyOnValidationError=True}" />
                     </StackPanel>
                     <StackPanel Margin="5,3,3,5">
                         <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="yUp" HelpText="Верхняя граница области вывода по оси y." />
-                        <TextBox Margin="0,4,0,0" Text="{Binding Parameters.OutputTop, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.00}, ValidatesOnExceptions=True}" />
+                        <TextBox Margin="0,4,0,0" Text="{Binding Parameters.OutputTop, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.00}, ValidatesOnExceptions=True, NotifyOnValidationError=True}" />
                     </StackPanel>
                 </UniformGrid>
             </ScrollViewer>

@@ -19,7 +19,9 @@ public static class DiffractionCalculationService
         bool includeFieldMaps = true)
     {
         ArgumentNullException.ThrowIfNull(parameters);
-        Validate(parameters, includeSeries);
+        string? validationError = GetValidationError(parameters, includeSeries);
+        if (validationError is not null)
+            throw new ArgumentException(validationError, nameof(parameters));
 
         double angleRadians = DegreesToRadians(parameters.IncidenceAngleDegrees);
         DifrOnLenta idealCollocation = SolveCollocation(parameters, angleRadians, 0, cancellationToken);
@@ -36,6 +38,7 @@ public static class DiffractionCalculationService
             cancellationToken);
 
         cancellationToken.ThrowIfCancellationRequested();
+        ValidateCoefficients(skinGalerkin);
 
         EnergySnapshot selectedEnergy = CalculateEnergySnapshot(
             skinCollocation,
@@ -71,6 +74,8 @@ public static class DiffractionCalculationService
         cancellationToken.ThrowIfCancellationRequested();
         double galerkinBoundaryErrorPercent = skinGalerkin.VerifyBoundaryConditions() * 100.0;
         double helmholtzResidual = skinCollocation.VerifyHelmholtz();
+        EnsureFinite("диагностика ГУ и уравнения Гельмгольца",
+            collocationBoundaryErrorPercent, galerkinBoundaryErrorPercent, helmholtzResidual);
 
         IReadOnlyList<CoefficientRow> coefficients = BuildCoefficientRows(
             skinCollocation,
@@ -109,66 +114,71 @@ public static class DiffractionCalculationService
         };
     }
 
-    private static void Validate(CalculationParameters parameters, bool includeSeries)
+    public static string? GetValidationError(CalculationParameters parameters, bool includeSeries)
     {
         if (!double.IsFinite(parameters.WavelengthMicrometers) || parameters.WavelengthMicrometers <= 0)
-            throw new ArgumentException("Длина волны должна быть положительным числом.");
+            return "Длина волны должна быть положительным числом.";
         if (!double.IsFinite(parameters.IncidenceAngleDegrees) ||
             Math.Abs(Math.Sin(DegreesToRadians(parameters.IncidenceAngleDegrees))) < 1e-8)
         {
-            throw new ArgumentException("Угол должен задавать ненулевой падающий поток через пластину.");
+            return "Угол должен задавать ненулевой падающий поток через пластину.";
         }
         if (!double.IsFinite(parameters.PlateStart) || !double.IsFinite(parameters.PlateEnd) ||
             parameters.PlateStart >= parameters.PlateEnd)
         {
-            throw new ArgumentException("Для одной пластины должно выполняться α₁ < β₁.");
+            return "Для одной пластины должно выполняться α₁ < β₁.";
         }
         if (parameters.HarmonicCount < 2 || parameters.HarmonicCount > 200)
-            throw new ArgumentException("Параметр N должен находиться в диапазоне от 2 до 200.");
+            return "Параметр N должен находиться в диапазоне от 2 до 200.";
         if (!double.IsFinite(parameters.SkinDepthMicrometers) || parameters.SkinDepthMicrometers < 0)
-            throw new ArgumentException("Толщина скин-слоя не может быть отрицательной.");
+            return "Толщина скин-слоя не может быть отрицательной.";
         if (!double.IsFinite(parameters.OutputLeft) || !double.IsFinite(parameters.OutputRight) ||
             parameters.OutputLeft >= parameters.OutputRight)
         {
-            throw new ArgumentException("Левая граница области вывода должна быть меньше правой.");
+            return "Левая граница области вывода должна быть меньше правой.";
         }
         if (!double.IsFinite(parameters.OutputBottom) || !double.IsFinite(parameters.OutputTop) ||
             parameters.OutputBottom >= parameters.OutputTop)
         {
-            throw new ArgumentException("Нижняя граница области вывода должна быть меньше верхней.");
+            return "Нижняя граница области вывода должна быть меньше верхней.";
         }
+        if (!double.IsFinite(parameters.PlateEnd - parameters.PlateStart) ||
+            !double.IsFinite(parameters.OutputRight - parameters.OutputLeft) ||
+            !double.IsFinite(parameters.OutputTop - parameters.OutputBottom))
+            return "Диапазон координат слишком велик для численного расчёта. Уменьшите его.";
 
         if (!includeSeries)
-            return;
+            return null;
 
         if (!double.IsFinite(parameters.SeriesSkinDepthStart) ||
             !double.IsFinite(parameters.SeriesSkinDepthEnd) ||
             parameters.SeriesSkinDepthStart < 0 ||
             parameters.SeriesSkinDepthStart > parameters.SeriesSkinDepthEnd)
         {
-            throw new ArgumentException("Некорректный диапазон толщины скин-слоя.");
+            return "Некорректный диапазон толщины скин-слоя.";
         }
         if (parameters.SeriesPointCount < 2 || parameters.SeriesPointCount > 101)
-            throw new ArgumentException("Число точек серии по δ должно быть от 2 до 101.");
+            return "Число точек серии по δ должно быть от 2 до 101.";
         if (!double.IsFinite(parameters.SeriesAngleStartDegrees) ||
             !double.IsFinite(parameters.SeriesAngleEndDegrees) ||
             !double.IsFinite(parameters.SeriesAngleStepDegrees) ||
             parameters.SeriesAngleStepDegrees <= 0 ||
             parameters.SeriesAngleStartDegrees > parameters.SeriesAngleEndDegrees)
         {
-            throw new ArgumentException("Некорректный диапазон углов серии.");
+            return "Некорректный диапазон углов серии.";
         }
 
         int anglePointCount = GetAnglePointCount(parameters);
-        if (anglePointCount > 181)
-            throw new ArgumentException("Серия по углу не должна содержать больше 181 точки.");
+        if (anglePointCount == 0)
+            return "Серия по углу должна содержать от 1 до 181 точки. Увеличьте шаг или уменьшите диапазон.";
 
         for (int i = 0; i < anglePointCount; i++)
         {
             double angle = parameters.SeriesAngleStartDegrees + i * parameters.SeriesAngleStepDegrees;
             if (Math.Abs(Math.Sin(DegreesToRadians(angle))) < 1e-8)
-                throw new ArgumentException("Диапазон углов содержит точку с нулевым падающим потоком.");
+                return "Диапазон углов содержит точку с нулевым падающим потоком.";
         }
+        return null;
     }
 
     private static DifrOnLenta SolveCollocation(
@@ -192,6 +202,7 @@ public static class DiffractionCalculationService
             throw new InvalidOperationException("Не удалось решить задачу методом коллокации.");
         }
 
+        ValidateCoefficients(solver);
         return solver;
     }
 
@@ -211,7 +222,7 @@ public static class DiffractionCalculationService
             solver.CalculateScatteredSheetFluxComponents(Math.Max(160, plateSamples / 2));
         DifrOnLenta.EnergyComponents energy = solver.CalculateEnergyComponents(includeContourDiagnostic: false);
 
-        return new EnergySnapshot(
+        var snapshot = new EnergySnapshot(
             skinDepth,
             Normalize(farField.ReflectedScattered, incident),
             Normalize(farField.TransmittedScattered, incident),
@@ -220,6 +231,11 @@ public static class DiffractionCalculationService
             Normalize(sheetFlux.BelowOutgoing, incident),
             Normalize(energy.FluxAbsorbed, incident),
             Math.Abs(energy.LocalBalanceResidual) / incident * 100.0);
+        EnsureFinite("энергия и потоки", snapshot.SkinDepth,
+            snapshot.ReflectedScattered, snapshot.ForwardScattered, snapshot.Absorbed,
+            snapshot.SheetAbove, snapshot.SheetBelow, snapshot.FluxAbsorbed,
+            snapshot.LocalBalanceErrorPercent, snapshot.FarFieldMismatchPercent, snapshot.SheetMismatchPercent);
+        return snapshot;
     }
 
     private static PlotData BuildSkinComparisonPlot(
@@ -284,6 +300,8 @@ public static class DiffractionCalculationService
                 (parameters.PlateEnd - parameters.PlateStart);
             Compl collocationField = collocation.u(x, z);
             Compl galerkinField = galerkin.u(x, z);
+            EnsureFinite("сравнение полей", collocationField.Re, collocationField.Im,
+                galerkinField.Re, galerkinField.Im);
 
             xValues[i] = x;
             collocationValues[i] = collocationField.Re;
@@ -296,6 +314,7 @@ public static class DiffractionCalculationService
         double maxCoefficientDifference = 0;
         for (int i = 0; i < Math.Min(collocation.y.Length, galerkin.y.Length); i++)
             maxCoefficientDifference = Math.Max(maxCoefficientDifference, Compl.Abs(collocation.y[i] - galerkin.y[i]));
+        EnsureFinite("разность методов", maxDifference, meanDifference, maxCoefficientDifference);
 
         return new MethodComparison
         {
@@ -347,7 +366,7 @@ public static class DiffractionCalculationService
             ? (double[])idealValues.Clone()
             : SampleFieldMap(parameters, skinSolver, cancellationToken);
         double scaleMaximum = Math.Max(idealValues.Max(), skinValues.Max());
-        if (!double.IsFinite(scaleMaximum) || scaleMaximum <= 0)
+        if (scaleMaximum <= 0)
             scaleMaximum = 1.0;
 
         FieldMapData Create(double[] values) => new(
@@ -375,13 +394,14 @@ public static class DiffractionCalculationService
         Parallel.For(0, FieldMapHeight, new ParallelOptions { CancellationToken = cancellationToken }, row =>
         {
             double y = parameters.OutputTop -
-                (parameters.OutputTop - parameters.OutputBottom) * row / (FieldMapHeight - 1.0);
+                (parameters.OutputTop - parameters.OutputBottom) * (row / (FieldMapHeight - 1.0));
             for (int column = 0; column < FieldMapWidth; column++)
             {
                 double x = parameters.OutputLeft +
-                    (parameters.OutputRight - parameters.OutputLeft) * column / (FieldMapWidth - 1.0);
+                    (parameters.OutputRight - parameters.OutputLeft) * (column / (FieldMapWidth - 1.0));
                 double value = Compl.Abs(solver.u(x, y));
-                values[row * FieldMapWidth + column] = double.IsFinite(value) ? value : 0;
+                EnsureFinite("карта поля", value);
+                values[row * FieldMapWidth + column] = value;
             }
         });
         return values;
@@ -640,7 +660,9 @@ public static class DiffractionCalculationService
         double[] values = new double[xValues.Length];
         Parallel.For(0, xValues.Length, new ParallelOptions { CancellationToken = cancellationToken }, i =>
         {
-            values[i] = solver.u(xValues[i], z).Re;
+            Compl field = solver.u(xValues[i], z);
+            EnsureFinite("сечение поля", field.Re, field.Im);
+            values[i] = field.Re;
         });
         return values;
     }
@@ -659,8 +681,9 @@ public static class DiffractionCalculationService
     {
         PlotPointData[] points = series
             .SelectMany(item => item.Points)
-            .Where(point => double.IsFinite(point.X) && double.IsFinite(point.Y))
             .ToArray();
+        foreach (PlotPointData point in points)
+            EnsureFinite("точки графика", point.X, point.Y);
         if (points.Length == 0)
             return PlotData.Empty(xAxisTitle, yAxisTitle);
 
@@ -689,11 +712,18 @@ public static class DiffractionCalculationService
     private static void ExpandRange(ref double minimum, ref double maximum, double minimumPadding)
     {
         double range = maximum - minimum;
+        EnsureFinite("диапазон оси графика", minimum, maximum, range);
         double padding = Math.Max(Math.Abs(range) * 0.07, minimumPadding);
         if (range <= 1e-15)
             padding = Math.Max(Math.Abs(maximum) * 0.12, minimumPadding);
-        minimum -= padding;
-        maximum += padding;
+        double paddedMinimum = Math.Max(-double.MaxValue, minimum - padding);
+        double paddedMaximum = Math.Min(double.MaxValue, maximum + padding);
+        // Padding is cosmetic; keep the original finite axis if widening it would overflow.
+        if (double.IsFinite(paddedMaximum - paddedMinimum))
+        {
+            minimum = paddedMinimum;
+            maximum = paddedMaximum;
+        }
     }
 
     private static IReadOnlyList<PlotPointData> ToPoints(double[] xValues, double[] yValues)
@@ -720,17 +750,41 @@ public static class DiffractionCalculationService
         }
 
         for (int i = 0; i < count; i++)
-            values[i] = start + (end - start) * i / (count - 1.0);
+            values[i] = start + (end - start) * (i / (count - 1.0));
         return values;
     }
 
-    private static int GetAnglePointCount(CalculationParameters parameters) =>
-        (int)Math.Floor(
+    public static int GetAnglePointCount(CalculationParameters parameters)
+    {
+        if (!double.IsFinite(parameters.SeriesAngleStartDegrees) ||
+            !double.IsFinite(parameters.SeriesAngleEndDegrees) ||
+            !double.IsFinite(parameters.SeriesAngleStepDegrees) ||
+            parameters.SeriesAngleStepDegrees <= 0 ||
+            parameters.SeriesAngleStartDegrees > parameters.SeriesAngleEndDegrees)
+            return 0;
+
+        double count = Math.Floor(
             (parameters.SeriesAngleEndDegrees - parameters.SeriesAngleStartDegrees) /
             parameters.SeriesAngleStepDegrees + 1e-9) + 1;
+        return double.IsFinite(count) && count >= 1 && count <= 181 ? (int)count : 0;
+    }
 
     private static double Normalize(double value, double incident) => value / incident;
-    private static double DegreesToRadians(double angleDegrees) => angleDegrees * Math.PI / 180.0;
+    private static void ValidateCoefficients(DifrOnLenta solver)
+    {
+        foreach (Compl coefficient in solver.y)
+            EnsureFinite("коэффициенты решения", coefficient.Re, coefficient.Im);
+    }
+
+    private static void EnsureFinite(string quantity, params double[] values)
+    {
+        if (values.Any(value => !double.IsFinite(value)))
+            throw new InvalidOperationException(
+                $"Расчёт вернул нечисловое значение или бесконечность ({quantity}). " +
+                "Проверьте параметры: возможны переполнение или неустойчивость численного решения.");
+    }
+
+    private static double DegreesToRadians(double angleDegrees) => angleDegrees * (Math.PI / 180.0);
     private static string FormatPercent(double value) => value.ToString("0.000000", RussianCulture) + "%";
     private static CultureInfo RussianCulture { get; } = CultureInfo.GetCultureInfo("ru-RU");
 

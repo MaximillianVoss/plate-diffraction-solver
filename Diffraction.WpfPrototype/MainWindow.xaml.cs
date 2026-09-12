@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Data;
 using Diffraction.WpfPrototype.Models;
 using Diffraction.WpfPrototype.ViewModels;
 
@@ -47,6 +48,42 @@ public partial class MainWindow : Window
 
     private void MobileHistoryButton_Click(object sender, RoutedEventArgs e)
         => MobileHistoryPopup.IsOpen = !MobileHistoryPopup.IsOpen;
+
+    private void ParameterValidation_Error(object sender, ValidationErrorEventArgs e)
+    {
+        if (DataContext is not MainViewModel viewModel ||
+            e.Error.BindingInError is not BindingExpression binding ||
+            binding.ParentBinding.Path?.Path is not string path ||
+            !path.StartsWith("Parameters.", StringComparison.Ordinal))
+            return;
+
+        string propertyName = path["Parameters.".Length..];
+        string label = propertyName switch
+        {
+            nameof(CalculationParameters.WavelengthMicrometers) => "Длина волны λ",
+            nameof(CalculationParameters.IncidenceAngleDegrees) => "Угол θ",
+            nameof(CalculationParameters.PlateStart) => "Левая граница пластины α₁",
+            nameof(CalculationParameters.PlateEnd) => "Правая граница пластины β₁",
+            nameof(CalculationParameters.HarmonicCount) => "Параметр N",
+            nameof(CalculationParameters.SkinDepthMicrometers) => "Толщина скин-слоя δ",
+            nameof(CalculationParameters.OutputLeft) => "Левая граница области xL",
+            nameof(CalculationParameters.OutputRight) => "Правая граница области xR",
+            nameof(CalculationParameters.OutputBottom) => "Нижняя граница области yDn",
+            nameof(CalculationParameters.OutputTop) => "Верхняя граница области yUp",
+            nameof(CalculationParameters.SeriesSkinDepthStart) => "Начало серии δ",
+            nameof(CalculationParameters.SeriesSkinDepthEnd) => "Конец серии δ",
+            nameof(CalculationParameters.SeriesPointCount) => "Число точек серии δ",
+            nameof(CalculationParameters.SeriesAngleStartDegrees) => "Начальный угол серии",
+            nameof(CalculationParameters.SeriesAngleEndDegrees) => "Конечный угол серии",
+            nameof(CalculationParameters.SeriesAngleStepDegrees) => "Шаг угла",
+            _ => "Числовой параметр"
+        };
+        bool integer = propertyName is nameof(CalculationParameters.HarmonicCount) or nameof(CalculationParameters.SeriesPointCount);
+        string message = label + (integer ? ": введите целое число." : ": введите число.");
+        viewModel.SetInputError(binding, propertyName,
+            e.Action == ValidationErrorEventAction.Added ? message : null);
+        e.Handled = true;
+    }
 
     private void HistoryItem_Click(object sender, MouseButtonEventArgs e)
     {

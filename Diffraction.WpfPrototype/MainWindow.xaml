@@ -13,15 +13,43 @@
         MinWidth="360"
         MinHeight="640"
         WindowStartupLocation="CenterScreen"
+        Validation.Error="ParameterValidation_Error"
         Background="{StaticResource WindowBrush}">
     <Grid>
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="34" />
         </Grid.RowDefinitions>
 
-        <Grid Grid.Row="0" x:Name="ShellGrid">
+        <Border x:Name="ErrorBanner"
+                Padding="12,10"
+                Background="#FEF3F2"
+                BorderBrush="#FDA29B"
+                BorderThickness="0,0,0,1"
+                Visibility="{Binding HasError, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Margin="0,2,10,0" FontFamily="Segoe MDL2 Assets" FontSize="18" Foreground="#B42318" Text="&#xEA39;" />
+                <StackPanel Grid.Column="1">
+                    <TextBlock FontWeight="SemiBold" Foreground="#B42318" Text="{Binding ErrorTitle}" TextWrapping="Wrap" />
+                    <TextBlock x:Name="ErrorMessageText" Margin="0,3,0,0" Foreground="#912018" Text="{Binding ErrorMessage}" TextWrapping="Wrap" />
+                </StackPanel>
+                <Button Grid.Column="2" Margin="10,0,0,0" Padding="0" Width="32" Height="32"
+                        VerticalAlignment="Top" Style="{StaticResource SecondaryButtonStyle}"
+                        Command="{Binding DismissErrorCommand}" ToolTip="Закрыть сообщение"
+                        AutomationProperties.Name="Закрыть сообщение об ошибке">
+                    <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE8BB;" />
+                </Button>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="1" x:Name="ShellGrid">
             <Grid.RowDefinitions>
                 <RowDefinition x:Name="MobileHeaderRow" Height="0" />
                 <RowDefinition Height="*" />
@@ -430,7 +458,7 @@
             </Border>
         </Grid>
 
-        <Expander Grid.Row="1"
+        <Expander Grid.Row="2"
                   x:Name="JournalExpander"
                   ExpandDirection="Up"
                   Style="{StaticResource JournalExpanderStyle}">
@@ -467,7 +495,7 @@
             </Grid>
         </Expander>
 
-        <Border Grid.Row="2" Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0">
+        <Border Grid.Row="3" Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0">
             <Grid Margin="12,0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
@@ -475,7 +503,7 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Ellipse Width="9" Height="9" Fill="{StaticResource SuccessBrush}" />
+                    <Ellipse Width="9" Height="9" Fill="{Binding StatusIndicatorColor}" />
                     <TextBlock x:Name="StatusTextBlock" Margin="8,0,0,0" FontWeight="SemiBold" Text="{Binding StatusText}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
                     <TextBlock x:Name="StatusDetailText" Margin="12,0,0,0" Foreground="{StaticResource TextMutedBrush}" Text="{Binding StatusDetail}" TextWrapping="NoWrap" />
                 </StackPanel>

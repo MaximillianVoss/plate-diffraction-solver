@@ -27,18 +27,23 @@ public sealed class RelayCommand : ICommand
 public sealed class AsyncRelayCommand : ICommand
 {
     private readonly Func<Task> _execute;
+    private readonly Action<Exception> _onError;
     private readonly Func<bool>? _canExecute;
     private bool _isRunning;
 
-    public AsyncRelayCommand(Func<Task> execute, Func<bool>? canExecute = null)
+    public AsyncRelayCommand(Func<Task> execute, Action<Exception> onError, Func<bool>? canExecute = null)
     {
         _execute = execute ?? throw new ArgumentNullException(nameof(execute));
+        _onError = onError ?? throw new ArgumentNullException(nameof(onError));
         _canExecute = canExecute;
     }
 
     public bool CanExecute(object? parameter) => !_isRunning && (_canExecute?.Invoke() ?? true);
 
     public async void Execute(object? parameter)
+        => await ExecuteAsync(parameter);
+
+    public async Task ExecuteAsync(object? parameter = null)
     {
         if (!CanExecute(parameter))
             return;
@@ -48,6 +53,10 @@ public sealed class AsyncRelayCommand : ICommand
         try
         {
             await _execute();
+        }
+        catch (Exception ex)
+        {
+            _onError(ex);
         }
         finally
         {

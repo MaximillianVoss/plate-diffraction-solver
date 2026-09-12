@@ -42,6 +42,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private CancellationTokenSource? _calculationCancellation;
     private bool _isRestoringParameters;
     private bool _parametersModified;
+    private string _errorMessage = string.Empty;
+    private string _errorTitle = string.Empty;
+    private readonly Dictionary<object, (string PropertyName, string Message)> _inputErrors = new();
 
     public MainViewModel()
     {
@@ -66,7 +69,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         CoefficientsView.Filter = FilterCoefficient;
 
         NavigateCommand = new RelayCommand(Navigate);
-        RunCommand = new AsyncRelayCommand(CalculateAsync, () => !IsBusy);
+        RunCommand = new AsyncRelayCommand(CalculateAsync, ReportCalculationError, () => !IsBusy);
+        DismissErrorCommand = new RelayCommand(_ => ClearError());
         CancelCommand = new RelayCommand(_ => CancelCalculation(), _ => IsBusy);
         NewRunCommand = new RelayCommand(_ => PrepareNewRun(), _ => !IsBusy);
         ExportCommand = new RelayCommand(_ => RegisterAction("Экспорт будет доступен после отдельной настройки формата файла."));
@@ -173,6 +177,28 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public ICommand NavigateCommand { get; }
     public ICommand RunCommand { get; }
+    public ICommand DismissErrorCommand { get; }
+
+    public string ErrorMessage
+    {
+        get => _errorMessage;
+        private set
+        {
+            if (!SetProperty(ref _errorMessage, value))
+                return;
+            OnPropertyChanged(nameof(HasError));
+            OnPropertyChanged(nameof(StatusIndicatorColor));
+        }
+    }
+
+    public string ErrorTitle
+    {
+        get => _errorTitle;
+        private set => SetProperty(ref _errorTitle, value);
+    }
+
+    public bool HasError => !string.IsNullOrEmpty(ErrorMessage);
+    public string StatusIndicatorColor => HasError ? "#B42318" : IsBusy ? "#2563EB" : "#667085";
     public ICommand CancelCommand { get; }
     public ICommand NewRunCommand { get; }
     public ICommand ExportCommand { get; }
@@ -246,9 +272,15 @@ public sealed class MainViewModel : INotifyPropertyChanged
         private set
         {
             if (SetProperty(ref _isBusy, value))
+            {
+                OnPropertyChanged(nameof(StatusIndicatorColor));
+                OnPropertyChanged(nameof(CanEditParameters));
                 CommandManager.InvalidateRequerySuggested();
+            }
         }
     }
+
+    public bool CanEditParameters => !IsBusy;
 
     public bool IsSingleMode
     {
@@ -373,39 +405,38 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public async Task CalculateAsync()
     {
-        _calculationCancellation?.Dispose();
-        _calculationCancellation = new CancellationTokenSource();
-        CancellationToken token = _calculationCancellation.Token;
-        IsBusy = true;
-        Progress = 0;
-        DateTime startedAt = DateTime.Now;
-        CalculationParameters parameters = Parameters.Clone();
-        string section = CurrentSection;
-        bool includeSeries = section == "Series";
-        StatusDetail = "Подготовка к расчёту";
-        JournalEntries.Add($"[{DateTime.Now:HH:mm:ss}] Запуск расчёта по параметрам: λ={parameters.WavelengthMicrometers:0.000}, θ={parameters.IncidenceAngleDegrees:0.###}°, δ={parameters.SkinDepthMicrometers:0.000000}, N={parameters.HarmonicCount}");
+        if (IsBusy)
+            return;
 
+        using var cancellation = new CancellationTokenSource();
+        _calculationCancellation = cancellation;
+        CancellationToken token = cancellation.Token;
         try
         {
-            await SetPhaseAsync(token, "Проверка параметров...", 12);
-            token.ThrowIfCancellationRequested();
+            CalculationParameters parameters = Parameters.Clone();
+            bool includeSeries = IsSeriesMode;
+            string? validationError = GetInputError(includeSeries) ??
+                DiffractionCalculationService.GetValidationError(parameters, includeSeries);
+            if (validationError is not null)
+            {
+                ReportError("Проверьте параметры", validationError);
+                return;
+            }
+
+            ClearError();
+            IsBusy = true;
+            Progress = 0;
+            DateTime startedAt = DateTime.Now;
+            JournalEntries.Add($"[{DateTime.Now:HH:mm:ss}] Запуск расчёта по параметрам: λ={parameters.WavelengthMicrometers:0.000}, θ={parameters.IncidenceAngleDegrees:0.###}°, δ={parameters.SkinDepthMicrometers:0.000000}, N={parameters.HarmonicCount}");
+            await SetPhaseAsync(token, "Расчёт поля и диагностики...", 12);
 
             CalculationOutput output = await Task.Run(() =>
-            {
-                token.ThrowIfCancellationRequested();
-                return DiffractionCalculationService.Calculate(
-                    parameters,
-                    includeSeries,
-                    token,
-                    includeFieldMaps: true);
-            }, token);
+                DiffractionCalculationService.Calculate(parameters, includeSeries, token), token);
 
-            ApplyCalculationOutput(output);
-            OnPropertyChanged(nameof(GeometryRegionSummary));
             await SetPhaseAsync(token, "Обновление таблиц и графиков...", 92);
+            token.ThrowIfCancellationRequested();
 
             bool toleranceExceeded = output.Energy.LocalBalanceErrorPercent > 2.0;
-            double elapsed = (DateTime.Now - startedAt).TotalSeconds;
             var completedRun = new CalculationRun
             {
                 RunNumber = Runs.Count == 0 ? 1 : Runs.Max(run => run.RunNumber) + 1,
@@ -418,20 +449,18 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 Output = output
             };
 
-            await SetPhaseAsync(token, "Расчёт завершён", 100);
-
+            // No await after publication: cancellation must preserve the previous complete result.
             Runs.Insert(0, completedRun);
             SelectedRun = completedRun;
             RunsView.Refresh();
-
             StatusText = "Расчёт завершён";
-            StatusDetail = $"{output.BackendName}  •  {elapsed:0.00} с";
+            StatusDetail = $"{output.BackendName}  •  {(DateTime.Now - startedAt).TotalSeconds:0.00} с";
             JournalEntries.Add(
                 $"[{DateTime.Now:HH:mm:ss}] Расчёт завершён: A_J={output.Energy.Absorbed:0.000000}, ΔЗСЭ={output.Energy.LocalBalanceErrorPercent:0.000}%.");
             _parametersModified = false;
             NotifyParameterContextChanged();
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {
             StatusText = "Расчёт отменён";
             StatusDetail = "Результаты не изменены";
@@ -439,15 +468,68 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            StatusText = "Ошибка расчёта";
-            StatusDetail = "Не удалось обновить результаты";
-            JournalEntries.Add($"[{DateTime.Now:HH:mm:ss}] Ошибка: {ex.Message}");
+            ReportCalculationError(ex);
         }
         finally
         {
+            _calculationCancellation = null;
             IsBusy = false;
             Progress = 0;
         }
+    }
+
+    public void SetInputError(object source, string propertyName, string? message)
+    {
+        if (message is null)
+        {
+            if (_inputErrors.Remove(source, out var removed) &&
+                ErrorMessage.StartsWith(removed.Message, StringComparison.Ordinal))
+            {
+                string? remainingError = GetInputError(IsSeriesMode);
+                if (remainingError is null)
+                    ClearError();
+                else
+                    ReportError("Проверьте ввод", remainingError);
+            }
+            return;
+        }
+
+        _inputErrors[source] = (propertyName, message);
+        if (IsSeriesMode || !propertyName.StartsWith("Series", StringComparison.Ordinal))
+            ReportError("Проверьте ввод", message);
+    }
+
+    private string? GetInputError(bool includeSeries) =>
+        _inputErrors.Values
+            .Where(error => includeSeries || !error.PropertyName.StartsWith("Series", StringComparison.Ordinal))
+            .Select(error => error.Message)
+            .FirstOrDefault();
+
+    private void ReportCalculationError(Exception exception)
+    {
+        string message = exception is AggregateException aggregate
+            ? string.Join(Environment.NewLine, aggregate.Flatten().InnerExceptions.Select(item => item.Message).Distinct())
+            : exception.Message;
+        ReportError("Ошибка расчёта", message, exception);
+        IsBusy = false;
+        Progress = 0;
+    }
+
+    private void ReportError(string title, string message, Exception? exception = null)
+    {
+        ErrorTitle = title;
+        ErrorMessage = message + (Energy.IsAvailable
+            ? " Показаны результаты предыдущего успешного расчёта."
+            : string.Empty);
+        StatusText = title;
+        StatusDetail = message;
+        JournalEntries.Add($"[{DateTime.Now:HH:mm:ss}] {title}: {exception?.ToString() ?? message}");
+    }
+
+    private void ClearError()
+    {
+        ErrorMessage = string.Empty;
+        ErrorTitle = string.Empty;
     }
 
     private async Task SetPhaseAsync(CancellationToken token, string message, double progress)
@@ -508,6 +590,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private void PrepareNewRun()
     {
+        ClearError();
         _isRestoringParameters = true;
         try
         {
@@ -610,6 +693,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private void RestoreRunParameters(CalculationRun run)
     {
+        ClearError();
         _isRestoringParameters = true;
         try
         {
@@ -705,18 +789,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         SeriesCheckSummaries.Clear();
     }
 
-    private int GetAnglePointCount()
-    {
-        if (Parameters.SeriesAngleStepDegrees <= 0 ||
-            Parameters.SeriesAngleEndDegrees < Parameters.SeriesAngleStartDegrees)
-        {
-            return 0;
-        }
-
-        return (int)Math.Floor(
-            (Parameters.SeriesAngleEndDegrees - Parameters.SeriesAngleStartDegrees) /
-            Parameters.SeriesAngleStepDegrees + 1e-9) + 1;
-    }
+    private int GetAnglePointCount() => DiffractionCalculationService.GetAnglePointCount(Parameters);
 
     private static string Format(double value, string format) =>
         value.ToString(format, CultureInfo.GetCultureInfo("ru-RU"));
