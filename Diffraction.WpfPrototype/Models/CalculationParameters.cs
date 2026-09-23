@@ -24,6 +24,8 @@ namespace Diffraction.WpfPrototype.Models
         private double _seriesAngleStartDegrees = 10.0;
         private double _seriesAngleEndDegrees = 90.0;
         private double _seriesAngleStepDegrees = 2.0;
+        private bool _seriesSkinDepthEnabled = true;
+        private bool _seriesAngleEnabled = true;
 
         public event PropertyChangedEventHandler PropertyChanged;
 
@@ -123,6 +125,18 @@ namespace Diffraction.WpfPrototype.Models
             set { SetProperty(ref _seriesAngleStepDegrees, value); }
         }
 
+        public bool SeriesSkinDepthEnabled
+        {
+            get { return _seriesSkinDepthEnabled; }
+            set { SetProperty(ref _seriesSkinDepthEnabled, value); }
+        }
+
+        public bool SeriesAngleEnabled
+        {
+            get { return _seriesAngleEnabled; }
+            set { SetProperty(ref _seriesAngleEnabled, value); }
+        }
+
         public static CalculationParameters CreateDefault()
         {
             return new CalculationParameters();
@@ -156,6 +170,8 @@ namespace Diffraction.WpfPrototype.Models
             SeriesAngleStartDegrees = source.SeriesAngleStartDegrees;
             SeriesAngleEndDegrees = source.SeriesAngleEndDegrees;
             SeriesAngleStepDegrees = source.SeriesAngleStepDegrees;
+            SeriesSkinDepthEnabled = source.SeriesSkinDepthEnabled;
+            SeriesAngleEnabled = source.SeriesAngleEnabled;
             // A restore must replace invalid editor text even when the numeric value is unchanged.
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(string.Empty));
         }

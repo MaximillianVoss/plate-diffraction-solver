@@ -66,8 +66,10 @@ public static class DiffractionCalculationService
             ? BuildFieldMaps(parameters, idealCollocation, skinCollocation, cancellationToken)
             : (null, null);
 
-        SeriesCalculation series = includeSeries
-            ? BuildSeries(parameters, skinCollocation, cancellationToken)
+        bool includeSkinDepthSeries = includeSeries && parameters.SeriesSkinDepthEnabled;
+        bool includeAngleSeries = includeSeries && parameters.SeriesAngleEnabled;
+        SeriesCalculation series = includeSkinDepthSeries || includeAngleSeries
+            ? BuildSeries(parameters, idealCollocation, skinCollocation, cancellationToken)
             : SeriesCalculation.Empty;
 
         double collocationBoundaryErrorPercent = skinCollocation.VerifyBoundaryConditions() * 100.0;
@@ -100,6 +102,9 @@ public static class DiffractionCalculationService
             SkinEnergyPlot = series.SkinEnergyPlot,
             AngleEnergyPlot = series.AngleEnergyPlot,
             SeriesDiagnosticsPlot = series.DiagnosticsPlot,
+            SkinDepthStudyRows = series.SkinDepthRows,
+            AngleStudyIdealRows = series.AngleIdealRows,
+            AngleStudySkinRows = series.AngleSkinRows,
             IdealFieldMap = idealMap,
             SkinFieldMap = skinMap,
             DiagnosticsSummary = BuildDiagnosticsSummary(
@@ -150,32 +155,44 @@ public static class DiffractionCalculationService
         if (!includeSeries)
             return null;
 
-        if (!double.IsFinite(parameters.SeriesSkinDepthStart) ||
-            !double.IsFinite(parameters.SeriesSkinDepthEnd) ||
-            parameters.SeriesSkinDepthStart < 0 ||
-            parameters.SeriesSkinDepthStart > parameters.SeriesSkinDepthEnd)
+        bool skinDepthSeries = parameters.SeriesSkinDepthEnabled;
+        bool angleSeries = parameters.SeriesAngleEnabled;
+        if (!skinDepthSeries && !angleSeries)
+            return "Отметьте хотя бы одну серию: по толщине δ или по углу θ.";
+
+        if (skinDepthSeries)
         {
-            return "Некорректный диапазон толщины скин-слоя.";
-        }
-        if (parameters.SeriesPointCount < 2 || parameters.SeriesPointCount > 101)
-            return "Число точек серии по δ должно быть от 2 до 101.";
-        if (!double.IsFinite(parameters.SeriesAngleStartDegrees) ||
-            !double.IsFinite(parameters.SeriesAngleEndDegrees) ||
-            !double.IsFinite(parameters.SeriesAngleStepDegrees) ||
-            parameters.SeriesAngleStepDegrees <= 0 ||
-            parameters.SeriesAngleStartDegrees > parameters.SeriesAngleEndDegrees)
-        {
-            return "Некорректный диапазон углов серии.";
+            if (!double.IsFinite(parameters.SeriesSkinDepthStart) ||
+                !double.IsFinite(parameters.SeriesSkinDepthEnd) ||
+                parameters.SeriesSkinDepthStart < 0 ||
+                parameters.SeriesSkinDepthStart > parameters.SeriesSkinDepthEnd)
+            {
+                return "Некорректный диапазон толщины скин-слоя.";
+            }
+            if (parameters.SeriesPointCount < 2 || parameters.SeriesPointCount > 101)
+                return "Число точек серии по δ должно быть от 2 до 101.";
         }
 
-        double[] angles = BuildAngleValues(parameters);
-        if (angles.Length == 0)
-            return "Серия по углу должна содержать от 1 до 181 точки с различными углами. Увеличьте шаг или уменьшите диапазон.";
-
-        foreach (double angle in angles)
+        if (angleSeries)
         {
-            if (Math.Abs(Math.Sin(DegreesToRadians(angle))) < 1e-8)
-                return "Диапазон углов содержит точку с нулевым падающим потоком.";
+            if (!double.IsFinite(parameters.SeriesAngleStartDegrees) ||
+                !double.IsFinite(parameters.SeriesAngleEndDegrees) ||
+                !double.IsFinite(parameters.SeriesAngleStepDegrees) ||
+                parameters.SeriesAngleStepDegrees <= 0 ||
+                parameters.SeriesAngleStartDegrees > parameters.SeriesAngleEndDegrees)
+            {
+                return "Некорректный диапазон углов серии.";
+            }
+
+            double[] angles = BuildAngleValues(parameters);
+            if (angles.Length == 0)
+                return "Серия по углу должна содержать от 1 до 181 точки с различными углами. Увеличьте шаг или уменьшите диапазон.";
+
+            foreach (double angle in angles)
+            {
+                if (Math.Abs(Math.Sin(DegreesToRadians(angle))) < 1e-8)
+                    return "Диапазон углов содержит точку с нулевым падающим потоком.";
+            }
         }
         return null;
     }
@@ -408,14 +425,20 @@ public static class DiffractionCalculationService
 
     private static SeriesCalculation BuildSeries(
         CalculationParameters parameters,
+        DifrOnLenta idealSolver,
         DifrOnLenta selectedSolver,
         CancellationToken cancellationToken)
     {
-        List<EnergySnapshot> skinSnapshots = new(parameters.SeriesPointCount);
-        double[] skinDepths = BuildLinearValues(
-            parameters.SeriesSkinDepthStart,
-            parameters.SeriesSkinDepthEnd,
-            parameters.SeriesPointCount);
+        bool skinDepthSeries = parameters.SeriesSkinDepthEnabled;
+        bool angleSeries = parameters.SeriesAngleEnabled;
+
+        List<EnergySnapshot> skinSnapshots = new(skinDepthSeries ? parameters.SeriesPointCount : 0);
+        double[] skinDepths = skinDepthSeries
+            ? BuildLinearValues(
+                parameters.SeriesSkinDepthStart,
+                parameters.SeriesSkinDepthEnd,
+                parameters.SeriesPointCount)
+            : Array.Empty<double>();
 
         foreach (double skinDepth in skinDepths)
         {
@@ -431,45 +454,96 @@ public static class DiffractionCalculationService
                 plateSamples: 160));
         }
 
-        double[] angles = BuildAngleValues(parameters);
-        List<EnergySnapshot> angleSnapshots = new(angles.Length);
+        double[] angles = angleSeries ? BuildAngleValues(parameters) : Array.Empty<double>();
+
+        // Исследование изменения угла считается отдельно для идеального проводника (δ = 0)
+        // и для выбранной толщины скин-слоя — это две независимые таблицы.
+        List<EnergySnapshot> angleIdealSnapshots = new(angles.Length);
+        List<EnergySnapshot> angleSkinSnapshots = new(angles.Length);
         foreach (double angle in angles)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            bool useSelected = angle == parameters.IncidenceAngleDegrees;
-            DifrOnLenta solver = useSelected
+            bool isBaseAngle = angle == parameters.IncidenceAngleDegrees;
+            double angleRadians = DegreesToRadians(angle);
+
+            DifrOnLenta idealCase = isBaseAngle
+                ? idealSolver
+                : SolveCollocation(parameters, angleRadians, 0, cancellationToken);
+            angleIdealSnapshots.Add(CalculateEnergySnapshot(
+                idealCase,
+                0,
+                angleSamples: 180,
+                plateSamples: 160));
+
+            DifrOnLenta skinCase = isBaseAngle
                 ? selectedSolver
-                : SolveCollocation(parameters, DegreesToRadians(angle), parameters.SkinDepthMicrometers, cancellationToken);
-            angleSnapshots.Add(CalculateEnergySnapshot(
-                solver,
+                : SolveCollocation(parameters, angleRadians, parameters.SkinDepthMicrometers, cancellationToken);
+            angleSkinSnapshots.Add(CalculateEnergySnapshot(
+                skinCase,
                 parameters.SkinDepthMicrometers,
                 angleSamples: 180,
                 plateSamples: 160));
         }
 
-        PlotData skinPlot = CreateEnergyPlot("Толщина δ", skinDepths, skinSnapshots);
-        PlotData anglePlot = CreateEnergyPlot("Угол θ, °", angles, angleSnapshots);
-        PlotData diagnosticsPlot = CreatePlot(
-            "Толщина δ",
-            "Отклонение, %",
-            includeZero: true,
-            new PlotSeriesData(
-                "Невязка ЗСЭ",
-                "#EA580C",
-                ToPoints(skinDepths, skinSnapshots.Select(item => item.LocalBalanceErrorPercent).ToArray())),
-            new PlotSeriesData(
-                "|R_scat − T_scat|",
-                "#16A34A",
-                ToPoints(skinDepths, skinSnapshots.Select(item => item.FarFieldMismatchPercent).ToArray()),
-                isDashed: true));
+        PlotData skinPlot = skinDepthSeries
+            ? CreateEnergyPlot("Толщина δ", skinDepths, skinSnapshots)
+            : PlotData.Empty("Толщина δ", "Доля падающей энергии", "Серия по толщине δ отключена.");
+        PlotData anglePlot = angleSeries
+            ? CreateEnergyPlot("Угол θ, °", angles, angleSkinSnapshots)
+            : PlotData.Empty("Угол θ, °", "Доля падающей энергии", "Серия по углу θ отключена.");
+        PlotData diagnosticsPlot = skinDepthSeries
+            ? CreatePlot(
+                "Толщина δ",
+                "Отклонение, %",
+                includeZero: true,
+                new PlotSeriesData(
+                    "Невязка ЗСЭ",
+                    "#EA580C",
+                    ToPoints(skinDepths, skinSnapshots.Select(item => item.LocalBalanceErrorPercent).ToArray())),
+                new PlotSeriesData(
+                    "|R_scat − T_scat|",
+                    "#16A34A",
+                    ToPoints(skinDepths, skinSnapshots.Select(item => item.FarFieldMismatchPercent).ToArray()),
+                    isDashed: true))
+            : PlotData.Empty("Толщина δ", "Отклонение, %", "Серия по толщине δ отключена.");
 
-        double maximumBalanceError = skinSnapshots.Max(item => item.LocalBalanceErrorPercent);
-        double maximumFarFieldMismatch = skinSnapshots.Max(item => item.FarFieldMismatchPercent);
-        string caption = string.Format(
-            RussianCulture,
-            "Максимум по серии: невязка ЗСЭ {0:0.000000}%; |R_scat − T_scat| {1:0.000000}%.",
-            maximumBalanceError,
-            maximumFarFieldMismatch);
+        string caption = skinDepthSeries
+            ? string.Format(
+                RussianCulture,
+                "Максимум по серии: невязка ЗСЭ {0:0.000000}%; |R_scat − T_scat| {1:0.000000}%.",
+                skinSnapshots.Max(item => item.LocalBalanceErrorPercent),
+                skinSnapshots.Max(item => item.FarFieldMismatchPercent))
+            : "Серия по толщине δ не выполнялась; диагностика построена не будет.";
+
+        var checkSummaries = new List<string>();
+        if (skinDepthSeries)
+        {
+            checkSummaries.Add(string.Format(
+                RussianCulture,
+                "Серия δ: {0} точек; R_scat {1:0.000000}…{2:0.000000}; A_J {3:0.000000}…{4:0.000000}",
+                skinSnapshots.Count,
+                skinSnapshots.Min(item => item.ReflectedScattered),
+                skinSnapshots.Max(item => item.ReflectedScattered),
+                skinSnapshots.Min(item => item.Absorbed),
+                skinSnapshots.Max(item => item.Absorbed)));
+        }
+        if (angleSeries)
+        {
+            checkSummaries.Add(string.Format(
+                RussianCulture,
+                "Серия θ (идеальный проводник): {0} точек; R_scat {1:0.000000}…{2:0.000000}",
+                angleIdealSnapshots.Count,
+                angleIdealSnapshots.Min(item => item.ReflectedScattered),
+                angleIdealSnapshots.Max(item => item.ReflectedScattered)));
+            checkSummaries.Add(string.Format(
+                RussianCulture,
+                "Серия θ (скин-слой δ={0:0.######}): {1} точек; R_scat {2:0.000000}…{3:0.000000}",
+                parameters.SkinDepthMicrometers,
+                angleSkinSnapshots.Count,
+                angleSkinSnapshots.Min(item => item.ReflectedScattered),
+                angleSkinSnapshots.Max(item => item.ReflectedScattered)));
+        }
+        checkSummaries.Add(caption);
 
         return new SeriesCalculation
         {
@@ -477,25 +551,24 @@ public static class DiffractionCalculationService
             AngleEnergyPlot = anglePlot,
             DiagnosticsPlot = diagnosticsPlot,
             DiagnosticsCaption = caption,
-            CheckSummaries = new[]
-            {
-                string.Format(
-                    RussianCulture,
-                    "Серия δ: {0} точек; R_scat {1:0.000000}…{2:0.000000}; A_J {3:0.000000}…{4:0.000000}",
-                    skinSnapshots.Count,
-                    skinSnapshots.Min(item => item.ReflectedScattered),
-                    skinSnapshots.Max(item => item.ReflectedScattered),
-                    skinSnapshots.Min(item => item.Absorbed),
-                    skinSnapshots.Max(item => item.Absorbed)),
-                string.Format(
-                    RussianCulture,
-                    "Серия θ: {0} точек; R_scat {1:0.000000}…{2:0.000000}",
-                    angleSnapshots.Count,
-                    angleSnapshots.Min(item => item.ReflectedScattered),
-                    angleSnapshots.Max(item => item.ReflectedScattered)),
-                caption
-            }
+            SkinDepthRows = BuildStudyRows(skinDepths, skinSnapshots),
+            AngleIdealRows = BuildStudyRows(angles, angleIdealSnapshots),
+            AngleSkinRows = BuildStudyRows(angles, angleSkinSnapshots),
+            CheckSummaries = checkSummaries
         };
+    }
+
+    private static IReadOnlyList<EnergyStudyRow> BuildStudyRows(
+        double[] arguments,
+        IReadOnlyList<EnergySnapshot> snapshots)
+    {
+        if (arguments.Length != snapshots.Count)
+            throw new ArgumentException("Число аргументов серии не совпадает с числом снимков энергии.");
+
+        var rows = new List<EnergyStudyRow>(snapshots.Count);
+        for (int i = 0; i < snapshots.Count; i++)
+            rows.Add(new EnergyStudyRow(arguments[i], snapshots[i]));
+        return rows;
     }
 
     private static PlotData BuildCurrentEnergyPlot(EnergySnapshot energy)
@@ -821,6 +894,9 @@ public static class DiffractionCalculationService
             AngleEnergyPlot = PlotData.Empty("Угол θ, °", "Доля падающей энергии", "Запустите расчёт в режиме «Серия»"),
             DiagnosticsPlot = PlotData.Empty("Толщина δ", "Отклонение, %", "Запустите расчёт в режиме «Серия»"),
             DiagnosticsCaption = "Серийная диагностика ещё не рассчитана.",
+            SkinDepthRows = Array.Empty<EnergyStudyRow>(),
+            AngleIdealRows = Array.Empty<EnergyStudyRow>(),
+            AngleSkinRows = Array.Empty<EnergyStudyRow>(),
             CheckSummaries = Array.Empty<string>()
         };
 
@@ -828,6 +904,9 @@ public static class DiffractionCalculationService
         public required PlotData AngleEnergyPlot { get; init; }
         public required PlotData DiagnosticsPlot { get; init; }
         public required string DiagnosticsCaption { get; init; }
+        public required IReadOnlyList<EnergyStudyRow> SkinDepthRows { get; init; }
+        public required IReadOnlyList<EnergyStudyRow> AngleIdealRows { get; init; }
+        public required IReadOnlyList<EnergyStudyRow> AngleSkinRows { get; init; }
         public required IReadOnlyList<string> CheckSummaries { get; init; }
     }
 }

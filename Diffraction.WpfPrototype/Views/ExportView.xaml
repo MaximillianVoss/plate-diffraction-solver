@@ -6,7 +6,7 @@
         <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
         <StackPanel Margin="2,0,0,12">
             <TextBlock FontSize="18" FontWeight="SemiBold" Text="Экспорт результатов" />
-            <TextBlock Margin="0,4,0,0" Style="{StaticResource CaptionStyle}" Text="Предварительный просмотр рассчитанных данных; сохранение в файл пока не подключено." />
+            <TextBlock Margin="0,4,0,0" Style="{StaticResource CaptionStyle}" Text="Пакет сохраняется в ZIP-архив: таблицы, графики, параметры и отчёт по выбранным позициям." />
         </StackPanel>
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
         <Grid x:Name="ExportContentGrid" MinHeight="560">
@@ -19,15 +19,17 @@
             <Border Grid.Column="0" x:Name="ExportOptionsPanel" Style="{StaticResource PanelBorderStyle}" Padding="16">
                 <StackPanel>
                     <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Содержимое пакета" />
-                    <CheckBox Margin="0,15,0,0" IsChecked="True" IsEnabled="False" Content="CSV — точки графиков и таблиц" />
-                    <CheckBox Margin="0,10,0,0" IsChecked="True" IsEnabled="False" Content="PNG — карты поля и графики" />
-                    <CheckBox Margin="0,10,0,0" IsChecked="True" IsEnabled="False" Content="SVG — графики для публикации" />
-                    <CheckBox Margin="0,10,0,0" IsChecked="True" IsEnabled="False" Content="JSON — параметры и версия решателя" />
-                    <CheckBox Margin="0,10,0,0" IsChecked="True" IsEnabled="False" Content="Отчёт — ЗСЭ, потоки и диагностика" />
+                    <CheckBox Margin="0,15,0,0" IsChecked="{Binding ExportIncludeCsv}" Content="CSV — точки графиков и таблиц" />
+                    <CheckBox Margin="0,10,0,0" IsChecked="{Binding ExportIncludePng}" Content="PNG — карты поля и графики" />
+                    <CheckBox Margin="0,10,0,0" IsChecked="{Binding ExportIncludeSvg}" Content="SVG — графики для публикации" />
+                    <CheckBox Margin="0,10,0,0" IsChecked="{Binding ExportIncludeJson}" Content="JSON — параметры и версия решателя" />
+                    <CheckBox Margin="0,10,0,0" IsChecked="{Binding ExportIncludeReport}" Content="Отчёт — ЗСЭ, потоки и диагностика" />
                     <Separator Margin="0,16" />
                     <TextBlock FontWeight="SemiBold" Text="Имя пакета" />
-                    <TextBox Margin="0,7,0,0" IsReadOnly="True" Text="Формируется из параметров расчёта" />
-                    <Button Margin="0,18,0,0" Style="{StaticResource PrimaryButtonStyle}" IsEnabled="False" Content="Сохранение пока недоступно" />
+                    <TextBox Margin="0,7,0,0" IsReadOnly="True" Text="{Binding ExportPackageName, Mode=OneWay}" ToolTip="Имя формируется автоматически из параметров расчёта" />
+                    <Button Margin="0,18,0,0" Style="{StaticResource PrimaryButtonStyle}"
+                            Command="{Binding ExportPackageCommand}" Content="Сохранить пакет (ZIP)…" />
+                    <TextBlock Margin="0,10,0,0" Style="{StaticResource CaptionStyle}" Text="Экспорт доступен после выполненного расчёта; архив можно пересылать как есть." TextWrapping="Wrap" />
                 </StackPanel>
             </Border>
             <Border Grid.Column="2" x:Name="ExportPreviewPanel" Style="{StaticResource PanelBorderStyle}" Padding="14">

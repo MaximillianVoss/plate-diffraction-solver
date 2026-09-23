@@ -18,7 +18,7 @@
             </Grid.ColumnDefinitions>
             <StackPanel>
                 <TextBlock FontSize="18" FontWeight="SemiBold" Text="Серийный анализ" />
-                <TextBlock Margin="0,3,0,0" Style="{StaticResource CaptionStyle}" Text="R_scat, T_scat, A_J и ЗСЭ по толщине скин-слоя и углу падения" />
+                <TextBlock Margin="0,3,0,0" Style="{StaticResource CaptionStyle}" Text="Независимые серии: компоненты энергии по толщине скин-слоя и по углу падения, с выгрузкой CSV" />
                 <TextBlock Margin="0,2,0,0" Style="{StaticResource CaptionStyle}" Text="{Binding ContextSummary}" TextTrimming="CharacterEllipsis" ToolTip="{Binding ContextSummary}" />
             </StackPanel>
             <ComboBox Grid.Column="1" Width="105" IsEnabled="{Binding CanEditParameters}" Margin="0,0,9,0" ItemsSource="{Binding Backends}" SelectedItem="{Binding SelectedBackend}" ToolTip="Вычислительный backend" />
@@ -111,7 +111,13 @@
                         </UniformGrid>
                     </Expander>
 
-                    <TextBlock Grid.Row="5" Margin="0,14,0,0" FontWeight="SemiBold" Text="Диапазон толщины δ" />
+                    <Grid Grid.Row="5" Margin="0,14,0,0">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="Диапазон толщины δ" />
+                        <CheckBox Grid.Column="1" VerticalAlignment="Center" Content="серия δ"
+                                  IsChecked="{Binding Parameters.SeriesSkinDepthEnabled, Mode=TwoWay}"
+                                  ToolTip="Включить или отключить серию по толщине скин-слоя" />
+                    </Grid>
                     <Grid Grid.Row="6" Margin="0,8,0,0">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
@@ -129,7 +135,13 @@
                         <Slider Grid.Row="3" Grid.ColumnSpan="2" Margin="0,10,0,0" Minimum="2" Maximum="101" Value="{Binding Parameters.SeriesPointCount, Mode=TwoWay, NotifyOnSourceUpdated=True}" TickFrequency="1" IsSnapToTickEnabled="True" />
                     </Grid>
 
-                    <TextBlock Grid.Row="7" Margin="0,14,0,0" FontWeight="SemiBold" Text="Диапазон угла θ" />
+                    <Grid Grid.Row="7" Margin="0,14,0,0">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="Диапазон угла θ" />
+                        <CheckBox Grid.Column="1" VerticalAlignment="Center" Content="серия θ"
+                                  IsChecked="{Binding Parameters.SeriesAngleEnabled, Mode=TwoWay}"
+                                  ToolTip="Включить или отключить серию по углу падения" />
+                    </Grid>
                     <Grid Grid.Row="8" Margin="0,8,0,0">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
@@ -161,18 +173,72 @@
                 </Grid.RowDefinitions>
                 <Border Grid.Row="0" Style="{StaticResource PanelBorderStyle}" Padding="10">
                     <TabControl>
-                        <TabItem Header="По толщине δ">
+                        <TabItem Header="Исследование: толщина δ">
                             <Grid Margin="0,8,0,0">
-                                <Grid.RowDefinitions><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-                                <controls:ScientificPlot Margin="0,0,0,6" Data="{Binding SkinEnergyPlot}" />
-                                <TextBlock Grid.Row="1" Style="{StaticResource CaptionStyle}" Text="Каждая точка рассчитана заново для указанной толщины δ; R_scat, T_scat и A_J вычисляются независимо." TextWrapping="Wrap" />
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="2*" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <controls:ScientificPlot Data="{Binding SkinEnergyPlot}" />
+                                <TextBlock Grid.Row="1" Margin="0,4,0,0" Style="{StaticResource CaptionStyle}" Text="Каждая точка рассчитана заново для указанной толщины δ; R_scat, T_scat и A_J вычисляются независимо." TextWrapping="Wrap" />
+                                <TextBlock Grid.Row="2" Margin="0,8,0,4" FontWeight="SemiBold" Text="{Binding SkinDepthStudyCaption}" />
+                                <DataGrid Grid.Row="3" AutoGenerateColumns="False" IsReadOnly="True" MaxHeight="220" VerticalScrollBarVisibility="Auto"
+                                          ItemsSource="{Binding SkinDepthStudyRows}">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="δ, мкм" Binding="{Binding ArgumentDisplay}" Width="*" />
+                                        <DataGridTextColumn Header="E_ref, %" Binding="{Binding ReflectedDisplay}" Width="*" />
+                                        <DataGridTextColumn Header="E_tr, %" Binding="{Binding TransmittedDisplay}" Width="*" />
+                                        <DataGridTextColumn Header="E_abs, %" Binding="{Binding AbsorbedDisplay}" Width="*" />
+                                        <DataGridTextColumn Header="Сумма, %" Binding="{Binding SumDisplay}" Width="*" />
+                                        <DataGridTextColumn Header="Дисбаланс, %" Binding="{Binding ImbalanceDisplay}" Width="*" />
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                                <Button Grid.Row="4" Margin="0,8,0,0" HorizontalAlignment="Left" Style="{StaticResource SecondaryButtonStyle}"
+                                        Command="{Binding ExportSkinDepthStudyCommand}" Content="Экспорт CSV — серия по δ" />
                             </Grid>
                         </TabItem>
-                        <TabItem Header="По углу θ">
+                        <TabItem Header="Исследование: угол θ">
                             <Grid Margin="0,8,0,0">
-                                <Grid.RowDefinitions><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-                                <controls:ScientificPlot Margin="0,0,0,6" Data="{Binding AngleEnergyPlot}" />
-                                <TextBlock Grid.Row="1" Style="{StaticResource CaptionStyle}" Text="{Binding SeriesAngleCaption}" TextWrapping="Wrap" />
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="2*" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <controls:ScientificPlot Data="{Binding AngleEnergyPlot}" />
+                                <TextBlock Grid.Row="1" Margin="0,4,0,0" Style="{StaticResource CaptionStyle}" Text="{Binding SeriesAngleCaption}" TextWrapping="Wrap" />
+                                <TextBlock Grid.Row="2" Margin="0,8,0,4" FontWeight="SemiBold" Text="{Binding AngleStudyIdealCaption}" />
+                                <DataGrid Grid.Row="3" AutoGenerateColumns="False" IsReadOnly="True" MaxHeight="170" VerticalScrollBarVisibility="Auto"
+                                          ItemsSource="{Binding AngleStudyIdealRows}">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Угол θ, °" Binding="{Binding ArgumentDisplay}" Width="*" />
+                                        <DataGridTextColumn Header="E_ref, %" Binding="{Binding ReflectedDisplay}" Width="*" />
+                                        <DataGridTextColumn Header="E_tr, %" Binding="{Binding TransmittedDisplay}" Width="*" />
+                                        <DataGridTextColumn Header="E_abs, %" Binding="{Binding AbsorbedDisplay}" Width="*" />
+                                        <DataGridTextColumn Header="Сумма, %" Binding="{Binding SumDisplay}" Width="*" />
+                                        <DataGridTextColumn Header="Дисбаланс, %" Binding="{Binding ImbalanceDisplay}" Width="*" />
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                                <TextBlock Grid.Row="4" Margin="0,10,0,4" FontWeight="SemiBold" Text="{Binding AngleStudySkinCaption}" />
+                                <DataGrid Grid.Row="5" AutoGenerateColumns="False" IsReadOnly="True" MaxHeight="170" VerticalScrollBarVisibility="Auto"
+                                          ItemsSource="{Binding AngleStudySkinRows}">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Угол θ, °" Binding="{Binding ArgumentDisplay}" Width="*" />
+                                        <DataGridTextColumn Header="E_ref, %" Binding="{Binding ReflectedDisplay}" Width="*" />
+                                        <DataGridTextColumn Header="E_tr, %" Binding="{Binding TransmittedDisplay}" Width="*" />
+                                        <DataGridTextColumn Header="E_abs, %" Binding="{Binding AbsorbedDisplay}" Width="*" />
+                                        <DataGridTextColumn Header="Сумма, %" Binding="{Binding SumDisplay}" Width="*" />
+                                        <DataGridTextColumn Header="Дисбаланс, %" Binding="{Binding ImbalanceDisplay}" Width="*" />
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                                <Button Grid.Row="6" Margin="0,8,0,0" HorizontalAlignment="Left" Style="{StaticResource SecondaryButtonStyle}"
+                                        Command="{Binding ExportAngleStudyCommand}" Content="Экспорт CSV — серия по θ" />
                             </Grid>
                         </TabItem>
                     </TabControl>
@@ -233,7 +299,12 @@
                             <DataGridTextColumn Header="Контроль серии" Binding="{Binding}" Width="*" />
                         </DataGrid.Columns>
                     </DataGrid>
-                    <Button Grid.Row="8" Style="{StaticResource SecondaryButtonStyle}" Command="{Binding ExportCommand}" Content="Экспортировать серию" />
+                    <StackPanel Grid.Row="8">
+                        <Button Style="{StaticResource SecondaryButtonStyle}" HorizontalAlignment="Stretch"
+                                Command="{Binding ExportSkinDepthStudyCommand}" Content="Экспорт CSV — серия по δ" />
+                        <Button Margin="0,6,0,0" Style="{StaticResource SecondaryButtonStyle}" HorizontalAlignment="Stretch"
+                                Command="{Binding ExportAngleStudyCommand}" Content="Экспорт CSV — серия по θ" />
+                    </StackPanel>
                 </Grid>
             </Border>
         </Grid>

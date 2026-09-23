@@ -204,6 +204,36 @@ public sealed class FieldMapData
     public double PlateEnd { get; }
 }
 
+/// <summary>
+/// Одна строка исследовательской таблицы: аргумент серии (δ или θ) и энергетические компоненты в процентах.
+/// </summary>
+public sealed class EnergyStudyRow
+{
+    private static CultureInfo RussianCulture { get; } = CultureInfo.GetCultureInfo("ru-RU");
+
+    public EnergyStudyRow(double argumentValue, EnergySnapshot snapshot)
+    {
+        ArgumentValue = argumentValue;
+        ReflectedPercent = snapshot.ReflectedScattered * 100.0;
+        TransmittedPercent = snapshot.ForwardScattered * 100.0;
+        AbsorbedPercent = snapshot.Absorbed * 100.0;
+    }
+
+    public double ArgumentValue { get; }
+    public double ReflectedPercent { get; }
+    public double TransmittedPercent { get; }
+    public double AbsorbedPercent { get; }
+    public double SumPercent => ReflectedPercent + TransmittedPercent + AbsorbedPercent;
+    public double ImbalancePercent => Math.Abs(SumPercent - 100.0);
+
+    public string ArgumentDisplay => ArgumentValue.ToString("0.######", RussianCulture);
+    public string ReflectedDisplay => ReflectedPercent.ToString("0.00", RussianCulture);
+    public string TransmittedDisplay => TransmittedPercent.ToString("0.00", RussianCulture);
+    public string AbsorbedDisplay => AbsorbedPercent.ToString("0.00", RussianCulture);
+    public string SumDisplay => SumPercent.ToString("0.00", RussianCulture);
+    public string ImbalanceDisplay => ImbalancePercent.ToString("0.00", RussianCulture);
+}
+
 public sealed class CalculationOutput
 {
     public required EnergySnapshot Energy { get; init; }
@@ -217,6 +247,9 @@ public sealed class CalculationOutput
     public required PlotData SkinEnergyPlot { get; init; }
     public required PlotData AngleEnergyPlot { get; init; }
     public required PlotData SeriesDiagnosticsPlot { get; init; }
+    public IReadOnlyList<EnergyStudyRow> SkinDepthStudyRows { get; init; } = Array.Empty<EnergyStudyRow>();
+    public IReadOnlyList<EnergyStudyRow> AngleStudyIdealRows { get; init; } = Array.Empty<EnergyStudyRow>();
+    public IReadOnlyList<EnergyStudyRow> AngleStudySkinRows { get; init; } = Array.Empty<EnergyStudyRow>();
     public FieldMapData? IdealFieldMap { get; init; }
     public FieldMapData? SkinFieldMap { get; init; }
     public required string DiagnosticsSummary { get; init; }

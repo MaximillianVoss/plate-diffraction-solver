@@ -1,14 +1,18 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Globalization;
+using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Text;
 using System.Threading;
 using System.Windows.Data;
 using System.Windows.Input;
 using Diffraction.WpfPrototype.Infrastructure;
 using Diffraction.WpfPrototype.Models;
 using Diffraction.WpfPrototype.Services;
+using Microsoft.Win32;
 
 namespace Diffraction.WpfPrototype.ViewModels;
 
@@ -28,6 +32,15 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private FieldMapData? _skinFieldMap;
     private string _diagnosticsSummary = "Расчёт ещё не выполнен.";
     private string _seriesDiagnosticsCaption = "Серийная диагностика ещё не рассчитана.";
+    private IReadOnlyList<EnergyStudyRow> _skinDepthStudyRows = Array.Empty<EnergyStudyRow>();
+    private IReadOnlyList<EnergyStudyRow> _angleStudyIdealRows = Array.Empty<EnergyStudyRow>();
+    private IReadOnlyList<EnergyStudyRow> _angleStudySkinRows = Array.Empty<EnergyStudyRow>();
+    private bool _exportIncludeCsv = true;
+    private bool _exportIncludePng = true;
+    private bool _exportIncludeSvg = true;
+    private bool _exportIncludeJson = true;
+    private bool _exportIncludeReport = true;
+    private string _backendName = "CPU (C#)";
     private string _historySearch = string.Empty;
     private string _fluxSearch = string.Empty;
     private string _fluxCategory = "Все показатели";
@@ -74,7 +87,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
         DismissErrorCommand = new RelayCommand(_ => ClearError());
         CancelCommand = new RelayCommand(_ => CancelCalculation(), _ => IsBusy);
         NewRunCommand = new RelayCommand(_ => PrepareNewRun(), _ => !IsBusy);
-        ExportCommand = new RelayCommand(_ => RegisterAction("Экспорт будет доступен после отдельной настройки формата файла."));
+        ExportCommand = new RelayCommand(_ => ExportSingleRun(), _ => Energy.IsAvailable && !IsBusy);
+        ExportSkinDepthStudyCommand = new RelayCommand(_ => ExportSkinDepthStudy(), _ => HasSkinDepthStudy && !IsBusy);
+        ExportAngleStudyCommand = new RelayCommand(_ => ExportAngleStudy(), _ => HasAngleStudy && !IsBusy);
+        ExportPackageCommand = new RelayCommand(_ => ExportPackage(), _ => Energy.IsAvailable && !IsBusy);
         CompareCommand = new RelayCommand(_ => RegisterAction("Графики сравнения находятся на вкладке «Галеркин/коллокация»."));
         ClearJournalCommand = new RelayCommand(_ => JournalEntries.Clear());
     }
@@ -170,6 +186,61 @@ public sealed class MainViewModel : INotifyPropertyChanged
         private set => SetProperty(ref _seriesDiagnosticsCaption, value);
     }
 
+    public IReadOnlyList<EnergyStudyRow> SkinDepthStudyRows => _skinDepthStudyRows;
+    public IReadOnlyList<EnergyStudyRow> AngleStudyIdealRows => _angleStudyIdealRows;
+    public IReadOnlyList<EnergyStudyRow> AngleStudySkinRows => _angleStudySkinRows;
+    public bool HasSkinDepthStudy => _skinDepthStudyRows.Count > 0;
+    public bool HasAngleStudy => _angleStudySkinRows.Count > 0;
+
+    public string SkinDepthStudyCaption =>
+        HasSkinDepthStudy
+            ? $"Исследование изменения толщины скин-слоя: {Parameters.SeriesPointCount} точек по δ " +
+              $"({Format(Parameters.SeriesSkinDepthStart, "0.######")}…{Format(Parameters.SeriesSkinDepthEnd, "0.######")} мкм)"
+            : "Исследование изменения толщины скин-слоя — запустите серию, чтобы построить таблицу.";
+
+    public string AngleStudyIdealCaption =>
+        HasAngleStudy ? "Таблица 1. Идеальный проводник (без скин-слоя)" : "Таблица 1. Идеальный проводник — запустите серию.";
+
+    public string AngleStudySkinCaption =>
+        HasAngleStudy
+            ? $"Таблица 2. Со скин-слоем (δ = {Format(Parameters.SkinDepthMicrometers, "0.######")} мкм)"
+            : "Таблица 2. Со скин-слоем — запустите серию.";
+
+    public bool ExportIncludeCsv
+    {
+        get => _exportIncludeCsv;
+        set => SetProperty(ref _exportIncludeCsv, value);
+    }
+
+    public bool ExportIncludePng
+    {
+        get => _exportIncludePng;
+        set => SetProperty(ref _exportIncludePng, value);
+    }
+
+    public bool ExportIncludeSvg
+    {
+        get => _exportIncludeSvg;
+        set => SetProperty(ref _exportIncludeSvg, value);
+    }
+
+    public bool ExportIncludeJson
+    {
+        get => _exportIncludeJson;
+        set => SetProperty(ref _exportIncludeJson, value);
+    }
+
+    public bool ExportIncludeReport
+    {
+        get => _exportIncludeReport;
+        set => SetProperty(ref _exportIncludeReport, value);
+    }
+
+    public string ExportPackageName =>
+        SelectedRun is null
+            ? $"diffraction_export_{DateTime.Now:yyyyMMdd_HHmmss}"
+            : $"diffraction_{(SelectedRun.IsSeries ? "series" : "run")}_{SelectedRun.RunNumber:000}_{DateTime.Now:yyyyMMdd_HHmmss}";
+
     public CalculationParameters Parameters { get; }
 
     public IReadOnlyList<string> Backends { get; } = new[] { "Авто", "CPU" };
@@ -203,6 +274,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ICommand CancelCommand { get; }
     public ICommand NewRunCommand { get; }
     public ICommand ExportCommand { get; }
+    public ICommand ExportSkinDepthStudyCommand { get; }
+    public ICommand ExportAngleStudyCommand { get; }
+    public ICommand ExportPackageCommand { get; }
     public ICommand CompareCommand { get; }
     public ICommand ClearJournalCommand { get; }
 
@@ -365,8 +439,18 @@ public sealed class MainViewModel : INotifyPropertyChanged
         $"Контрольная серия: δ={Format(Parameters.SkinDepthMicrometers, "0.000")}, N={Parameters.HarmonicCount}. " +
         $"Углы {Format(Parameters.SeriesAngleStartDegrees, "0.#")}…{Format(Parameters.SeriesAngleEndDegrees, "0.#")}° с шагом {Format(Parameters.SeriesAngleStepDegrees, "0.#")}°.";
 
-    public string SeriesEstimateText =>
-        $"{Parameters.SeriesPointCount} точек по δ  •  {GetAnglePointCount()} по θ";
+    public string SeriesEstimateText
+    {
+        get
+        {
+            var parts = new List<string>();
+            if (Parameters.SeriesSkinDepthEnabled)
+                parts.Add($"{Parameters.SeriesPointCount} точек по δ");
+            if (Parameters.SeriesAngleEnabled)
+                parts.Add($"{GetAnglePointCount()} по θ");
+            return parts.Count > 0 ? string.Join("  •  ", parts) : "обе серии отключены";
+        }
+    }
 
     public string GeometryRegionSummary =>
         $"Пластина [{Format(Parameters.PlateStart, "0.000")}; {Format(Parameters.PlateEnd, "0.000")}]  •  " +
@@ -479,11 +563,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
             _parametersModified = false;
             NotifyParameterContextChanged();
         }
-        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        catch (OperationCanceledException)
         {
             StatusText = "Расчёт отменён";
             StatusDetail = "Результаты не изменены";
             JournalEntries.Add($"[{DateTime.Now:HH:mm:ss}] Расчёт отменён пользователем.");
+            System.Windows.MessageBox.Show(
+                "Расчёт отменён. Результаты предыдущего успешного расчёта сохранены.",
+                "Отмена расчёта", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Information);
         }
         catch (Exception ex)
         {
@@ -604,6 +691,20 @@ public sealed class MainViewModel : INotifyPropertyChanged
         SkinFieldMap = output.SkinFieldMap;
         DiagnosticsSummary = output.DiagnosticsSummary;
         SeriesDiagnosticsCaption = output.SeriesDiagnosticsCaption;
+        _backendName = output.BackendName;
+
+        _skinDepthStudyRows = output.SkinDepthStudyRows;
+        _angleStudyIdealRows = output.AngleStudyIdealRows;
+        _angleStudySkinRows = output.AngleStudySkinRows;
+        OnPropertyChanged(nameof(SkinDepthStudyRows));
+        OnPropertyChanged(nameof(AngleStudyIdealRows));
+        OnPropertyChanged(nameof(AngleStudySkinRows));
+        OnPropertyChanged(nameof(HasSkinDepthStudy));
+        OnPropertyChanged(nameof(HasAngleStudy));
+        OnPropertyChanged(nameof(SkinDepthStudyCaption));
+        OnPropertyChanged(nameof(AngleStudyIdealCaption));
+        OnPropertyChanged(nameof(AngleStudySkinCaption));
+        CommandManager.InvalidateRequerySuggested();
 
         RefreshFluxRows(output.Energy);
         RefreshDiagnostics(output.Diagnostics);
@@ -618,7 +719,17 @@ public sealed class MainViewModel : INotifyPropertyChanged
             SeriesCheckSummaries.Add(summary);
     }
 
-    private void CancelCalculation() => _calculationCancellation?.Cancel();
+    private void CancelCalculation()
+    {
+        try
+        {
+            _calculationCancellation?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // Расчёт уже завершился и источник токена освобождён — отменять нечего.
+        }
+    }
 
     private void PrepareNewRun()
     {
@@ -652,6 +763,189 @@ public sealed class MainViewModel : INotifyPropertyChanged
         StatusText = message;
         StatusDetail = "Результаты расчёта не изменены";
         JournalEntries.Add($"[{DateTime.Now:HH:mm:ss}] {message}");
+    }
+
+    private void ExportSingleRun()
+    {
+        if (!Energy.IsAvailable)
+            return;
+
+        var row = new EnergyStudyRow(Energy.SkinDepth, Energy);
+        string csv = StudyCsvExporter.BuildSingleRunCsv(row, BuildExportParameterSummary());
+        ExportCsv($"diffraction_run_{Energy.SkinDepth:0.######}.csv", csv, "результата расчёта");
+    }
+
+    private void ExportSkinDepthStudy()
+    {
+        if (!HasSkinDepthStudy)
+            return;
+
+        string csv = StudyCsvExporter.BuildSkinDepthStudyCsv(_skinDepthStudyRows, BuildExportParameterSummary());
+        ExportCsv("skin_depth_study.csv", csv, "исследования изменения толщины скин-слоя");
+    }
+
+    private void ExportAngleStudy()
+    {
+        if (!HasAngleStudy)
+            return;
+
+        string csv = StudyCsvExporter.BuildAngleStudyCsv(
+            _angleStudyIdealRows,
+            _angleStudySkinRows,
+            Parameters.SkinDepthMicrometers,
+            BuildExportParameterSummary());
+        ExportCsv("angle_study.csv", csv, "исследования изменения угла");
+    }
+
+    private string BuildExportParameterSummary()
+    {
+        string summary = SelectedRun?.FullParameterSummary ?? ContextSummary;
+        // Кириллица и служебные символы внутри CSV-комментария должны занимать одну ячейку.
+        return $"Параметры: {summary}";
+    }
+
+    private void ExportCsv(string defaultFileName, string content, string subject)
+    {
+        var dialog = new SaveFileDialog
+        {
+            FileName = defaultFileName,
+            DefaultExt = ".csv",
+            AddExtension = true,
+            Filter = "CSV-файлы (*.csv)|*.csv|Все файлы (*.*)|*.*"
+        };
+        if (dialog.ShowDialog() != true)
+        {
+            RegisterAction("Экспорт отменён.");
+            return;
+        }
+
+        try
+        {
+            File.WriteAllText(dialog.FileName, content, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+            StatusText = "Экспорт завершён";
+            StatusDetail = dialog.FileName;
+            JournalEntries.Add($"[{DateTime.Now:HH:mm:ss}] CSV-файл {subject} сохранён: {dialog.FileName}");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            ReportError("Не удалось сохранить CSV", ex.Message, ex);
+        }
+    }
+
+    private void ExportPackage()
+    {
+        if (!Energy.IsAvailable)
+            return;
+
+        var dialog = new SaveFileDialog
+        {
+            FileName = ExportPackageName + ".zip",
+            DefaultExt = ".zip",
+            AddExtension = true,
+            Filter = "ZIP-архив (*.zip)|*.zip|Все файлы (*.*)|*.*"
+        };
+        if (dialog.ShowDialog() != true)
+        {
+            RegisterAction("Экспорт пакета отменён.");
+            return;
+        }
+
+        try
+        {
+            BuildExportPackage(dialog.FileName);
+            StatusText = "Пакет экспортирован";
+            StatusDetail = dialog.FileName;
+            JournalEntries.Add($"[{DateTime.Now:HH:mm:ss}] Пакет экспорта сохранён: {dialog.FileName}");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            ReportError("Не удалось сохранить пакет", ex.Message, ex);
+        }
+    }
+
+    private void BuildExportPackage(string zipPath)
+    {
+        DateTime exportedAtUtc = DateTime.UtcNow;
+        string summary = BuildExportParameterSummary();
+
+        var namedPlots = new (string Name, PlotData Plot)[]
+        {
+            ("slice_profile", SlicePlot),
+            ("method_comparison", MethodPlot),
+            ("method_difference", MethodDifferencePlot),
+            ("skin_difference", SkinDifferencePlot),
+            ("current_energy", CurrentEnergyPlot),
+            ("series_skin_depth_energy", SkinEnergyPlot),
+            ("series_angle_energy", AngleEnergyPlot),
+            ("series_diagnostics", SeriesDiagnosticsPlot)
+        };
+
+        using var zipStream = new FileStream(zipPath, FileMode.Create);
+        using var archive = new ZipArchive(zipStream, ZipArchiveMode.Create);
+
+        void AddTextEntry(string name, string content)
+        {
+            ZipArchiveEntry entry = archive.CreateEntry(name);
+            using var writer = new StreamWriter(entry.Open(), new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+            writer.Write(content);
+        }
+
+        void AddBinaryEntry(string name, byte[] content)
+        {
+            ZipArchiveEntry entry = archive.CreateEntry(name);
+            using Stream stream = entry.Open();
+            stream.Write(content, 0, content.Length);
+        }
+
+        if (ExportIncludeCsv)
+        {
+            AddTextEntry("csv/single_run_energy.csv",
+                StudyCsvExporter.BuildSingleRunCsv(new EnergyStudyRow(Energy.SkinDepth, Energy), summary));
+            if (HasSkinDepthStudy)
+                AddTextEntry("csv/skin_depth_study.csv",
+                    StudyCsvExporter.BuildSkinDepthStudyCsv(_skinDepthStudyRows, summary));
+            if (HasAngleStudy)
+                AddTextEntry("csv/angle_study.csv",
+                    StudyCsvExporter.BuildAngleStudyCsv(_angleStudyIdealRows, _angleStudySkinRows, Parameters.SkinDepthMicrometers, summary));
+            foreach ((string name, PlotData plot) in namedPlots)
+            {
+                if (plot.HasData)
+                    AddTextEntry($"csv/plots/{name}.csv", ExportPackageBuilder.BuildPlotCsv(name, plot));
+            }
+        }
+
+        if (ExportIncludeJson)
+        {
+            AddTextEntry("parameters.json", ExportPackageBuilder.BuildParametersJson(Parameters, _backendName, exportedAtUtc));
+        }
+
+        if (ExportIncludeReport)
+        {
+            AddTextEntry("report.txt", ExportPackageBuilder.BuildReportText(
+                Energy, FluxRows, Diagnostics, SeriesCheckSummaries, _backendName, exportedAtUtc));
+        }
+
+        if (ExportIncludeSvg)
+        {
+            foreach ((string name, PlotData plot) in namedPlots)
+            {
+                if (plot.HasData)
+                    AddTextEntry($"svg/{name}.svg", ExportPackageBuilder.BuildPlotSvg(plot));
+            }
+        }
+
+        if (ExportIncludePng)
+        {
+            foreach ((string name, PlotData plot) in namedPlots)
+            {
+                if (plot.HasData)
+                    AddBinaryEntry($"png/{name}.png", ExportVisualPngRenderer.RenderPlotPng(plot));
+            }
+            if (IdealFieldMap is not null)
+                AddBinaryEntry("png/field_map_ideal.png", ExportVisualPngRenderer.RenderFieldMapPng(IdealFieldMap));
+            if (SkinFieldMap is not null)
+                AddBinaryEntry("png/field_map_skin.png", ExportVisualPngRenderer.RenderFieldMapPng(SkinFieldMap));
+        }
     }
 
     private bool FilterRun(object item)
@@ -778,6 +1072,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(SeriesAngleCaption));
         OnPropertyChanged(nameof(SeriesEstimateText));
         OnPropertyChanged(nameof(GeometryRegionSummary));
+        OnPropertyChanged(nameof(SkinDepthStudyCaption));
+        OnPropertyChanged(nameof(AngleStudyIdealCaption));
+        OnPropertyChanged(nameof(AngleStudySkinCaption));
+        OnPropertyChanged(nameof(ExportPackageName));
     }
 
     private string BuildContextSummary()
@@ -790,10 +1088,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         if (IsSeriesMode)
         {
-            return geometry +
-                $"  •  δ {Format(Parameters.SeriesSkinDepthStart, "0.000")}…{Format(Parameters.SeriesSkinDepthEnd, "0.000")} ({Parameters.SeriesPointCount})" +
-                $"  •  θ {Format(Parameters.SeriesAngleStartDegrees, "0.#")}…{Format(Parameters.SeriesAngleEndDegrees, "0.#")}° / {Format(Parameters.SeriesAngleStepDegrees, "0.#")}°" +
-                $"  •  {SelectedBackend}";
+            string skinDepthPart = Parameters.SeriesSkinDepthEnabled
+                ? $"δ {Format(Parameters.SeriesSkinDepthStart, "0.000")}…{Format(Parameters.SeriesSkinDepthEnd, "0.000")} ({Parameters.SeriesPointCount})"
+                : "δ —";
+            string anglePart = Parameters.SeriesAngleEnabled
+                ? $"θ {Format(Parameters.SeriesAngleStartDegrees, "0.#")}…{Format(Parameters.SeriesAngleEndDegrees, "0.#")}° / {Format(Parameters.SeriesAngleStepDegrees, "0.#")}°"
+                : "θ —";
+            return geometry + $"  •  {skinDepthPart}  •  {anglePart}  •  {SelectedBackend}";
         }
 
         return geometry +
@@ -816,6 +1117,18 @@ public sealed class MainViewModel : INotifyPropertyChanged
         SkinFieldMap = null;
         DiagnosticsSummary = "Расчёт ещё не выполнен.";
         SeriesDiagnosticsCaption = "Серийная диагностика ещё не рассчитана.";
+        _skinDepthStudyRows = Array.Empty<EnergyStudyRow>();
+        _angleStudyIdealRows = Array.Empty<EnergyStudyRow>();
+        _angleStudySkinRows = Array.Empty<EnergyStudyRow>();
+        OnPropertyChanged(nameof(SkinDepthStudyRows));
+        OnPropertyChanged(nameof(AngleStudyIdealRows));
+        OnPropertyChanged(nameof(AngleStudySkinRows));
+        OnPropertyChanged(nameof(HasSkinDepthStudy));
+        OnPropertyChanged(nameof(HasAngleStudy));
+        OnPropertyChanged(nameof(SkinDepthStudyCaption));
+        OnPropertyChanged(nameof(AngleStudyIdealCaption));
+        OnPropertyChanged(nameof(AngleStudySkinCaption));
+        CommandManager.InvalidateRequerySuggested();
 
         FluxRows.Clear();
         Coefficients.Clear();
