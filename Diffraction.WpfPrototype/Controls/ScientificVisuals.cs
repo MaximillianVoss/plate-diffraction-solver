@@ -496,7 +496,7 @@ public sealed class PlateGeometryView : FrameworkElement
         dc.DrawLine(axis, new Point(deltaX - 4, plate.Top), new Point(deltaX + 4, plate.Top));
         dc.DrawLine(axis, new Point(deltaX - 4, plate.Bottom), new Point(deltaX + 4, plate.Bottom));
 
-        DrawText(dc, "θ", new Point(originX - 21, height * 0.32), 12, ToBrush("#344054"));
+        DrawText(dc, "θ", new Point(originX - 44, axisY - 24), 12, ToBrush("#344054"));
         DrawText(dc, "α₁", new Point(plateLeft - 6, axisY + 15), 10, ToBrush("#344054"));
         DrawText(dc, "β₁", new Point(plateRight - 6, axisY + 15), 10, ToBrush("#344054"));
         DrawText(dc, "δ", new Point(deltaX + 6, axisY - 8), 11, ToBrush("#344054"));

@@ -185,15 +185,17 @@
                                 <controls:ScientificPlot Data="{Binding SkinEnergyPlot}" />
                                 <TextBlock Grid.Row="1" Margin="0,4,0,0" Style="{StaticResource CaptionStyle}" Text="Каждая точка рассчитана заново для указанной толщины δ; R_scat, T_scat и A_J вычисляются независимо." TextWrapping="Wrap" />
                                 <TextBlock Grid.Row="2" Margin="0,8,0,4" FontWeight="SemiBold" Text="{Binding SkinDepthStudyCaption}" />
-                                <DataGrid Grid.Row="3" AutoGenerateColumns="False" IsReadOnly="True" MaxHeight="220" VerticalScrollBarVisibility="Auto"
+                                <DataGrid Grid.Row="3" AutoGenerateColumns="False" IsReadOnly="True" MaxHeight="220" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" MinColumnWidth="130"
                                           ItemsSource="{Binding SkinDepthStudyRows}">
                                     <DataGrid.Columns>
                                         <DataGridTextColumn Header="δ, мкм" Binding="{Binding ArgumentDisplay}" Width="*" />
-                                        <DataGridTextColumn Header="E_ref, %" Binding="{Binding ReflectedDisplay}" Width="*" />
-                                        <DataGridTextColumn Header="E_tr, %" Binding="{Binding TransmittedDisplay}" Width="*" />
-                                        <DataGridTextColumn Header="E_abs, %" Binding="{Binding AbsorbedDisplay}" Width="*" />
-                                        <DataGridTextColumn Header="Сумма, %" Binding="{Binding SumDisplay}" Width="*" />
-                                        <DataGridTextColumn Header="Дисбаланс, %" Binding="{Binding ImbalanceDisplay}" Width="*" />
+                                        <DataGridTextColumn Header="R_scat / I_plate, %" Binding="{Binding ReflectedDisplay}" Width="*" />
+                                        <DataGridTextColumn Header="T_scat / I_plate, %" Binding="{Binding TransmittedDisplay}" Width="*" />
+                                        <DataGridTextColumn Header="A_J / I_plate, %" Binding="{Binding AbsorbedDisplay}" Width="*" />
+                                        <DataGridTextColumn Header="Σ / I_plate, %" Binding="{Binding SumDisplay}" Width="*" />
+                                        <DataGridTextColumn Header="Ext / I_plate, %" Binding="{Binding ExtinctionDisplay}" Width="*" />
+                                        <DataGridTextColumn Header="Невязка / Ext, %" Binding="{Binding ImbalanceDisplay}" Width="*" />
+                                        <DataGridTextColumn Header="L|sinθ|, мкм" Binding="{Binding CrossSectionScaleDisplay}" Width="*" />
                                     </DataGrid.Columns>
                                 </DataGrid>
                                 <Button Grid.Row="4" Margin="0,8,0,0" HorizontalAlignment="Left" Style="{StaticResource SecondaryButtonStyle}"
@@ -214,27 +216,31 @@
                                 <controls:ScientificPlot Data="{Binding AngleEnergyPlot}" />
                                 <TextBlock Grid.Row="1" Margin="0,4,0,0" Style="{StaticResource CaptionStyle}" Text="{Binding SeriesAngleCaption}" TextWrapping="Wrap" />
                                 <TextBlock Grid.Row="2" Margin="0,8,0,4" FontWeight="SemiBold" Text="{Binding AngleStudyIdealCaption}" />
-                                <DataGrid Grid.Row="3" AutoGenerateColumns="False" IsReadOnly="True" MaxHeight="170" VerticalScrollBarVisibility="Auto"
+                                <DataGrid Grid.Row="3" AutoGenerateColumns="False" IsReadOnly="True" MaxHeight="170" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" MinColumnWidth="130"
                                           ItemsSource="{Binding AngleStudyIdealRows}">
                                     <DataGrid.Columns>
                                         <DataGridTextColumn Header="Угол θ, °" Binding="{Binding ArgumentDisplay}" Width="*" />
-                                        <DataGridTextColumn Header="E_ref, %" Binding="{Binding ReflectedDisplay}" Width="*" />
-                                        <DataGridTextColumn Header="E_tr, %" Binding="{Binding TransmittedDisplay}" Width="*" />
-                                        <DataGridTextColumn Header="E_abs, %" Binding="{Binding AbsorbedDisplay}" Width="*" />
-                                        <DataGridTextColumn Header="Сумма, %" Binding="{Binding SumDisplay}" Width="*" />
-                                        <DataGridTextColumn Header="Дисбаланс, %" Binding="{Binding ImbalanceDisplay}" Width="*" />
+                                        <DataGridTextColumn Header="R_scat / I_plate, %" Binding="{Binding ReflectedDisplay}" Width="*" />
+                                        <DataGridTextColumn Header="T_scat / I_plate, %" Binding="{Binding TransmittedDisplay}" Width="*" />
+                                        <DataGridTextColumn Header="A_J / I_plate, %" Binding="{Binding AbsorbedDisplay}" Width="*" />
+                                        <DataGridTextColumn Header="Σ / I_plate, %" Binding="{Binding SumDisplay}" Width="*" />
+                                        <DataGridTextColumn Header="Ext / I_plate, %" Binding="{Binding ExtinctionDisplay}" Width="*" />
+                                        <DataGridTextColumn Header="Невязка / Ext, %" Binding="{Binding ImbalanceDisplay}" Width="*" />
+                                        <DataGridTextColumn Header="L|sinθ|, мкм" Binding="{Binding CrossSectionScaleDisplay}" Width="*" />
                                     </DataGrid.Columns>
                                 </DataGrid>
                                 <TextBlock Grid.Row="4" Margin="0,10,0,4" FontWeight="SemiBold" Text="{Binding AngleStudySkinCaption}" />
-                                <DataGrid Grid.Row="5" AutoGenerateColumns="False" IsReadOnly="True" MaxHeight="170" VerticalScrollBarVisibility="Auto"
+                                <DataGrid Grid.Row="5" AutoGenerateColumns="False" IsReadOnly="True" MaxHeight="170" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" MinColumnWidth="130"
                                           ItemsSource="{Binding AngleStudySkinRows}">
                                     <DataGrid.Columns>
                                         <DataGridTextColumn Header="Угол θ, °" Binding="{Binding ArgumentDisplay}" Width="*" />
-                                        <DataGridTextColumn Header="E_ref, %" Binding="{Binding ReflectedDisplay}" Width="*" />
-                                        <DataGridTextColumn Header="E_tr, %" Binding="{Binding TransmittedDisplay}" Width="*" />
-                                        <DataGridTextColumn Header="E_abs, %" Binding="{Binding AbsorbedDisplay}" Width="*" />
-                                        <DataGridTextColumn Header="Сумма, %" Binding="{Binding SumDisplay}" Width="*" />
-                                        <DataGridTextColumn Header="Дисбаланс, %" Binding="{Binding ImbalanceDisplay}" Width="*" />
+                                        <DataGridTextColumn Header="R_scat / I_plate, %" Binding="{Binding ReflectedDisplay}" Width="*" />
+                                        <DataGridTextColumn Header="T_scat / I_plate, %" Binding="{Binding TransmittedDisplay}" Width="*" />
+                                        <DataGridTextColumn Header="A_J / I_plate, %" Binding="{Binding AbsorbedDisplay}" Width="*" />
+                                        <DataGridTextColumn Header="Σ / I_plate, %" Binding="{Binding SumDisplay}" Width="*" />
+                                        <DataGridTextColumn Header="Ext / I_plate, %" Binding="{Binding ExtinctionDisplay}" Width="*" />
+                                        <DataGridTextColumn Header="Невязка / Ext, %" Binding="{Binding ImbalanceDisplay}" Width="*" />
+                                        <DataGridTextColumn Header="L|sinθ|, мкм" Binding="{Binding CrossSectionScaleDisplay}" Width="*" />
                                     </DataGrid.Columns>
                                 </DataGrid>
                                 <Button Grid.Row="6" Margin="0,8,0,0" HorizontalAlignment="Left" Style="{StaticResource SecondaryButtonStyle}"
@@ -246,7 +252,7 @@
                 <Border Grid.Row="2" Style="{StaticResource PanelBorderStyle}" Padding="10">
                     <Grid>
                         <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-                        <TextBlock FontWeight="SemiBold" Text="Невязка ЗСЭ и различие потоков" />
+                        <TextBlock FontWeight="SemiBold" Text="Оптическая теорема и симметрия рассеяния" TextWrapping="Wrap" />
                         <controls:ScientificPlot Grid.Row="1" Margin="0,7,0,5" Data="{Binding SeriesDiagnosticsPlot}" />
                         <TextBlock Grid.Row="2" Style="{StaticResource CaptionStyle}" Text="{Binding SeriesDiagnosticsCaption}" TextWrapping="Wrap" />
                     </Grid>
@@ -270,19 +276,19 @@
                     <Separator Grid.Row="1" Margin="0,8" />
                     <Grid Grid.Row="2">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                        <TextBlock Text="R_scat, обратно" /><TextBlock Grid.Column="1" FontWeight="SemiBold" Text="{Binding Energy.ReflectedDisplay}" />
+                        <TextBlock Text="C_back, мкм" /><TextBlock Grid.Column="1" FontWeight="SemiBold" Text="{Binding Energy.ReflectedDisplay}" />
                     </Grid>
                     <Grid Grid.Row="3" Margin="0,7,0,0">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                        <TextBlock Text="T_scat, вперёд" /><TextBlock Grid.Column="1" FontWeight="SemiBold" Text="{Binding Energy.ForwardDisplay}" />
+                        <TextBlock Text="C_forward, мкм" /><TextBlock Grid.Column="1" FontWeight="SemiBold" Text="{Binding Energy.ForwardDisplay}" />
                     </Grid>
                     <Grid Grid.Row="4" Margin="0,7,0,0">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                        <TextBlock Text="A_J, пластина" /><TextBlock Grid.Column="1" FontWeight="SemiBold" Text="{Binding Energy.AbsorbedDisplay}" />
+                        <TextBlock Text="C_abs, мкм" /><TextBlock Grid.Column="1" FontWeight="SemiBold" Text="{Binding Energy.AbsorbedDisplay}" />
                     </Grid>
                     <Grid Grid.Row="5" Margin="0,7,0,0">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                        <TextBlock Text="Невязка ЗСЭ" /><TextBlock Grid.Column="1" FontWeight="SemiBold" Foreground="{StaticResource SuccessBrush}" Text="{Binding Energy.LocalBalanceErrorDisplay}" />
+                        <TextBlock Text="Оптическая теорема" /><TextBlock Grid.Column="1" FontWeight="SemiBold" Foreground="{Binding Energy.BalanceForeground}" Text="{Binding Energy.OpticalBalanceErrorDisplay}" ToolTip="{Binding Energy.LocalBalanceResidualDisplay}" />
                     </Grid>
                     <Grid Grid.Row="6" Margin="0,14,0,0">
                         <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>

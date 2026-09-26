@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using MathNet.Numerics;
 
 namespace Diffraction.Core
 {
@@ -185,20 +186,82 @@ namespace Diffraction.Core
             return T;
         }
 
-        public static double J0(double x)
+        public static double Legendre(int n, double x)
         {
-            double x_half_sq = x * x / 4.0, sum = 1.0, term = 1.0;
-            for (int k = 1; k <= 100; k++)
+            double previous = 1.0;
+            if (n == 0) return previous;
+            double value = x;
+            for (int j = 1; j < n; j++)
             {
-                term *= -x_half_sq / ((double)k * k);
-                sum += term;
-                if (Math.Abs(term) < 1e-15) break;
+                double next = ((2.0 * j + 1.0) * x * value - j * previous) / (j + 1.0);
+                previous = value;
+                value = next;
             }
-            return sum;
+            return value;
         }
+
+        public static double LegendreLogMoment(int n, double x)
+        {
+            if (n < 0 || double.IsNaN(x) || Math.Abs(x) > 1)
+                throw new ArgumentOutOfRangeException();
+            if (Math.Abs(x) == 1)
+            {
+                if (n == 0) return 2.0 * Math.Log(2.0) - 2.0;
+                double endpoint = -2.0 / (n * (n + 1.0));
+                return x < 0 && n % 2 != 0 ? -endpoint : endpoint;
+            }
+            if (n == 0)
+                return (1 + x) * Math.Log(1 + x) + (1 - x) * Math.Log(1 - x) - 2.0;
+
+            // Integral P_n(t) log|x-t| dt = 2 (Q_(n+1)(x)-Q_(n-1)(x))/(2n+1).
+            // Q is the real Legendre function on (-1,1); no singular quadrature cutoff.
+            double previous = 0.5 * Math.Log((1 + x) / (1 - x));
+            double current = x * previous - 1.0;
+            for (int j = 1; j <= n; j++)
+            {
+                double next = ((2.0 * j + 1.0) * x * current - j * previous) / (j + 1.0);
+                if (j == n) return 2.0 * (next - previous) / (2.0 * n + 1.0);
+                previous = current;
+                current = next;
+            }
+            throw new InvalidOperationException();
+        }
+
+        public static void GaussLegendreQuadrature(int n, out double[] nodes, out double[] weights)
+        {
+            if (n < 1) throw new ArgumentOutOfRangeException(nameof(n));
+            nodes = new double[n];
+            weights = new double[n];
+            for (int i = 0; i < n; i++)
+            {
+                double z = Math.Cos(Math.PI * (i + 0.75) / (n + 0.5));
+                double derivative = 0;
+                for (int iteration = 0; iteration < 100; iteration++)
+                {
+                    double value = 1.0, previous = 0.0;
+                    for (int j = 1; j <= n; j++)
+                    {
+                        double beforePrevious = previous;
+                        previous = value;
+                        value = ((2.0 * j - 1.0) * z * previous - (j - 1.0) * beforePrevious) / j;
+                    }
+                    derivative = n * (z * value - previous) / (z * z - 1);
+                    double next = z - value / derivative;
+                    if (Math.Abs(next - z) <= 1e-14) { z = next; break; }
+                    z = next;
+                    if (iteration == 99) throw new InvalidOperationException("Gauss-Legendre quadrature did not converge.");
+                }
+                nodes[i] = z;
+                weights[i] = 2.0 / ((1 - z * z) * derivative * derivative);
+            }
+        }
+
+        public static double J0(double x) => SpecialFunctions.BesselJ(0, Math.Abs(x));
 
         public static double _Y0(double x)
         {
+            if (x > 1.0)
+                return Math.PI / 2.0 * N0(x) - J0(x) * Math.Log(x / 2.0);
             const double gamma = 0.5772156649015329;
             double j0 = J0(x), x_half_sq = x * x / 4.0, sum = 0, H_k = 0, factorial_k_sq = 1.0, x_pow = 1.0;
             for (int k = 1; k <= 100; k++)
@@ -214,40 +277,15 @@ namespace Diffraction.Core
             return gamma * j0 + sum;
         }
 
-        public static double N0(double x) => 2.0 / Math.PI * (J0(x) * Math.Log(x / 2) + _Y0(x));
+        public static double N0(double x) => SpecialFunctions.BesselY(0, x);
 
-        public static double J1(double x)
-        {
-            if (Math.Abs(x) < 1e-10) return 0;
-            double x_half = x / 2.0, x_half_sq = x_half * x_half, sum = x_half, term = x_half;
-            for (int k = 1; k <= 100; k++)
-            {
-                term *= -x_half_sq / ((double)k * (k + 1));
-                sum += term;
-                if (Math.Abs(term) < 1e-15) break;
-            }
-            return sum;
-        }
+        public static double J1(double x) => x < 0
+            ? -SpecialFunctions.BesselJ(1, -x)
+            : SpecialFunctions.BesselJ(1, x);
 
-        public static double _Y1(double x)
-        {
-            double x_half = x / 2.0, x_half_sq = x_half * x_half, Hk = 0.0, xPow = x_half, factK = 1.0, factK1 = 1.0, sum = -1.0 / x;
-            for (int k = 0; k <= 100; k++)
-            {
-                if (k > 0) { factK *= k; factK1 *= (k + 1); xPow *= -x_half_sq; Hk += 1.0 / k; }
-                double Hk1 = Hk + 1.0 / (k + 1);
-                double term = xPow / (factK * factK1) * (Hk + Hk1);
-                sum += term;
-                if (k > 0 && Math.Abs(term) < 1e-15) break;
-            }
-            return sum;
-        }
+        public static double _Y1(double x) => Math.PI / 2.0 * N1(x) - J1(x) * Math.Log(x / 2.0);
 
-        public static double N1(double x)
-        {
-            if (Math.Abs(x) < 1e-10) return double.NegativeInfinity;
-            return 2.0 / Math.PI * (J1(x) * Math.Log(x / 2.0) + _Y1(x));
-        }
+        public static double N1(double x) => SpecialFunctions.BesselY(1, x);
 
         public static Compl H0_1(double x) => N0(x) * ci + J0(x);
         public static Compl H0_2(double x) => J0(x) - N0(x) * ci;
@@ -256,6 +294,8 @@ namespace Diffraction.Core
         {
             const double gamma = 0.5772156649015329;
             if (z < 1e-12) return new Compl(1.0, -2.0 * gamma / Math.PI);
+            if (z > 1.0)
+                return new Compl(J0(z), -N0(z) + 2.0 / Math.PI * Math.Log(z / 2.0));
             double j0 = J0(z), lnz2 = Math.Log(z / 2.0), y0reg = _Y0(z);
             double re = j0, im = (2.0 / Math.PI) * lnz2 * (1.0 - j0) - (2.0 / Math.PI) * y0reg;
             return new Compl(re, im);
@@ -331,6 +371,7 @@ namespace Diffraction.Core
             public SolvePerformance LastSolvePerformance { get; private set; }
             public bool LastSolveCancelled { get; private set; }
             public int TotalUnknowns => N * PlateCount;
+            public bool UsesSingularCurrentBasis => skinDepth == 0;
 
             public DifrOnLenta(double _a, double _b, double _lambda, double _teta, int _N, double _skinDepth = 0)
             {
@@ -348,8 +389,11 @@ namespace Diffraction.Core
                 if (_alpha == null || _beta == null || _alpha.Length == 0 || _alpha.Length != _beta.Length)
                     throw new ArgumentException("Некорректный набор пластин");
                 if (_N <= 0) throw new ArgumentException("Параметр N должен быть положительным");
-                if (_lambda <= 0) throw new ArgumentException("Длина волны должна быть положительной");
-                if (_skinDepth < 0) throw new ArgumentException("Толщина скин-слоя не может быть отрицательной");
+                if (!IsFinite(_lambda) || _lambda <= 0 || !IsFinite(2.0 * Math.PI / _lambda))
+                    throw new ArgumentException("Длина волны должна задавать конечное положительное волновое число");
+                if (!IsFinite(_teta)) throw new ArgumentException("Угол падения должен быть конечным числом");
+                if (!IsFinite(_skinDepth) || _skinDepth < 0)
+                    throw new ArgumentException("Толщина скин-слоя должна быть конечной и неотрицательной");
 
                 PlateCount = _alpha.Length;
                 alpha = new double[PlateCount];
@@ -357,7 +401,8 @@ namespace Diffraction.Core
 
                 for (int p = 0; p < PlateCount; p++)
                 {
-                    if (_alpha[p] >= _beta[p])
+                    if (!IsFinite(_alpha[p]) || !IsFinite(_beta[p]) ||
+                        !IsFinite(_beta[p] - _alpha[p]) || _alpha[p] >= _beta[p])
                         throw new ArgumentException(string.Format("Для пластины {0} должно выполняться alpha < beta", p + 1));
                     alpha[p] = _alpha[p];
                     beta[p] = _beta[p];
@@ -390,6 +435,8 @@ namespace Diffraction.Core
                 LastSolvePerformance = null;
                 LastSolveCancelled = false;
             }
+
+            private static bool IsFinite(double value) => !double.IsNaN(value) && !double.IsInfinity(value);
 
             private Compl CalculateChi()
             {
@@ -425,9 +472,14 @@ namespace Diffraction.Core
 
             public double CalculateConductivity(double skinDepth, double wavelength)
             {
-                if (skinDepth <= 0) throw new ArgumentException("Толщина скин-слоя должна быть положительной");
-                double frequency = SpeedOfLight / wavelength;
-                return 1.0 / (Math.PI * Mu0 * frequency * skinDepth * skinDepth);
+                if (!IsFinite(skinDepth) || skinDepth <= 0)
+                    throw new ArgumentException("Толщина скин-слоя должна быть положительной");
+                if (!IsFinite(wavelength) || wavelength <= 0)
+                    throw new ArgumentException("Длина волны должна быть положительной");
+                // Geometry is in micrometers; conductivity is reported in S/m.
+                double deltaMeters = skinDepth * 1e-6;
+                double frequency = SpeedOfLight / (wavelength * 1e-6);
+                return 1.0 / (Math.PI * Mu0 * frequency * deltaMeters * deltaMeters);
             }
 
             public Compl dr_dn(double t, double x)
@@ -493,13 +545,15 @@ namespace Diffraction.Core
                     Compl R = R_H0(kd);
                     sum_reg += phi * R * w_q[targetPlate][m];
                 }
-                double xi = XToTau(targetPlate, x);
+                double xi = Math.Max(-1, Math.Min(1, XToTau(targetPlate, x)));
                 double ln_const = Math.Log(k_wave * halfL / 2.0);
                 Compl sum_log = new Compl(0, 0);
                 for (int j = 0; j < N; j++)
                 {
-                    double I_ortho = (j == 0) ? Math.PI : 0.0;
-                    double I_log = (j == 0) ? (-Math.PI * Math.Log(2.0)) : (-(Math.PI / j) * Cheb(j, xi));
+                    double I_ortho = (j == 0) ? (useSingularWeight ? Math.PI : 2.0) : 0.0;
+                    double I_log = useSingularWeight
+                        ? ((j == 0) ? -Math.PI * Math.Log(2.0) : -(Math.PI / j) * Cheb(j, xi))
+                        : LegendreLogMoment(j, xi);
                     double S = ln_const * I_ortho + I_log;
                     sum_log += y[CoeffIndex(targetPlate, j)] * (-2.0 / Math.PI) * halfL * S;
                 }
@@ -536,7 +590,7 @@ namespace Diffraction.Core
                 phi_q = null;
                 tau_c = null;
                 x_c = null;
-                useSingularWeight = true;
+                useSingularWeight = UsesSingularCurrentBasis;
             }
 
             private void EnsurePreparedState()
@@ -549,8 +603,12 @@ namespace Diffraction.Core
                     x_c != null)
                     return;
 
-                useSingularWeight = true;
+                useSingularWeight = UsesSingularCurrentBasis;
                 M_quad = Math.Max(8 * N, 80);
+
+                double[] regularNodes = null, regularWeights = null;
+                if (!useSingularWeight)
+                    GaussLegendreQuadrature(M_quad, out regularNodes, out regularWeights);
 
                 tau_q = new double[PlateCount][];
                 t_q = new double[PlateCount][];
@@ -566,9 +624,11 @@ namespace Diffraction.Core
                     w_q[p] = new double[M_quad];
                     for (int m = 0; m < M_quad; m++)
                     {
-                        tau_q[p][m] = Math.Cos((2.0 * m + 1.0) / (2.0 * M_quad) * Math.PI);
+                        tau_q[p][m] = useSingularWeight
+                            ? Math.Cos((2.0 * m + 1.0) / (2.0 * M_quad) * Math.PI)
+                            : regularNodes[m];
                         t_q[p][m] = TauToX(p, tau_q[p][m]);
-                        w_q[p][m] = Math.PI / M_quad * halfL;
+                        w_q[p][m] = (useSingularWeight ? Math.PI / M_quad : regularWeights[m]) * halfL;
                     }
 
                     tau_c[p] = new double[N];
@@ -614,6 +674,7 @@ namespace Diffraction.Core
             }
 
             private int CoeffIndex(int plateIndex, int localIndex) => plateIndex * N + localIndex;
+            private double CurrentBasis(int n, double tau) => useSingularWeight ? Cheb(n, tau) : Legendre(n, tau);
             private double HalfLength(int plateIndex) => (beta[plateIndex] - alpha[plateIndex]) / 2.0;
             private double Midpoint(int plateIndex) => (beta[plateIndex] + alpha[plateIndex]) / 2.0;
             private double XToTau(int plateIndex, double x) => (x - Midpoint(plateIndex)) / HalfLength(plateIndex);
@@ -638,7 +699,7 @@ namespace Diffraction.Core
 
                 Compl phi = new Compl(0, 0);
                 for (int j = 0; j < N; j++)
-                    phi += y[CoeffIndex(plateIndex, j)] * Cheb(j, tau_q[plateIndex][quadIndex]);
+                    phi += y[CoeffIndex(plateIndex, j)] * CurrentBasis(j, tau_q[plateIndex][quadIndex]);
                 return phi;
             }
 
@@ -654,27 +715,11 @@ namespace Diffraction.Core
                         for (int basisIndex = 0; basisIndex < N; basisIndex++)
                         {
                             value += y[CoeffIndex(plateIndex, basisIndex)] *
-                                Cheb(basisIndex, tau_q[plateIndex][quadratureIndex]);
+                                CurrentBasis(basisIndex, tau_q[plateIndex][quadratureIndex]);
                         }
 
                         phi_q[plateIndex][quadratureIndex] = value;
                     }
-                }
-            }
-
-            private static void GaussLegendre(int n, out double[] nodes, out double[] weights)
-            {
-                nodes = new double[n]; weights = new double[n];
-                for (int i = 0; i < n; i++)
-                {
-                    double z = Math.Cos(Math.PI * (i + 0.75) / (n + 0.5)), z1, pp;
-                    do
-                    {
-                        double p1 = 1, p2 = 0;
-                        for (int j = 0; j < n; j++) { double p3 = p2; p2 = p1; p1 = ((2.0 * j + 1) * z * p2 - j * p3) / (j + 1); }
-                        pp = n * (z * p1 - p2) / (z * z - 1); z1 = z; z = z1 - p1 / pp;
-                    } while (Math.Abs(z - z1) > 1e-14);
-                    nodes[i] = z; weights[i] = 2.0 / ((1 - z * z) * pp * pp);
                 }
             }
 
@@ -704,6 +749,21 @@ namespace Diffraction.Core
 
                         for (int sourcePlate = 0; sourcePlate < PlateCount; sourcePlate++)
                         {
+                            // The kernel depends on source and target points, not on the basis index.
+                            Compl[] kernel = new Compl[M_quad];
+                            for (int m = 0; m < M_quad; m++)
+                            {
+                                if (sourcePlate == targetPlate)
+                                {
+                                    double kd = k_wave * targetHalfL * Math.Abs(tau_k - tau_q[sourcePlate][m]);
+                                    kernel[m] = R_H0(kd);
+                                }
+                                else
+                                {
+                                    double distance = Math.Max(Math.Abs(t_q[sourcePlate][m] - xk), 1e-14);
+                                    kernel[m] = H0_2(k_wave * distance);
+                                }
+                            }
                             for (int j = 0; j < N; j++)
                             {
                                 int col = CoeffIndex(sourcePlate, j);
@@ -713,22 +773,20 @@ namespace Diffraction.Core
                                     Compl sum_reg = new Compl(0, 0);
                                     for (int m = 0; m < M_quad; m++)
                                     {
-                                        double kd = k_wave * targetHalfL * Math.Abs(tau_k - tau_q[targetPlate][m]);
-                                        Compl R = R_H0(kd);
-                                        double Tj = Cheb(j, tau_q[targetPlate][m]);
-                                        sum_reg += R * Tj * w_q[targetPlate][m];
+                                        double Tj = CurrentBasis(j, tau_q[targetPlate][m]);
+                                        sum_reg += kernel[m] * Tj * w_q[targetPlate][m];
                                     }
                                     double ln_const = Math.Log(k_wave * targetHalfL / 2.0);
-                                    double I_ortho = (j == 0) ? Math.PI : 0.0;
-                                    double I_log = (j == 0) ? (-Math.PI * Math.Log(2.0)) : (-(Math.PI / j) * Cheb(j, tau_k));
+                                    double I_ortho = (j == 0) ? (useSingularWeight ? Math.PI : 2.0) : 0.0;
+                                    double I_log = useSingularWeight
+                                        ? ((j == 0) ? -Math.PI * Math.Log(2.0) : -(Math.PI / j) * Cheb(j, tau_k))
+                                        : LegendreLogMoment(j, tau_k);
                                     Compl S_log = ci * (-2.0 / Math.PI) * targetHalfL * (ln_const * I_ortho + I_log);
                                     A_mat[row][col] = ci / 4.0 * (sum_reg + S_log);
 
                                     if (skinDepth > 0)
                                     {
-                                        double Tj_k = Cheb(j, tau_c[targetPlate][ik]);
-                                        double sqrt_w = Math.Sqrt(1.0 - tau_c[targetPlate][ik] * tau_c[targetPlate][ik]);
-                                        A_mat[row][col] = A_mat[row][col] - sheetCoefficient * Tj_k / sqrt_w;
+                                        A_mat[row][col] = A_mat[row][col] - sheetCoefficient * Legendre(j, tau_k);
                                     }
                                 }
                                 else
@@ -736,10 +794,8 @@ namespace Diffraction.Core
                                     Compl sum_cross = new Compl(0, 0);
                                     for (int m = 0; m < M_quad; m++)
                                     {
-                                        double distance = Math.Abs(t_q[sourcePlate][m] - xk);
-                                        if (distance < 1e-14) distance = 1e-14;
-                                        double Tj = Cheb(j, tau_q[sourcePlate][m]);
-                                        sum_cross += H0_2(k_wave * distance) * Tj * w_q[sourcePlate][m];
+                                        double Tj = CurrentBasis(j, tau_q[sourcePlate][m]);
+                                        sum_cross += kernel[m] * Tj * w_q[sourcePlate][m];
                                     }
                                     A_mat[row][col] = ci / 4.0 * sum_cross;
                                 }
@@ -918,20 +974,31 @@ namespace Diffraction.Core
                 return 0.5 * k * Math.Abs(Math.Sin(teta)) * totalLength;
             }
 
+            public double CalculateExtinctionEnergy(int plateSamples = 400)
+            {
+                if (plateSamples < 16) throw new ArgumentOutOfRangeException(nameof(plateSamples));
+                // Independent source work: P_ext = Im integral conj(u_inc) J dx / 2.
+                // H0^(2) and exp(+ik.d.x) make the forward direction -d, not +d.
+                double k = 2.0 * Math.PI / lambda;
+                return 0.5 * FarFieldCurrentIntegral(k, -Math.Cos(teta), plateSamples).Im;
+            }
+
             public PlateFluxComponents CalculatePlateFluxComponents(int samplesPerPlate = 400)
             {
                 if (samplesPerPlate < 16) throw new ArgumentOutOfRangeException(nameof(samplesPerPlate));
                 EnsurePreparedState();
+                double[] nodes, weights;
+                PhysicalIntegrationRule(samplesPerPlate, out nodes, out weights);
 
                 double aboveFlux = 0.0;
                 double belowFlux = 0.0;
 
                 for (int plateIndex = 0; plateIndex < PlateCount; plateIndex++)
                 {
-                    double dx = (beta[plateIndex] - alpha[plateIndex]) / samplesPerPlate;
-                    for (int m = 0; m < samplesPerPlate; m++)
+                    for (int m = 0; m < nodes.Length; m++)
                     {
-                        double x = alpha[plateIndex] + (m + 0.5) * dx;
+                        double x = TauToX(plateIndex, nodes[m]);
+                        double dx = HalfLength(plateIndex) * weights[m];
                         Compl value = u_on_strip(x);
                         Compl derivativeAbove = NormalDerivativeAbove(x);
                         Compl derivativeBelow = NormalDerivativeBelow(x);
@@ -963,15 +1030,17 @@ namespace Diffraction.Core
             {
                 if (samplesPerPlate < 16) throw new ArgumentOutOfRangeException(nameof(samplesPerPlate));
                 EnsurePreparedState();
+                double[] nodes, weights;
+                PhysicalIntegrationRule(samplesPerPlate, out nodes, out weights);
 
                 double aboveOutgoing = 0.0;
                 double belowOutgoing = 0.0;
                 for (int plateIndex = 0; plateIndex < PlateCount; plateIndex++)
                 {
-                    double dx = (beta[plateIndex] - alpha[plateIndex]) / samplesPerPlate;
-                    for (int m = 0; m < samplesPerPlate; m++)
+                    for (int m = 0; m < nodes.Length; m++)
                     {
-                        double x = alpha[plateIndex] + (m + 0.5) * dx;
+                        double x = TauToX(plateIndex, nodes[m]);
+                        double dx = HalfLength(plateIndex) * weights[m];
                         Compl scatteredValue = u_on_strip(x) - u0(x, 0.0);
                         Compl halfJump = CurrentDensity(x) / 2.0;
                         aboveOutgoing += EnergyFlux(scatteredValue, halfJump) * dx;
@@ -1049,13 +1118,16 @@ namespace Diffraction.Core
                 double dPhi = 2.0 * Math.PI / angleSamples;
                 double incidentSideZ = Math.Sin(teta) >= 0.0 ? 1.0 : -1.0;
                 FarFieldScatteredEnergyComponents result = new FarFieldScatteredEnergyComponents();
+                double[] sourceX;
+                Compl[] weightedCurrent;
+                BuildFarFieldQuadrature(plateSamples, out sourceX, out weightedCurrent);
 
                 for (int i = 0; i < angleSamples; i++)
                 {
                     double phi = (i + 0.5) * dPhi;
                     double nx = Math.Cos(phi);
                     double nz = Math.Sin(phi);
-                    Compl integral = FarFieldCurrentIntegral(k, nx, plateSamples);
+                    Compl integral = FarFieldCurrentIntegral(k, nx, sourceX, weightedCurrent);
                     double abs2 = integral.Re * integral.Re + integral.Im * integral.Im;
                     double density = abs2 / (16.0 * Math.PI);
                     double energy = density * dPhi;
@@ -1077,24 +1149,46 @@ namespace Diffraction.Core
 
             private Compl FarFieldCurrentIntegral(double k, double directionX, int plateSamples)
             {
+                double[] sourceX;
+                Compl[] weightedCurrent;
+                BuildFarFieldQuadrature(plateSamples, out sourceX, out weightedCurrent);
+                return FarFieldCurrentIntegral(k, directionX, sourceX, weightedCurrent);
+            }
+
+            private static Compl FarFieldCurrentIntegral(double k, double directionX, double[] sourceX, Compl[] weightedCurrent)
+            {
                 Compl sum = new Compl(0, 0);
+                for (int i = 0; i < sourceX.Length; i++)
+                    sum += weightedCurrent[i] * Compl.Exp(ci * k * directionX * sourceX[i]);
+                return sum;
+            }
+
+            private void BuildFarFieldQuadrature(int plateSamples, out double[] sourceX, out Compl[] weightedCurrent)
+            {
+                EnsurePreparedState();
+                // Current samples do not depend on observation angle. Keep them local
+                // to this call so externally replaced coefficients cannot leave a stale cache.
+                sourceX = new double[PlateCount * plateSamples];
+                weightedCurrent = new Compl[sourceX.Length];
+                double[] regularNodes = null, regularWeights = null;
+                if (!useSingularWeight)
+                    GaussLegendreQuadrature(plateSamples, out regularNodes, out regularWeights);
                 for (int plateIndex = 0; plateIndex < PlateCount; plateIndex++)
                 {
                     double halfL = HalfLength(plateIndex);
-                    // Gauss-Chebyshev integrates J dx with J=phi/sqrt(1-tau^2) and dx=halfL dtau.
-                    double weight = Math.PI * halfL / plateSamples;
                     for (int m = 0; m < plateSamples; m++)
                     {
-                        double tau = Math.Cos((m + 0.5) * Math.PI / plateSamples);
+                        double tau = useSingularWeight ? Math.Cos((m + 0.5) * Math.PI / plateSamples) : regularNodes[m];
+                        double weight = (useSingularWeight ? Math.PI / plateSamples : regularWeights[m]) * halfL;
                         double x = TauToX(plateIndex, tau);
                         Compl phi = new Compl(0, 0);
                         for (int j = 0; j < N; j++)
-                            phi += y[CoeffIndex(plateIndex, j)] * Cheb(j, tau);
-                        Compl phase = Compl.Exp(ci * k * directionX * x);
-                        sum += phi * phase * weight;
+                            phi += y[CoeffIndex(plateIndex, j)] * CurrentBasis(j, tau);
+                        int index = plateIndex * plateSamples + m;
+                        sourceX[index] = x;
+                        weightedCurrent[index] = phi * weight;
                     }
                 }
-                return sum;
             }
             public Compl CurrentDensity(double x)
             {
@@ -1103,7 +1197,7 @@ namespace Diffraction.Core
                 double tau_x = XToTau(plateIndex, x);
                 if (tau_x < -1) tau_x = -1; if (tau_x > 1) tau_x = 1;
                 Compl phi = new Compl(0, 0);
-                for (int j = 0; j < N; j++) phi += y[CoeffIndex(plateIndex, j)] * Cheb(j, tau_x);
+                for (int j = 0; j < N; j++) phi += y[CoeffIndex(plateIndex, j)] * CurrentBasis(j, tau_x);
                 if (useSingularWeight)
                 {
                     double w = Math.Sqrt(Math.Max(1.0 - tau_x * tau_x, 1e-10));
@@ -1137,13 +1231,7 @@ namespace Diffraction.Core
 
             public Compl GetJphys(double x)
             {
-                int plateIndex = GetPlateIndex(x);
-                if (plateIndex < 0) return new Compl(0, 0);
-                double xi = XToTau(plateIndex, x);
-                double w2 = 1.0 - xi * xi; if (w2 < 1e-10) w2 = 1e-10;
-                Compl phi = new Compl(0, 0);
-                for (int j = 0; j < N; j++) phi += y[CoeffIndex(plateIndex, j)] * new Compl(ChebOnPlate(plateIndex, j, x));
-                return phi / Math.Sqrt(w2);
+                return CurrentDensity(x);
             }
 
             public double VerifyBoundaryConditions()
@@ -1165,6 +1253,25 @@ namespace Diffraction.Core
                 return sumErr / count;
             }
 
+            public double VerifyBoundaryConditionsNearEdges()
+            {
+                if (UsesSingularCurrentBasis) return double.NaN;
+                double maximum = 0;
+                foreach (double fraction in new[] { 0.0, 1e-8, 1e-6, 1e-4, 1e-2 })
+                {
+                    for (int plate = 0; plate < PlateCount; plate++)
+                    {
+                        double offset = (beta[plate] - alpha[plate]) * fraction;
+                        foreach (double x in new[] { alpha[plate] + offset, beta[plate] - offset })
+                        {
+                            Compl residual = u_on_strip(x) - sheetCoefficient * CurrentDensity(x);
+                            maximum = Math.Max(maximum, Compl.Abs(residual) / Compl.Abs(u0(x, 0)));
+                        }
+                    }
+                }
+                return maximum;
+            }
+
             public double VerifyHelmholtz()
             {
                 double x = b + lambda, z = lambda, k = 2 * Math.PI / lambda, h = lambda / 100.0;
@@ -1178,16 +1285,15 @@ namespace Diffraction.Core
             {
                 if (skinDepth <= 0) return 0;
                 double sum = 0;
-                const int M = 400;
+                // Exact L2 mass of the finite-skin Legendre current, independent of
+                // radiation, extinction and any spatial cutoff at the strip ends.
                 for (int plateIndex = 0; plateIndex < PlateCount; plateIndex++)
                 {
-                    double dx = (beta[plateIndex] - alpha[plateIndex]) / M;
-                    for (int m = 0; m < M; m++)
+                    for (int j = 0; j < N; j++)
                     {
-                        double x = alpha[plateIndex] + (m + 0.5) * dx;
-                        Compl current = CurrentDensity(x);
+                        Compl current = y[CoeffIndex(plateIndex, j)];
                         double currentAbs2 = current.Re * current.Re + current.Im * current.Im;
-                        sum += -0.5 * sheetCoefficient.Im * currentAbs2 * dx;
+                        sum += -sheetCoefficient.Im * HalfLength(plateIndex) * currentAbs2 / (2.0 * j + 1);
                     }
                 }
                 return sum;
@@ -1201,19 +1307,36 @@ namespace Diffraction.Core
                 if (coefficientAbs2 < 1e-30) return 0;
                 double admittanceLoss = -sheetCoefficient.Im / coefficientAbs2;
                 double sum = 0;
-                const int M = 400;
+                double[] nodes, weights;
+                PhysicalIntegrationRule(400, out nodes, out weights);
                 for (int plateIndex = 0; plateIndex < PlateCount; plateIndex++)
                 {
-                    double dx = (beta[plateIndex] - alpha[plateIndex]) / M;
-                    for (int m = 0; m < M; m++)
+                    for (int m = 0; m < nodes.Length; m++)
                     {
-                        double x = alpha[plateIndex] + (m + 0.5) * dx;
+                        double x = TauToX(plateIndex, nodes[m]);
+                        double dx = HalfLength(plateIndex) * weights[m];
                         Compl uValue = u_on_strip(x);
                         double uAbs2 = uValue.Re * uValue.Re + uValue.Im * uValue.Im;
                         sum += 0.5 * admittanceLoss * uAbs2 * dx;
                     }
                 }
                 return sum;
+            }
+
+            private void PhysicalIntegrationRule(int samples, out double[] nodes, out double[] weights)
+            {
+                if (!UsesSingularCurrentBasis)
+                {
+                    GaussLegendreQuadrature(Math.Max(samples, N + 1), out nodes, out weights);
+                    return;
+                }
+                nodes = new double[samples];
+                weights = new double[samples];
+                for (int i = 0; i < samples; i++)
+                {
+                    nodes[i] = -1.0 + (i + 0.5) * 2.0 / samples;
+                    weights[i] = 2.0 / samples;
+                }
             }
 
             public void VerifyEnergyConservation()

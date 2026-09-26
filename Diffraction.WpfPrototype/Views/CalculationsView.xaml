@@ -130,7 +130,7 @@
                     <TextBox x:Name="WavelengthInput" Margin="0,4,0,0" Text="{Binding Parameters.WavelengthMicrometers, Mode=TwoWay, Converter={infrastructure:NumericInputConverter}, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:G}, ValidatesOnExceptions=True, NotifyOnValidationError=True, NotifyOnSourceUpdated=True}" ToolTip="Нормированная длина волны" />
                 </StackPanel>
                 <StackPanel Grid.Column="1" Margin="0,0,7,0">
-                    <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="θ, °" HelpText="Угол падения относительно нормали к пластине." />
+                    <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="θ, °" HelpText="Угол падения относительно плоскости пластины: 90° — нормальное падение." />
                     <TextBox Margin="0,4,0,0" Text="{Binding Parameters.IncidenceAngleDegrees, Mode=TwoWay, Converter={infrastructure:NumericInputConverter}, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:G}, ValidatesOnExceptions=True, NotifyOnValidationError=True, NotifyOnSourceUpdated=True}" ToolTip="Угол падения" />
                 </StackPanel>
                 <StackPanel Grid.Column="2" Margin="0,0,7,0">
@@ -181,7 +181,7 @@
                         <TextBox Margin="0,4,0,0" Text="{Binding Parameters.WavelengthMicrometers, Mode=TwoWay, Converter={infrastructure:NumericInputConverter}, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:G}, ValidatesOnExceptions=True, NotifyOnValidationError=True, NotifyOnSourceUpdated=True}" />
                     </StackPanel>
                     <StackPanel Margin="5,3,3,5">
-                        <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="θ, °" HelpText="Угол падения относительно нормали к пластине." />
+                        <controls:InfoLabel FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" Text="θ, °" HelpText="Угол падения относительно плоскости пластины: 90° — нормальное падение." />
                         <TextBox Margin="0,4,0,0" Text="{Binding Parameters.IncidenceAngleDegrees, Mode=TwoWay, Converter={infrastructure:NumericInputConverter}, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:G}, ValidatesOnExceptions=True, NotifyOnValidationError=True, NotifyOnSourceUpdated=True}" />
                     </StackPanel>
                     <StackPanel Margin="3,3,5,5">
@@ -312,7 +312,7 @@
                     </Grid>
                     <DataGrid Grid.Row="1" x:Name="CoefficientGrid" ItemsSource="{Binding CoefficientsView}" AutoGenerateColumns="False" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling">
                         <DataGrid.Columns>
-                            <DataGridTextColumn Header="n" Binding="{Binding Index}" Width="70" />
+                            <DataGridTextColumn Header="№" Binding="{Binding Index}" Width="70" />
                             <DataGridTextColumn Header="Коллокация Re" Binding="{Binding CollocationRe, StringFormat=G8}" MinWidth="120" Width="*" />
                             <DataGridTextColumn Header="Коллокация Im" Binding="{Binding CollocationIm, StringFormat=G8}" MinWidth="120" Width="*" />
                             <DataGridTextColumn Header="Галеркин Re" Binding="{Binding GalerkinRe, StringFormat=G8}" MinWidth="120" Width="*" />
@@ -320,7 +320,7 @@
                             <DataGridTextColumn Header="|Δ|" Binding="{Binding Delta, StringFormat=0.000E+00}" Width="120" />
                         </DataGrid.Columns>
                     </DataGrid>
-                    <TextBlock Grid.Row="2" Margin="0,8,0,0" Style="{StaticResource CaptionStyle}" Text="Таблица поддерживает сортировку столбцов, изменение их ширины, поиск, множественное выделение и копирование с заголовками." />
+                    <TextBlock Grid.Row="2" Margin="0,8,0,0" Style="{StaticResource CaptionStyle}" Text="{Binding Energy.CoefficientBasisDisplay}" TextWrapping="Wrap" />
                 </Grid>
             </TabItem>
             <TabItem Header="Диагностика">

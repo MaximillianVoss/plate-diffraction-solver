@@ -75,6 +75,10 @@ public static class DiffractionCalculationService
         double collocationBoundaryErrorPercent = skinCollocation.VerifyBoundaryConditions() * 100.0;
         cancellationToken.ThrowIfCancellationRequested();
         double galerkinBoundaryErrorPercent = skinGalerkin.VerifyBoundaryConditions() * 100.0;
+        double collocationEdgeErrorPercent = skinCollocation.VerifyBoundaryConditionsNearEdges() * 100.0;
+        double galerkinEdgeErrorPercent = skinGalerkin.VerifyBoundaryConditionsNearEdges() * 100.0;
+        if (parameters.SkinDepthMicrometers > 0)
+            EnsureFinite("граничное условие у краёв", collocationEdgeErrorPercent, galerkinEdgeErrorPercent);
         double helmholtzResidual = skinCollocation.VerifyHelmholtz();
         EnsureFinite("диагностика ГУ и уравнения Гельмгольца",
             collocationBoundaryErrorPercent, galerkinBoundaryErrorPercent, helmholtzResidual);
@@ -87,7 +91,9 @@ public static class DiffractionCalculationService
             collocationBoundaryErrorPercent,
             galerkinBoundaryErrorPercent,
             helmholtzResidual,
-            comparison);
+            comparison,
+            collocationEdgeErrorPercent,
+            galerkinEdgeErrorPercent);
 
         return new CalculationOutput
         {
@@ -112,7 +118,10 @@ public static class DiffractionCalculationService
                 collocationBoundaryErrorPercent,
                 galerkinBoundaryErrorPercent,
                 helmholtzResidual,
-                comparison),
+                comparison) + (parameters.SkinDepthMicrometers > 0
+                    ? $"\nМаксимальная невязка у краёв, коллокация: {collocationEdgeErrorPercent:0.000000}%" +
+                      $"\nМаксимальная невязка у краёв, Галеркин: {galerkinEdgeErrorPercent:0.000000}%"
+                    : string.Empty),
             SeriesDiagnosticsCaption = series.DiagnosticsCaption,
             SeriesCheckSummaries = series.CheckSummaries,
             BackendName = skinCollocation.LastSolvePerformance?.BackendName ?? "CPU (C#)"
@@ -246,11 +255,15 @@ public static class DiffractionCalculationService
             Normalize(sheetFlux.AboveOutgoing, incident),
             Normalize(sheetFlux.BelowOutgoing, incident),
             Normalize(energy.FluxAbsorbed, incident),
-            Math.Abs(energy.LocalBalanceResidual) / incident * 100.0);
+            Math.Abs(energy.LocalBalanceResidual) / incident * 100.0,
+            extinction: solver.CalculateExtinctionEnergy(plateSamples) / incident,
+            crossSectionScale: incident / (Math.PI / solver.lambda));
         EnsureFinite("энергия и потоки", snapshot.SkinDepth,
             snapshot.ReflectedScattered, snapshot.ForwardScattered, snapshot.Absorbed,
             snapshot.SheetAbove, snapshot.SheetBelow, snapshot.FluxAbsorbed,
-            snapshot.LocalBalanceErrorPercent, snapshot.FarFieldMismatchPercent, snapshot.SheetMismatchPercent);
+            snapshot.LocalBalanceErrorPercent, snapshot.FarFieldMismatchPercent, snapshot.SheetMismatchPercent,
+            snapshot.Extinction, snapshot.OpticalBalanceErrorPercent,
+            snapshot.ReflectedCrossSection, snapshot.ForwardCrossSection, snapshot.AbsorbedCrossSection);
         return snapshot;
     }
 
@@ -487,19 +500,19 @@ public static class DiffractionCalculationService
 
         PlotData skinPlot = skinDepthSeries
             ? CreateEnergyPlot("Толщина δ", skinDepths, skinSnapshots)
-            : PlotData.Empty("Толщина δ", "Доля падающей энергии", "Серия по толщине δ отключена.");
+            : PlotData.Empty("Толщина δ", "Сечение, мкм", "Серия по толщине δ отключена.");
         PlotData anglePlot = angleSeries
             ? CreateEnergyPlot("Угол θ, °", angles, angleSkinSnapshots)
-            : PlotData.Empty("Угол θ, °", "Доля падающей энергии", "Серия по углу θ отключена.");
+            : PlotData.Empty("Угол θ, °", "Сечение, мкм", "Серия по углу θ отключена.");
         PlotData diagnosticsPlot = skinDepthSeries
             ? CreatePlot(
                 "Толщина δ",
                 "Отклонение, %",
                 includeZero: true,
                 new PlotSeriesData(
-                    "Невязка ЗСЭ",
+                    "Оптическая теорема",
                     "#EA580C",
-                    ToPoints(skinDepths, skinSnapshots.Select(item => item.LocalBalanceErrorPercent).ToArray())),
+                    ToPoints(skinDepths, skinSnapshots.Select(item => item.OpticalBalanceErrorPercent).ToArray())),
                 new PlotSeriesData(
                     "|R_scat − T_scat|",
                     "#16A34A",
@@ -510,8 +523,8 @@ public static class DiffractionCalculationService
         string caption = skinDepthSeries
             ? string.Format(
                 RussianCulture,
-                "Максимум по серии: невязка ЗСЭ {0:0.000000}%; |R_scat − T_scat| {1:0.000000}%.",
-                skinSnapshots.Max(item => item.LocalBalanceErrorPercent),
+                "Максимум по серии: оптическая теорема {0:0.000000}%; |R_scat − T_scat| / I_plate {1:0.000000}%.",
+                skinSnapshots.Max(item => item.OpticalBalanceErrorPercent),
                 skinSnapshots.Max(item => item.FarFieldMismatchPercent))
             : "Серия по толщине δ не выполнялась; диагностика построена не будет.";
 
@@ -576,11 +589,12 @@ public static class DiffractionCalculationService
         double x = energy.SkinDepth;
         return CreatePlot(
             "Толщина δ",
-            "Доля падающей энергии",
+            "Сечение, мкм",
             includeZero: true,
-            new PlotSeriesData("R_scat обратно", "#2563EB", OnePoint(x, energy.ReflectedScattered), showMarkers: true),
-            new PlotSeriesData("T_scat вперёд", "#16A34A", OnePoint(x, energy.ForwardScattered), isDashed: true, showMarkers: true),
-            new PlotSeriesData("A_J пластина", "#EA580C", OnePoint(x, energy.Absorbed), showMarkers: true));
+            new PlotSeriesData("C_back", "#2563EB", OnePoint(x, energy.ReflectedCrossSection), showMarkers: true),
+            new PlotSeriesData("C_forward", "#16A34A", OnePoint(x, energy.ForwardCrossSection), isDashed: true, showMarkers: true),
+            new PlotSeriesData("C_abs", "#EA580C", OnePoint(x, energy.AbsorbedCrossSection), showMarkers: true),
+            new PlotSeriesData("C_ext", "#374151", OnePoint(x, energy.ExtinctionCrossSection), showMarkers: true));
     }
 
     private static PlotData CreateEnergyPlot(
@@ -588,23 +602,31 @@ public static class DiffractionCalculationService
         double[] xValues,
         IReadOnlyList<EnergySnapshot> snapshots)
     {
+        bool showMarkers = xValues.Length == 1;
         return CreatePlot(
             xAxisTitle,
-            "Доля падающей энергии",
+            "Сечение, мкм",
             includeZero: true,
             new PlotSeriesData(
-                "R_scat обратно",
+                "C_back",
                 "#2563EB",
-                ToPoints(xValues, snapshots.Select(item => item.ReflectedScattered).ToArray())),
+                ToPoints(xValues, snapshots.Select(item => item.ReflectedCrossSection).ToArray()),
+                showMarkers: showMarkers),
             new PlotSeriesData(
-                "T_scat вперёд",
+                "C_forward",
                 "#16A34A",
-                ToPoints(xValues, snapshots.Select(item => item.ForwardScattered).ToArray()),
-                isDashed: true),
+                ToPoints(xValues, snapshots.Select(item => item.ForwardCrossSection).ToArray()),
+                isDashed: true, showMarkers: showMarkers),
             new PlotSeriesData(
-                "A_J пластина",
+                "C_abs",
                 "#EA580C",
-                ToPoints(xValues, snapshots.Select(item => item.Absorbed).ToArray())));
+                ToPoints(xValues, snapshots.Select(item => item.AbsorbedCrossSection).ToArray()),
+                showMarkers: showMarkers),
+            new PlotSeriesData(
+                "C_ext",
+                "#374151",
+                ToPoints(xValues, snapshots.Select(item => item.ExtinctionCrossSection).ToArray()),
+                showMarkers: showMarkers));
     }
 
     private static IReadOnlyList<DiagnosticRow> BuildDiagnostics(
@@ -612,9 +634,11 @@ public static class DiffractionCalculationService
         double collocationBoundaryErrorPercent,
         double galerkinBoundaryErrorPercent,
         double helmholtzResidual,
-        MethodComparison comparison)
+        MethodComparison comparison,
+        double collocationEdgeErrorPercent,
+        double galerkinEdgeErrorPercent)
     {
-        return new[]
+        var rows = new List<DiagnosticRow>
         {
             Diagnostic(
                 "Граничное условие",
@@ -640,6 +664,12 @@ public static class DiffractionCalculationService
                 FormatPercent(energy.LocalBalanceErrorPercent),
                 "≤ 2,00%",
                 energy.LocalBalanceErrorPercent <= 2.0),
+            Diagnostic(
+                "Энергетика",
+                "Оптическая теорема: |P_ext − P_scat − P_abs| / P_ext",
+                FormatPercent(energy.OpticalBalanceErrorPercent),
+                "≤ 2,00%",
+                energy.HasGlobalBalance && energy.OpticalBalanceErrorPercent <= 2.0),
             Diagnostic(
                 "Рассеяние",
                 "Разность R_scat / T_scat",
@@ -669,6 +699,14 @@ public static class DiffractionCalculationService
                 Status = "Сравнено"
             }
         };
+        if (energy.SkinDepth > 0)
+        {
+            rows.Add(Diagnostic("Граничное условие", "Коллокация: максимум у краёв и на концах",
+                FormatPercent(collocationEdgeErrorPercent), "≤ 1,00%", collocationEdgeErrorPercent <= 1.0));
+            rows.Add(Diagnostic("Граничное условие", "Галеркин: максимум у краёв и на концах",
+                FormatPercent(galerkinEdgeErrorPercent), "≤ 1,00%", galerkinEdgeErrorPercent <= 1.0));
+        }
+        return rows;
     }
 
     private static DiagnosticRow Diagnostic(
@@ -706,7 +744,10 @@ public static class DiffractionCalculationService
             "A_J / A_flux: {6:0.000000} / {7:0.000000}\n" +
             "max |u_col − u_gal|: {8:0.000E+00}\n" +
             "mean |u_col − u_gal|: {9:0.000E+00}\n" +
-            "max |a_col − a_gal|: {10:0.000E+00}",
+            "max |a_col − a_gal|: {10:0.000E+00}\n" +
+            "Экстинкция P_ext / I_plate (независимый интеграл): {11:0.000000}\n" +
+            "Оптическая теорема: {12:0.000000}%\n" +
+            "R_scat и T_scat нормированы на геометрическую проекцию, это не коэффициенты R и T.",
             collocationBoundaryErrorPercent,
             galerkinBoundaryErrorPercent,
             helmholtzResidual,
@@ -717,7 +758,9 @@ public static class DiffractionCalculationService
             energy.FluxAbsorbed,
             comparison.MaximumDifference,
             comparison.MeanDifference,
-            comparison.MaximumCoefficientDifference);
+            comparison.MaximumCoefficientDifference,
+            energy.Extinction,
+            energy.OpticalBalanceErrorPercent);
     }
 
     private static double[] SampleRealField(
@@ -890,8 +933,8 @@ public static class DiffractionCalculationService
     {
         public static SeriesCalculation Empty { get; } = new()
         {
-            SkinEnergyPlot = PlotData.Empty("Толщина δ", "Доля падающей энергии", "Запустите расчёт в режиме «Серия»"),
-            AngleEnergyPlot = PlotData.Empty("Угол θ, °", "Доля падающей энергии", "Запустите расчёт в режиме «Серия»"),
+            SkinEnergyPlot = PlotData.Empty("Толщина δ", "Сечение, мкм", "Запустите расчёт в режиме «Серия»"),
+            AngleEnergyPlot = PlotData.Empty("Угол θ, °", "Сечение, мкм", "Запустите расчёт в режиме «Серия»"),
             DiagnosticsPlot = PlotData.Empty("Толщина δ", "Отклонение, %", "Запустите расчёт в режиме «Серия»"),
             DiagnosticsCaption = "Серийная диагностика ещё не рассчитана.",
             SkinDepthRows = Array.Empty<EnergyStudyRow>(),

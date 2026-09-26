@@ -172,6 +172,7 @@ namespace Diffraction.Core
         {
             Dictionary<int, DiffractionMath.Compl> coefficients = new Dictionary<int, DiffractionMath.Compl>();
             Dictionary<string, string> values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            bool invalidCoefficients = expectedCoefficientCount <= 0;
 
             using (StringReader reader = new StringReader(stdout ?? string.Empty))
             {
@@ -188,17 +189,30 @@ namespace Diffraction.Core
                     if (key.StartsWith("coeff_", StringComparison.OrdinalIgnoreCase))
                     {
                         int index;
-                        if (!int.TryParse(key.Substring("coeff_".Length), NumberStyles.Integer, CultureInfo.InvariantCulture, out index))
+                        if (!int.TryParse(key.Substring("coeff_".Length), NumberStyles.Integer, CultureInfo.InvariantCulture, out index)
+                            || index < 0 || index >= expectedCoefficientCount || coefficients.ContainsKey(index))
+                        {
+                            invalidCoefficients = true;
                             continue;
+                        }
 
                         string[] parts = value.Split(',');
-                        if (parts.Length != 2) continue;
+                        if (parts.Length != 2)
+                        {
+                            invalidCoefficients = true;
+                            continue;
+                        }
 
                         double re, im;
-                        if (double.TryParse(parts[0], NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out re) &&
-                            double.TryParse(parts[1], NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out im))
+                        if (double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out re) &&
+                            double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out im) &&
+                            IsFinite(re) && IsFinite(im))
                         {
                             coefficients[index] = new DiffractionMath.Compl(re, im);
+                        }
+                        else
+                        {
+                            invalidCoefficients = true;
                         }
                     }
                     else
@@ -218,20 +232,29 @@ namespace Diffraction.Core
             }
 
             string model;
-            if (!values.TryGetValue("model", out model) || !string.Equals(model, "thin_sheet_v2", StringComparison.Ordinal))
+            if (!values.TryGetValue("model", out model) || !string.Equals(model, "thin_sheet_v4", StringComparison.Ordinal))
             {
                 response.Success = false;
                 response.ErrorMessage = "CUDA backend собран для несовместимой модели граничного условия.";
                 return response;
             }
 
-            response.Success = true;
-            response.BackendName = values.ContainsKey("backend") ? values["backend"] : "CUDA";
-            response.AssemblyMilliseconds = ParseDouble(values, "assembly_ms");
-            response.LinearSolveMilliseconds = ParseDouble(values, "solve_ms");
-            response.TotalMilliseconds = ParseDouble(values, "total_ms");
+            if (invalidCoefficients)
+            {
+                response.ErrorMessage = "CUDA backend вернул некорректные или нечисловые коэффициенты.";
+                return response;
+            }
 
-            response.Coefficients = new DiffractionMath.Compl[expectedCoefficientCount];
+            response.BackendName = values.ContainsKey("backend") ? values["backend"] : "CUDA";
+            if (!TryParseFiniteDouble(values, "assembly_ms", out response.AssemblyMilliseconds)
+                || !TryParseFiniteDouble(values, "solve_ms", out response.LinearSolveMilliseconds)
+                || !TryParseFiniteDouble(values, "total_ms", out response.TotalMilliseconds))
+            {
+                response.ErrorMessage = "CUDA backend вернул некорректное время расчёта.";
+                return response;
+            }
+
+            DiffractionMath.Compl[] parsedCoefficients = new DiffractionMath.Compl[expectedCoefficientCount];
             for (int i = 0; i < expectedCoefficientCount; i++)
             {
                 DiffractionMath.Compl value;
@@ -241,22 +264,27 @@ namespace Diffraction.Core
                     response.ErrorMessage = "CUDA backend не вернул коэффициент с индексом " + i.ToString(CultureInfo.InvariantCulture);
                     return response;
                 }
-                response.Coefficients[i] = value;
+                parsedCoefficients[i] = value;
             }
 
+            response.Coefficients = parsedCoefficients;
+            response.Success = true;
             return response;
         }
 
-        private static double ParseDouble(Dictionary<string, string> values, string key)
+        private static bool IsFinite(double value)
         {
+            return !double.IsNaN(value) && !double.IsInfinity(value);
+        }
+
+        private static bool TryParseFiniteDouble(Dictionary<string, string> values, string key, out double parsed)
+        {
+            parsed = 0.0;
             string value;
             if (!values.TryGetValue(key, out value))
-                return 0.0;
+                return true;
 
-            double parsed;
-            return double.TryParse(value, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out parsed)
-                ? parsed
-                : 0.0;
+            return double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out parsed) && IsFinite(parsed);
         }
 
         private static string FindRelativeFile(string relativePath)

@@ -74,7 +74,9 @@ public sealed class CalculationServiceTests
         Assert.AreEqual(3, output.SkinEnergyPlot.Series[0].Points.Count);
         Assert.AreEqual(2, output.AngleEnergyPlot.Series[0].Points.Count);
         Assert.AreEqual(3, output.SeriesDiagnosticsPlot.Series[0].Points.Count);
-        Assert.AreEqual(3, output.SeriesCheckSummaries.Count);
+        Assert.AreEqual(4, output.SeriesCheckSummaries.Count);
+        Assert.IsTrue(output.SeriesCheckSummaries.Any(text => text.Contains("идеальный проводник")));
+        Assert.IsTrue(output.SeriesCheckSummaries.Any(text => text.Contains("скин-слой")));
     }
 
     [DataTestMethod]

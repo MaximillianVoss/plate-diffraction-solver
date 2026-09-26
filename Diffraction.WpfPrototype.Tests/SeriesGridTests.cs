@@ -65,7 +65,7 @@ public sealed class SeriesGridTests
         Assert.AreEqual(0.0, absorbed[0].Y, 0.0, "Zero skin must not reuse the nearby nonzero skin solution.");
         Assert.IsTrue(absorbed[1].Y > 0);
         Assert.IsTrue(absorbed[2].Y > absorbed[1].Y);
-        Assert.AreEqual(endpoint.Energy.Absorbed, absorbed[2].Y, Math.Abs(endpoint.Energy.Absorbed) * 1e-10);
+        Assert.AreEqual(endpoint.Energy.AbsorbedCrossSection, absorbed[2].Y, Math.Abs(endpoint.Energy.AbsorbedCrossSection) * 1e-10);
     }
 
     [TestMethod]

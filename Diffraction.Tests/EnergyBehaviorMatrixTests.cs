@@ -130,10 +130,13 @@ namespace Diffraction.Tests
             double e15 = n15.CalculateFarFieldScatteredEnergy(96, 120).TotalScattered;
             double e25 = n25.CalculateFarFieldScatteredEnergy(96, 120).TotalScattered;
             double e35 = n35.CalculateFarFieldScatteredEnergy(96, 120).TotalScattered;
-            double coarseChange = Math.Abs(e25 - e15) / e35;
             double fineChange = Math.Abs(e35 - e25) / e35;
-
-            Assert.IsTrue(fineChange < coarseChange, "successive N refinement must reduce the energy change");
+            Solver reference = CreateTwoPlates(45.0, n: 80, skinDepth: 0.01);
+            Assert.AreEqual(1, reference.SolveDifr());
+            double e80 = reference.CalculateFarFieldScatteredEnergy(360, 640).TotalScattered;
+            // Successive differences need not be monotone for oscillatory convergence.
+            Assert.IsTrue(Math.Abs(e25 - e80) < Math.Abs(e15 - e80));
+            Assert.IsTrue(Math.Abs(e35 - e80) < Math.Abs(e25 - e80));
             Assert.IsTrue(fineChange < 0.001, "N=25 and N=35 scattered energies must agree within 0.1%");
         }
 

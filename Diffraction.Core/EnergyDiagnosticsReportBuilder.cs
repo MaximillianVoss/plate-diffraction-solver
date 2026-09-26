@@ -17,6 +17,9 @@ namespace Diffraction.Core
         public bool LocalBalanceOk { get; internal set; }
         public bool ContourBalanceOk { get; internal set; }
         public bool AbsorptionFormsAgree { get; internal set; }
+        public bool OpticalTheoremOk { get; internal set; }
+        public double Extinction { get; internal set; }
+        public double OpticalTheoremError { get; internal set; }
         public double Incident { get; internal set; }
         public double ReflectedScattered { get; internal set; }
         public double ForwardScattered { get; internal set; }
@@ -43,6 +46,11 @@ namespace Diffraction.Core
             Solver.ScatteredSheetFluxComponents scatteredSheet = solver.CalculateScatteredSheetFluxComponents();
 
             double incident = energy.Incident;
+            double extinction = solver.CalculateExtinctionEnergy(Math.Max(8 * solver.N, 80));
+            double opticalError = extinction > 0
+                ? Math.Abs(extinction - farField.TotalScattered - energy.Absorbed) / extinction
+                : double.NaN;
+            bool opticalTheoremOk = IsFinite(opticalError) && opticalError < LocalBalanceTolerance;
             double absorbedByField = skinDepth > 0 ? solver.CalculateAbsorbedEnergyByBoundaryValue() : 0.0;
             double absorbedDifference = Math.Abs(energy.Absorbed - absorbedByField);
             bool referenceValid = incident >= 1e-8;
@@ -185,13 +193,22 @@ namespace Diffraction.Core
                 : "   ВНИМАНИЕ: уточните квадратуру контрольного контура.");
             message.AppendLine();
 
+            message.AppendLine("6. Оптическая теорема (независимая экстинкция):");
+            message.AppendLine(string.Format("   P_ext = Im integral conj(u_inc) J dx / 2: {0:R}", extinction));
+            message.AppendLine(string.Format("   P_scat + P_abs: {0:R}", farField.TotalScattered + energy.Absorbed));
+            message.AppendLine(string.Format("   |P_ext - P_scat - P_abs| / P_ext: {0}", percentText(opticalError)));
+            message.AppendLine(opticalTheoremOk
+                ? "   OK: рассеяние и поглощение согласованы с изъятой мощностью."
+                : "   ВНИМАНИЕ: оптическая теорема не выполнена в допуске.");
+            message.AppendLine();
+
             message.AppendLine("Примечание:");
             message.AppendLine("   Для конечной пластины полный прошедший поток содержит падающее поле и интерференцию.");
             message.AppendLine("   Поэтому он не равен T_scat и не сравнивается с R_scat как отдельная энергия рассеяния.");
             message.AppendLine("   Нормировка на геометрическую проекцию может дать рассеяние больше 100%: это сечение, а не вероятность.");
 
             bool allChecksOk = boundaryConditionOk && helmholtzEquationOk && scatteringSymmetryOk &&
-                scatteredEnergyNonNegative &&
+                scatteredEnergyNonNegative && opticalTheoremOk &&
                 (!referenceValid || localBalanceOk && contourBalanceOk && absorptionFormsAgree);
 
             return new EnergyDiagnosticsReport
@@ -209,6 +226,9 @@ namespace Diffraction.Core
                 LocalBalanceOk = localBalanceOk,
                 ContourBalanceOk = contourBalanceOk,
                 AbsorptionFormsAgree = absorptionFormsAgree,
+                OpticalTheoremOk = opticalTheoremOk,
+                Extinction = extinction,
+                OpticalTheoremError = opticalError,
                 Incident = incident,
                 ReflectedScattered = farField.ReflectedScattered,
                 ForwardScattered = farField.TransmittedScattered,

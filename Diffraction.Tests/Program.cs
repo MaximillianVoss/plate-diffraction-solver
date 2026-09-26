@@ -164,7 +164,8 @@ namespace Diffraction.Tests
         [DataRow(45, 0.1)]
         public void AbsorbedEnergy_CurrentAndBoundaryValueFormsAgree(double angleDeg, double skinDepth)
         {
-            DifrOnLenta solver = CreateSinglePlateSolver(n: 30, skinDepth: skinDepth, angleDeg: angleDeg);
+            // Small nonzero impedance has an edge boundary layer; use a resolved regular basis.
+            DifrOnLenta solver = CreateSinglePlateSolver(n: 55, skinDepth: skinDepth, angleDeg: angleDeg);
             Assert.AreEqual(1, solver.SolveDifr(), "solver failed");
 
             double absorbedByDerivative = solver.CalculateAbsorbedEnergy();
@@ -173,7 +174,7 @@ namespace Diffraction.Tests
 
             AssertFiniteAndNonNegative(absorbedByDerivative, "absorbed energy by derivative");
             AssertFiniteAndNonNegative(absorbedByBoundaryValue, "absorbed energy by boundary value");
-            double tolerance = skinDepth <= 0.001 ? 0.10 : 0.08;
+            double tolerance = 0.01;
             Assert.IsTrue(Math.Abs(absorbedByDerivative - absorbedByBoundaryValue) / scale < tolerance,
                 "current and boundary-value absorption formulas must agree");
         }
@@ -193,7 +194,7 @@ namespace Diffraction.Tests
         public void BoundaryError_ImprovesAcrossAnglesAndThinSkinCases(double angleDeg, double skinDepth)
         {
             DifrOnLenta coarse = CreateTwoPlateSolver(n: 10, skinDepth: skinDepth, angleDeg: angleDeg);
-            DifrOnLenta fine = CreateTwoPlateSolver(n: 30, skinDepth: skinDepth, angleDeg: angleDeg);
+            DifrOnLenta fine = CreateTwoPlateSolver(n: 55, skinDepth: skinDepth, angleDeg: angleDeg);
 
             Assert.AreEqual(1, coarse.SolveDifr(), "coarse solver failed");
             Assert.AreEqual(1, fine.SolveDifr(), "fine solver failed");
@@ -347,7 +348,7 @@ namespace Diffraction.Tests
                 "--skin-depth", "0.001");
 
             Assert.IsTrue(native.Success, native.Output);
-            Assert.AreEqual("thin_sheet_v2", native.Model, "native model version");
+            Assert.AreEqual("thin_sheet_v4", native.Model, "native model version");
             Assert.AreEqual(managed.y.Length, native.Coefficients.Count, "coefficient count mismatch");
 
             for (int i = 0; i < managed.y.Length; i++)
@@ -355,6 +356,21 @@ namespace Diffraction.Tests
                 Assert.AreEqual(managed.y[i].Re, native.Coefficients[i].Re, 1e-12, $"real mismatch at coeff_{i}");
                 Assert.AreEqual(managed.y[i].Im, native.Coefficients[i].Im, 1e-12, $"imag mismatch at coeff_{i}");
             }
+        }
+
+        [TestMethod]
+        public void NativeCpuBackend_MatchesManagedKernelAtLargeBesselArguments()
+        {
+            DifrOnLenta managed = new DifrOnLenta(-1.5, -0.5, 0.5, 1.5, 0.2, Math.PI / 4, 24, 0.01);
+            Assert.AreEqual(1, managed.SolveDifr());
+            NativeRunResult native = RunNativeCpu(
+                "--alpha1", "-1.5", "--beta1", "-0.5", "--alpha2", "0.5", "--beta2", "1.5",
+                "--lambda", "0.2", "--theta-deg", "45", "--n", "24", "--skin-depth", "0.01");
+            Assert.IsTrue(native.Success, native.Output);
+            Assert.AreEqual(managed.y.Length, native.Coefficients.Count);
+            for (int i = 0; i < managed.y.Length; i++)
+                Assert.IsTrue(Compl.Abs(managed.y[i] - native.Coefficients[i]) < 1e-7,
+                    "Stable native/managed kernel mismatch at coefficient " + i);
         }
 
         [TestMethod]

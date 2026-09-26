@@ -60,6 +60,7 @@ try {
             -c $Configuration `
             --no-build `
             --no-restore `
+            --filter 'TestCategory!=NativeCuda' `
             -v minimal `
             --logger "trx;LogFileName=$([System.IO.Path]::GetFileName($trxPath))" `
             --results-directory $OutputDirectory
@@ -77,6 +78,7 @@ try {
         -FilePath $applicationPath `
         -WorkingDirectory $repoRoot `
         -ArgumentList $sweepArguments `
+        -WindowStyle Hidden `
         -PassThru `
         -Wait
     if ($sweepProcess.ExitCode -ne 0) {
@@ -182,7 +184,7 @@ try {
     [void]$report.AppendLine("- .NET SDK: ``$dotnetVersion``")
     [void]$report.AppendLine("- Автоматические тесты: пройдено $($counters.passed)/$($counters.total), ошибок $($counters.failed)")
     [void]$report.AppendLine("- Нативный CPU-модуль: $(if ($SkipNativeBuild) { 'сборка не запрашивалась' } else { 'успешно собран' })")
-    [void]$report.AppendLine('- CUDA-модуль: проверены исходный код и интерфейс запуска; для исполнения нужен компьютер с CUDA')
+    [void]$report.AppendLine('- CUDA-модуль: исполнение GPU исключено из этого прогона; проверен отказ от несовместимых native-результатов')
     [void]$report.AppendLine()
     [void]$report.AppendLine('## Проверки поведения')
     [void]$report.AppendLine()

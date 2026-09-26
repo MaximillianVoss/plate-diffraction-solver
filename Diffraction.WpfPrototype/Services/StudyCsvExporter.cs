@@ -11,7 +11,17 @@ namespace Diffraction.WpfPrototype.Services;
 /// </summary>
 public static class StudyCsvExporter
 {
-    private const string EnergyHeader = "E_ref, %,E_tr, %,E_abs, %,Сумма, %,Дисбаланс, %";
+    private static readonly string[] EnergyHeaders =
+    {
+        "R_scat_pct_I_plate",
+        "T_scat_pct_I_plate",
+        "A_J_pct_I_plate",
+        "sum_pct_I_plate",
+        "extinction_pct_I_plate",
+        "optical_balance_error_pct_extinction",
+        "cross_section_scale_um",
+        "has_global_balance"
+    };
     private static CultureInfo InvariantCulture { get; } = CultureInfo.InvariantCulture;
 
     /// <summary>
@@ -23,12 +33,12 @@ public static class StudyCsvExporter
     {
         ArgumentNullException.ThrowIfNull(rows);
         var builder = new StringBuilder();
-        builder.AppendLine("Исследование изменения толщины скин-слоя");
-        builder.AppendLine(CsvComment(parametersSummary));
-        builder.AppendLine("Толщина скин-слоя δ, мкм," + EnergyHeader);
+        builder.AppendLine(CsvCell("Исследование изменения толщины скин-слоя"));
+        builder.AppendLine(CsvCell(parametersSummary));
+        AppendHeader(builder, "skin_depth_um");
         foreach (EnergyStudyRow row in rows)
         {
-            builder.Append(FormatArgument(row.ArgumentValue));
+            builder.Append(FormatNumber(row.ArgumentValue));
             AppendEnergyCells(builder, row);
         }
         return builder.ToString();
@@ -50,22 +60,22 @@ public static class StudyCsvExporter
             throw new ArgumentException("Таблицы идеального проводника и скин-слоя должны содержать одинаковое число углов.");
 
         var builder = new StringBuilder();
-        builder.AppendLine("Исследование изменения угла падения");
-        builder.AppendLine(CsvComment(parametersSummary));
-        builder.AppendLine("Таблица 1. Идеальный проводник (без скин-слоя)");
-        builder.AppendLine("Угол θ, °," + EnergyHeader);
+        builder.AppendLine(CsvCell("Исследование изменения угла падения"));
+        builder.AppendLine(CsvCell(parametersSummary));
+        builder.AppendLine(CsvCell("Таблица 1. Идеальный проводник (без скин-слоя)"));
+        AppendHeader(builder, "angle_deg");
         foreach (EnergyStudyRow row in idealRows)
         {
-            builder.Append(FormatArgument(row.ArgumentValue));
+            builder.Append(FormatNumber(row.ArgumentValue));
             AppendEnergyCells(builder, row);
         }
 
         builder.AppendLine();
-        builder.AppendLine("Таблица 2. Со скин-слоем (δ = " + FormatArgument(skinDepthMicrometers) + " мкм)");
-        builder.AppendLine("Угол θ, °," + EnergyHeader);
+        builder.AppendLine(CsvCell("Таблица 2. Со скин-слоем (δ = " + FormatNumber(skinDepthMicrometers) + " мкм)"));
+        AppendHeader(builder, "angle_deg");
         foreach (EnergyStudyRow row in skinRows)
         {
-            builder.Append(FormatArgument(row.ArgumentValue));
+            builder.Append(FormatNumber(row.ArgumentValue));
             AppendEnergyCells(builder, row);
         }
         return builder.ToString();
@@ -78,10 +88,10 @@ public static class StudyCsvExporter
     {
         ArgumentNullException.ThrowIfNull(row);
         var builder = new StringBuilder();
-        builder.AppendLine("Энергетика одиночного расчёта");
-        builder.AppendLine(CsvComment(parametersSummary));
-        builder.AppendLine("Толщина скин-слоя δ, мкм," + EnergyHeader);
-        builder.Append(FormatArgument(row.ArgumentValue));
+        builder.AppendLine(CsvCell("Энергетика одиночного расчёта"));
+        builder.AppendLine(CsvCell(parametersSummary));
+        AppendHeader(builder, "skin_depth_um");
+        builder.Append(FormatNumber(row.ArgumentValue));
         AppendEnergyCells(builder, row);
         return builder.ToString();
     }
@@ -89,24 +99,38 @@ public static class StudyCsvExporter
     private static void AppendEnergyCells(StringBuilder builder, EnergyStudyRow row)
     {
         builder.Append(',');
-        builder.Append(FormatPercent(row.ReflectedPercent));
+        builder.Append(FormatNumber(row.ReflectedPercent));
         builder.Append(',');
-        builder.Append(FormatPercent(row.TransmittedPercent));
+        builder.Append(FormatNumber(row.TransmittedPercent));
         builder.Append(',');
-        builder.Append(FormatPercent(row.AbsorbedPercent));
+        builder.Append(FormatNumber(row.AbsorbedPercent));
         builder.Append(',');
-        builder.Append(FormatPercent(row.SumPercent));
+        builder.Append(FormatNumber(row.SumPercent));
         builder.Append(',');
-        builder.Append(FormatPercent(row.ImbalancePercent));
+        builder.Append(row.HasGlobalBalance ? FormatNumber(row.ExtinctionPercent) : string.Empty);
+        builder.Append(',');
+        builder.Append(row.HasGlobalBalance ? FormatNumber(row.ImbalancePercent) : string.Empty);
+        builder.Append(',');
+        builder.Append(FormatNumber(row.CrossSectionScale));
+        builder.Append(',');
+        builder.Append(row.HasGlobalBalance ? "true" : "false");
         builder.AppendLine();
     }
 
-    private static string FormatArgument(double value) => value.ToString("0.######", InvariantCulture);
-    private static string FormatPercent(double value) => value.ToString("0.00", InvariantCulture);
-
-    private static string CsvComment(string text)
+    private static void AppendHeader(StringBuilder builder, string argumentHeader)
     {
-        // Комментарий должен занимать одну ячейку, чтобы не ломать разбор строки.
-        return "\"" + text.Replace("\"", "'") + "\"";
+        builder.Append(CsvCell(argumentHeader));
+        foreach (string header in EnergyHeaders)
+            builder.Append(',').Append(CsvCell(header));
+        builder.AppendLine();
+    }
+
+    private static string FormatNumber(double value) =>
+        double.IsFinite(value) ? value.ToString("R", InvariantCulture) : string.Empty;
+
+    private static string CsvCell(string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        return "\"" + text.Replace("\"", "\"\"") + "\"";
     }
 }

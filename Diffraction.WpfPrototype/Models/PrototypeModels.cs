@@ -213,10 +213,15 @@ public sealed class EnergyStudyRow
 
     public EnergyStudyRow(double argumentValue, EnergySnapshot snapshot)
     {
+        ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentValue = argumentValue;
         ReflectedPercent = snapshot.ReflectedScattered * 100.0;
         TransmittedPercent = snapshot.ForwardScattered * 100.0;
         AbsorbedPercent = snapshot.Absorbed * 100.0;
+        ExtinctionPercent = snapshot.Extinction * 100.0;
+        ImbalancePercent = snapshot.OpticalBalanceErrorPercent;
+        HasGlobalBalance = snapshot.HasGlobalBalance;
+        CrossSectionScale = snapshot.CrossSectionScale;
     }
 
     public double ArgumentValue { get; }
@@ -224,14 +229,21 @@ public sealed class EnergyStudyRow
     public double TransmittedPercent { get; }
     public double AbsorbedPercent { get; }
     public double SumPercent => ReflectedPercent + TransmittedPercent + AbsorbedPercent;
-    public double ImbalancePercent => Math.Abs(SumPercent - 100.0);
+    public double ExtinctionPercent { get; }
+    public double ImbalancePercent { get; }
+    public bool HasGlobalBalance { get; }
+    public double CrossSectionScale { get; }
 
     public string ArgumentDisplay => ArgumentValue.ToString("0.######", RussianCulture);
     public string ReflectedDisplay => ReflectedPercent.ToString("0.00", RussianCulture);
     public string TransmittedDisplay => TransmittedPercent.ToString("0.00", RussianCulture);
     public string AbsorbedDisplay => AbsorbedPercent.ToString("0.00", RussianCulture);
     public string SumDisplay => SumPercent.ToString("0.00", RussianCulture);
-    public string ImbalanceDisplay => ImbalancePercent.ToString("0.00", RussianCulture);
+    public string ExtinctionDisplay => HasGlobalBalance ? ExtinctionPercent.ToString("0.00", RussianCulture) : "н/д";
+    public string ImbalanceDisplay => HasGlobalBalance ? ImbalancePercent.ToString("0.000000", RussianCulture) : "н/д";
+    public string CrossSectionScaleDisplay => double.IsFinite(CrossSectionScale)
+        ? CrossSectionScale.ToString("G6", RussianCulture)
+        : "н/д";
 }
 
 public sealed class CalculationOutput

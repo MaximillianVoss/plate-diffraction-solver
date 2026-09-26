@@ -44,9 +44,9 @@ public static class ExportPackageBuilder
                 first = false;
                 if (row < series.Points.Count)
                 {
-                    builder.Append(FormatNumber(series.Points[row].X));
+                    builder.Append(series.Points[row].X.ToString("R", InvariantCulture));
                     builder.Append(',');
-                    builder.Append(FormatNumber(series.Points[row].Y));
+                    builder.Append(series.Points[row].Y.ToString("R", InvariantCulture));
                 }
                 else
                 {
@@ -74,6 +74,13 @@ public static class ExportPackageBuilder
             {
                 backend = backendName,
                 methods = new[] { "collocation", "galerkin" },
+                currentCoefficientBasis = EnergySnapshot.DescribeCoefficientBasis(parameters.SkinDepthMicrometers),
+                coefficientBasisBySkinDepth = new
+                {
+                    zero = "T_n(tau)/sqrt(1-tau^2)",
+                    positive = "P_n(tau)",
+                    indices = "n=0..N-1"
+                },
                 application = "Diffraction.WpfPrototype"
             },
             parameters = new
@@ -120,6 +127,8 @@ public static class ExportPackageBuilder
         builder.AppendLine("ОТЧЁТ О РАСЧЁТЕ ДИФРАКЦИИ НА ПЛАСТИНЕ");
         builder.AppendLine("Экспортировано (UTC): " + exportedAtUtc.ToString("O", InvariantCulture));
         builder.AppendLine("Решатель: " + backendName);
+        builder.AppendLine("Базис выбранного расчёта: " + energy.CoefficientBasisDisplay);
+        builder.AppendLine("Базисы в сериях меняются при δ = 0: " + EnergySnapshot.DescribeCoefficientBasis(0) + " " + EnergySnapshot.DescribeCoefficientBasis(1));
         builder.AppendLine();
         builder.AppendLine("=== ЭНЕРГЕТИКА (доли падающего потока через пластину) ===");
         if (energy.IsAvailable)
@@ -128,6 +137,10 @@ public static class ExportPackageBuilder
             builder.AppendLine($"T_scat вперёд:       {energy.ForwardScattered.ToString("0.000000", InvariantCulture)}");
             builder.AppendLine($"A_J пластина:        {energy.Absorbed.ToString("0.000000", InvariantCulture)}");
             builder.AppendLine($"A_flux:              {energy.FluxAbsorbed.ToString("0.000000", InvariantCulture)}");
+            builder.AppendLine($"P_ext / I_plate (независимый интеграл): {energy.Extinction.ToString("R", InvariantCulture)}");
+            builder.AppendLine($"Оптическая теорема, % от P_ext: {energy.OpticalBalanceErrorPercent.ToString("R", InvariantCulture)}");
+            builder.AppendLine($"C_back / C_forward / C_abs / C_ext, мкм: {energy.ReflectedCrossSection.ToString("R", InvariantCulture)} / {energy.ForwardCrossSection.ToString("R", InvariantCulture)} / {energy.AbsorbedCrossSection.ToString("R", InvariantCulture)} / {energy.ExtinctionCrossSection.ToString("R", InvariantCulture)}");
+            builder.AppendLine("R_scat и T_scat не являются коэффициентами R и T. Их сумма с A сравнивается с P_ext/I_plate, а не с единицей.");
             builder.AppendLine($"Локальная невязка ЗСЭ, %: {energy.LocalBalanceErrorPercent.ToString("0.000000", InvariantCulture)}");
             builder.AppendLine($"|R_scat − T_scat|, %:     {energy.FarFieldMismatchPercent.ToString("0.000000", InvariantCulture)}");
             builder.AppendLine($"Поток сверху / снизу:     {energy.SheetAbove.ToString("0.000000", InvariantCulture)} / {energy.SheetBelow.ToString("0.000000", InvariantCulture)}");
@@ -208,6 +221,16 @@ public static class ExportPackageBuilder
             string dash = series.IsDashed ? " stroke-dasharray=\"7,5\"" : string.Empty;
             builder.AppendLine($"<polyline fill=\"none\" stroke=\"{series.Color}\" stroke-width=\"{series.Thickness.ToString("0.0", InvariantCulture)}\"{dash} points=\"{points.ToString().Trim()}\">" +
                                $"<title>{EscapeXml(series.Name)}</title></polyline>");
+            if (series.ShowMarkers)
+            {
+                foreach (PlotPointData point in series.Points)
+                {
+                    double sx = left + (point.X - xMin) / (xMax - xMin) * plotWidth;
+                    double sy = top + plotHeight - (point.Y - yMin) / (yMax - yMin) * plotHeight;
+                    builder.AppendLine($"<circle cx=\"{FormatNumber(sx)}\" cy=\"{FormatNumber(sy)}\" r=\"3.5\" fill=\"{series.Color}\" stroke=\"white\" stroke-width=\"1\">" +
+                                       $"<title>{EscapeXml(series.Name)}</title></circle>");
+                }
+            }
         }
 
         int legendX = left + 12;
@@ -223,7 +246,7 @@ public static class ExportPackageBuilder
     }
 
     private static string FormatNumber(double value) => value.ToString("0.######", InvariantCulture);
-    private static string CsvCell(string text) => "\"" + text.Replace("\"", "'") + "\"";
+    private static string CsvCell(string text) => "\"" + text.Replace("\"", "\"\"") + "\"";
     private static string EscapeXml(string text) =>
         text.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;").Replace("\"", "&quot;");
 }

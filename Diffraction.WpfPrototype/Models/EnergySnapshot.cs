@@ -13,7 +13,9 @@ public sealed class EnergySnapshot
         double sheetBelow,
         double fluxAbsorbed,
         double localBalanceErrorPercent,
-        bool isAvailable = true)
+        bool isAvailable = true,
+        double extinction = double.NaN,
+        double crossSectionScale = double.NaN)
     {
         SkinDepth = skinDepth;
         ReflectedScattered = reflectedScattered;
@@ -24,6 +26,8 @@ public sealed class EnergySnapshot
         FluxAbsorbed = fluxAbsorbed;
         LocalBalanceErrorPercent = localBalanceErrorPercent;
         IsAvailable = isAvailable;
+        Extinction = extinction;
+        CrossSectionScale = crossSectionScale;
     }
 
     public static EnergySnapshot Empty { get; } = new(
@@ -46,6 +50,17 @@ public sealed class EnergySnapshot
     public double SheetBelow { get; }
     public double FluxAbsorbed { get; }
     public double LocalBalanceErrorPercent { get; }
+    public double Extinction { get; }
+    public double CrossSectionScale { get; }
+    public bool HasGlobalBalance => IsAvailable && double.IsFinite(Extinction) && Extinction > 0;
+    public double OpticalBalanceErrorPercent => HasGlobalBalance
+        ? Math.Abs(Extinction - ReflectedScattered - ForwardScattered - Absorbed) / Extinction * 100.0
+        : double.NaN;
+    public double ReflectedCrossSection => ReflectedScattered * CrossSectionScale;
+    public double ForwardCrossSection => ForwardScattered * CrossSectionScale;
+    public double AbsorbedCrossSection => Absorbed * CrossSectionScale;
+    public double ExtinctionCrossSection => Extinction * CrossSectionScale;
+    public string OpticalBalanceErrorDisplay => HasGlobalBalance ? $"{OpticalBalanceErrorPercent:0.000}%" : "н/д";
 
     public double FarFieldMismatchPercent =>
         Math.Abs(ReflectedScattered - ForwardScattered) * 100.0;
@@ -53,7 +68,7 @@ public sealed class EnergySnapshot
     public double SheetMismatchPercent =>
         Math.Abs(SheetAbove - SheetBelow) * 100.0;
 
-    public bool IsWithinTolerance => IsAvailable && LocalBalanceErrorPercent <= 2.0;
+    public bool IsWithinTolerance => HasGlobalBalance && LocalBalanceErrorPercent <= 2.0 && OpticalBalanceErrorPercent <= 2.0;
     public bool IsFarFieldWithinTolerance => IsAvailable && FarFieldMismatchPercent <= 0.000001;
     public string BalanceStatus => !IsAvailable ? "Нет расчёта" : IsWithinTolerance ? "В допуске" : "Проверить";
     public string FarFieldStatus => !IsAvailable
@@ -65,18 +80,24 @@ public sealed class EnergySnapshot
     public string FarFieldForeground => !IsAvailable ? "#667085" : IsFarFieldWithinTolerance ? "#16803C" : "#DC6803";
     public string FarFieldBackground => !IsAvailable ? "#F9FAFB" : IsFarFieldWithinTolerance ? "#F0FAF4" : "#FFF6ED";
     public string FarFieldBorder => !IsAvailable ? "#D0D5DD" : IsFarFieldWithinTolerance ? "#ABEFC6" : "#FEDF89";
-    public string ReflectedDisplay => IsAvailable ? $"{ReflectedScattered:0.000}" : "—";
-    public string ForwardDisplay => IsAvailable ? $"{ForwardScattered:0.000}" : "—";
-    public string AbsorbedDisplay => IsAvailable ? $"{Absorbed:0.000}" : "—";
+    public string ReflectedDisplay => IsAvailable && double.IsFinite(ReflectedCrossSection) ? $"{ReflectedCrossSection:0.000}" : "—";
+    public string ForwardDisplay => IsAvailable && double.IsFinite(ForwardCrossSection) ? $"{ForwardCrossSection:0.000}" : "—";
+    public string AbsorbedDisplay => IsAvailable && double.IsFinite(AbsorbedCrossSection) ? $"{AbsorbedCrossSection:0.000}" : "—";
     public string SkinDepthDisplay => IsAvailable ? $"{SkinDepth:0.000000}" : "—";
     public string ReflectedPercentDisplay => IsAvailable ? $"{ReflectedScattered:P1} от I_plate" : "расчёт не выполнен";
     public string ForwardPercentDisplay => IsAvailable ? $"{ForwardScattered:P1} от I_plate" : "расчёт не выполнен";
     public string AbsorbedPercentDisplay => IsAvailable ? $"{Absorbed:P1} от I_plate" : "расчёт не выполнен";
     public string LocalBalanceErrorDisplay => IsAvailable ? $"{LocalBalanceErrorPercent:0.000}%" : "—";
     public string LocalBalanceResidualDisplay =>
-        IsAvailable ? $"|ΔЗСЭ| / I_plate = {LocalBalanceErrorPercent:0.000}%" : "Нажмите «Рассчитать»";
+        IsAvailable ? $"Локальная невязка / I_plate: {LocalBalanceErrorDisplay}; оптическая теорема / P_ext: {OpticalBalanceErrorDisplay}; допуск каждой ≤ 2%." : "Нажмите «Рассчитать»";
     public string CompactBalanceDisplay =>
-        IsAvailable ? $"{BalanceStatus}  •  |Δ| / I_plate = {LocalBalanceErrorPercent:0.000}%" : "Расчёт не выполнен";
+        IsAvailable ? $"{BalanceStatus}  •  {LocalBalanceResidualDisplay}" : "Расчёт не выполнен";
+    public string CoefficientBasisDisplay => IsAvailable
+        ? DescribeCoefficientBasis(SkinDepth)
+        : "Коэффициенты ещё не рассчитаны.";
+    public static string DescribeCoefficientBasis(double skinDepth) => skinDepth > 0
+        ? "δ > 0: J(τ) = Σ c_n P_n(τ), n = 0…N−1; полиномы Лежандра без веса."
+        : "PEC, δ = 0: J(τ) = Σ c_n T_n(τ)/√(1−τ²), n = 0…N−1; взвешенный базис Чебышёва.";
     public string SheetPairDisplay => IsAvailable ? $"{SheetAbove:0.000} / {SheetBelow:0.000}" : "— / —";
     public string SheetMismatchDisplay => IsAvailable ? $"{SheetMismatchPercent:0.000000}%" : "—";
 }

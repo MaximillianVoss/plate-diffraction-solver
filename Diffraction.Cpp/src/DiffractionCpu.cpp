@@ -3,6 +3,7 @@
 #include <cmath>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -92,23 +93,111 @@ namespace
         return t;
     }
 
-    double j0_series(double x)
+    double legendre(int n, double x)
     {
-        double x_half_sq = x * x / 4.0;
-        double sum = 1.0;
-        double term = 1.0;
-        for (int k = 1; k <= 100; ++k)
+        double previous = 1.0;
+        if (n == 0) return previous;
+        double current = x;
+        for (int j = 1; j < n; ++j)
         {
-            term *= -x_half_sq / (static_cast<double>(k) * static_cast<double>(k));
-            sum += term;
-            if (std::fabs(term) < 1e-15) break;
+            double next = ((2.0 * j + 1.0) * x * current - j * previous) / (j + 1.0);
+            previous = current;
+            current = next;
         }
-        return sum;
+        return current;
+    }
+
+    double legendre_log_moment(int n, double x)
+    {
+        if (x < -1.0 || x > 1.0)
+            throw std::runtime_error("Logarithmic moment requires a point on the reference interval");
+        if (x == -1.0 || x == 1.0)
+        {
+            if (n == 0) return 2.0 * std::log(2.0) - 2.0;
+            double edge = -2.0 / (static_cast<double>(n) * (n + 1.0));
+            return x < 0.0 && n % 2 != 0 ? -edge : edge;
+        }
+        if (n == 0)
+            return (1.0 + x) * std::log1p(x) + (1.0 - x) * std::log1p(-x) - 2.0;
+
+        // Integral of P_n(s) log|x-s| over [-1,1], without a Chebyshev weight.
+        double previous = 0.5 * (std::log1p(x) - std::log1p(-x));
+        double current = x * previous - 1.0;
+        for (int j = 1; j <= n; ++j)
+        {
+            double next = ((2.0 * j + 1.0) * x * current - j * previous) / (j + 1.0);
+            if (j == n) return 2.0 * (next - previous) / (2.0 * n + 1.0);
+            previous = current;
+            current = next;
+        }
+        throw std::runtime_error("Invalid Legendre degree");
+    }
+
+    void gauss_legendre(int n, std::vector<double>& nodes, std::vector<double>& weights)
+    {
+        nodes.resize(n);
+        weights.resize(n);
+        for (int i = 0; i < n; ++i)
+        {
+            double z = std::cos(PI * (i + 0.75) / (n + 0.5));
+            bool converged = false;
+            for (int iteration = 0; iteration < 100; ++iteration)
+            {
+                double p1 = 1.0;
+                double p2 = 0.0;
+                for (int j = 0; j < n; ++j)
+                {
+                    double p3 = p2;
+                    p2 = p1;
+                    p1 = ((2.0 * j + 1.0) * z * p2 - j * p3) / (j + 1.0);
+                }
+                double derivative = n * (z * p1 - p2) / (z * z - 1.0);
+                double previous = z;
+                z -= p1 / derivative;
+                if (std::fabs(z - previous) <= 1e-14)
+                {
+                    double weight = 2.0 / ((1.0 - z * z) * derivative * derivative);
+                    if (!std::isfinite(z) || !std::isfinite(weight) || std::fabs(z) >= 1.0 || weight <= 0.0)
+                        throw std::runtime_error("Invalid Gauss-Legendre node or weight");
+                    nodes[i] = z;
+                    weights[i] = weight;
+                    converged = true;
+                    break;
+                }
+            }
+            if (!converged)
+                throw std::runtime_error("Gauss-Legendre quadrature did not converge");
+        }
+    }
+
+    double j0_func(double x)
+    {
+        return std::cyl_bessel_j(0.0, std::fabs(x));
+    }
+
+    double n0_func(double x)
+    {
+        return std::cyl_neumann(0.0, x);
+    }
+
+    double j1_func(double x)
+    {
+        double value = std::cyl_bessel_j(1.0, std::fabs(x));
+        return x < 0.0 ? -value : value;
+    }
+
+    double n1_func(double x)
+    {
+        return std::cyl_neumann(1.0, x);
     }
 
     double y0_regular(double x)
     {
-        double j0 = j0_series(x);
+        double j0 = j0_func(x);
+        if (x > 1.0)
+            return PI / 2.0 * n0_func(x) - j0 * std::log(x / 2.0);
+
+        // Keep the logarithm analytically separated near the origin.
         double x_half_sq = x * x / 4.0;
         double sum = 0.0;
         double h_k = 0.0;
@@ -129,76 +218,20 @@ namespace
         return GAMMA_E * j0 + sum;
     }
 
-    double n0_func(double x)
-    {
-        return 2.0 / PI * (j0_series(x) * std::log(x / 2.0) + y0_regular(x));
-    }
-
-    double j1_series(double x)
-    {
-        if (std::fabs(x) < 1e-10) return 0.0;
-
-        double x_half = x / 2.0;
-        double x_half_sq = x_half * x_half;
-        double sum = x_half;
-        double term = x_half;
-
-        for (int k = 1; k <= 100; ++k)
-        {
-            term *= -x_half_sq / (static_cast<double>(k) * static_cast<double>(k + 1));
-            sum += term;
-            if (std::fabs(term) < 1e-15) break;
-        }
-
-        return sum;
-    }
-
-    double y1_regular(double x)
-    {
-        double x_half = x / 2.0;
-        double x_half_sq = x_half * x_half;
-        double h_k = 0.0;
-        double x_pow = x_half;
-        double fact_k = 1.0;
-        double fact_k1 = 1.0;
-        double sum = -1.0 / x;
-
-        for (int k = 0; k <= 100; ++k)
-        {
-            if (k > 0)
-            {
-                fact_k *= static_cast<double>(k);
-                fact_k1 *= static_cast<double>(k + 1);
-                x_pow *= -x_half_sq;
-                h_k += 1.0 / static_cast<double>(k);
-            }
-
-            double h_k1 = h_k + 1.0 / static_cast<double>(k + 1);
-            double term = x_pow / (fact_k * fact_k1) * (h_k + h_k1);
-            sum += term;
-            if (k > 0 && std::fabs(term) < 1e-15) break;
-        }
-
-        return sum;
-    }
-
-    double n1_func(double x)
-    {
-        if (std::fabs(x) < 1e-10) return -1e300;
-        return 2.0 / PI * (j1_series(x) * std::log(x / 2.0) + y1_regular(x));
-    }
-
     ComplexValue h0_2(double x)
     {
-        return ComplexValue(j0_series(x), -n0_func(x));
+        return ComplexValue(j0_func(x), -n0_func(x));
     }
 
     ComplexValue r_h0(double z)
     {
         if (z < 1e-12) return ComplexValue(1.0, -2.0 * GAMMA_E / PI);
 
-        double j0 = j0_series(z);
+        double j0 = j0_func(z);
         double lnz2 = std::log(z / 2.0);
+        if (z > 1.0)
+            return ComplexValue(j0, -n0_func(z) + (2.0 / PI) * lnz2);
+
         double y0reg = y0_regular(z);
         double re = j0;
         double im = (2.0 / PI) * lnz2 * (1.0 - j0) - (2.0 / PI) * y0reg;
@@ -302,8 +335,20 @@ namespace
 
     void validate_parameters(const SolverParameters& params)
     {
+        if (!std::isfinite(params.lambda) || !std::isfinite(params.theta) || !std::isfinite(params.skin_depth))
+            throw std::runtime_error("Solver parameters must be finite");
+        for (int p = 0; p < params.plate_count; ++p)
+        {
+            if (!std::isfinite(params.alpha[p]) || !std::isfinite(params.beta[p])
+                || !std::isfinite(half_length(params, p)) || !std::isfinite(midpoint(params, p)))
+                throw std::runtime_error("Plate coordinates and lengths must be finite");
+        }
         if (params.n <= 0) throw std::runtime_error("N должен быть положительным");
         if (params.m_quad != 0 && params.m_quad <= 0) throw std::runtime_error("M должен быть положительным");
+        long long total_unknowns = static_cast<long long>(params.n) * params.plate_count;
+        if (total_unknowns > std::numeric_limits<int>::max() / total_unknowns
+            || params.m_quad > std::numeric_limits<int>::max() / params.plate_count)
+            throw std::runtime_error("N or M exceeds the supported index range");
         if (params.lambda <= 0.0) throw std::runtime_error("Длина волны должна быть положительной");
         if (params.skin_depth < 0.0) throw std::runtime_error("Толщина скин-слоя не может быть отрицательной");
         if (params.alpha[0] >= params.beta[0] || params.alpha[1] >= params.beta[1])
@@ -314,15 +359,38 @@ namespace
             throw std::runtime_error("Параметр --theta ожидается в радианах. Если угол задан в градусах, используйте --theta-deg.");
     }
 
-    std::vector<double> build_tau_q(int plate_count, int m_quad)
+    void build_quadrature(
+        const SolverParameters& params,
+        int m_quad,
+        std::vector<double>& tau_q,
+        std::vector<double>& w_q)
     {
-        std::vector<double> values(plate_count * m_quad);
-        for (int p = 0; p < plate_count; ++p)
+        std::vector<double> nodes(m_quad);
+        std::vector<double> weights(m_quad);
+        if (params.skin_depth > 0.0)
+        {
+            gauss_legendre(m_quad, nodes, weights);
+        }
+        else
         {
             for (int m = 0; m < m_quad; ++m)
-                values[p * m_quad + m] = std::cos((2.0 * m + 1.0) / (2.0 * m_quad) * PI);
+            {
+                nodes[m] = std::cos((2.0 * m + 1.0) / (2.0 * m_quad) * PI);
+                weights[m] = PI / m_quad;
+            }
         }
-        return values;
+
+        tau_q.resize(params.plate_count * m_quad);
+        w_q.resize(params.plate_count * m_quad);
+        for (int p = 0; p < params.plate_count; ++p)
+        {
+            double h = half_length(params, p);
+            for (int m = 0; m < m_quad; ++m)
+            {
+                tau_q[p * m_quad + m] = nodes[m];
+                w_q[p * m_quad + m] = weights[m] * h;
+            }
+        }
     }
 
     std::vector<double> build_tau_c(int plate_count, int n)
@@ -343,18 +411,6 @@ namespace
         {
             for (int m = 0; m < m_quad; ++m)
                 values[p * m_quad + m] = tau_to_x(params, p, tau_q[p * m_quad + m]);
-        }
-        return values;
-    }
-
-    std::vector<double> build_w_q(const SolverParameters& params, int m_quad)
-    {
-        std::vector<double> values(params.plate_count * m_quad);
-        for (int p = 0; p < params.plate_count; ++p)
-        {
-            double weight = PI / m_quad * half_length(params, p);
-            for (int m = 0; m < m_quad; ++m)
-                values[p * m_quad + m] = weight;
         }
         return values;
     }
@@ -384,6 +440,7 @@ namespace
     {
         int total_unknowns = params.n * params.plate_count;
         matrix.assign(total_unknowns * total_unknowns, ComplexValue());
+        bool regular_current = params.skin_depth > 0.0;
 
         for (int row = 0; row < total_unknowns; ++row)
         {
@@ -409,21 +466,21 @@ namespace
                             int offset = target_plate * m_quad + m;
                             double kd = k_wave * target_half_length * std::fabs(tau_k - tau_q[offset]);
                             ComplexValue regular = r_h0(kd);
-                            double tj = cheb(j, tau_q[offset]);
+                            double tj = regular_current ? legendre(j, tau_q[offset]) : cheb(j, tau_q[offset]);
                             sum_reg = sum_reg + regular * (tj * w_q[offset]);
                         }
 
                         double ln_const = std::log(k_wave * target_half_length / 2.0);
-                        double i_ortho = (j == 0) ? PI : 0.0;
-                        double i_log = (j == 0) ? (-PI * std::log(2.0)) : (-(PI / static_cast<double>(j)) * cheb(j, tau_k));
+                        double i_ortho = (j == 0) ? (regular_current ? 2.0 : PI) : 0.0;
+                        double i_log = regular_current
+                            ? legendre_log_moment(j, tau_k)
+                            : ((j == 0) ? (-PI * std::log(2.0)) : (-(PI / static_cast<double>(j)) * cheb(j, tau_k)));
                         ComplexValue s_log = ci * ((-2.0 / PI) * target_half_length * (ln_const * i_ortho + i_log));
                         result = (sum_reg + s_log) * ComplexValue(0.0, 0.25);
 
-                        if (sheet_q.re != 0.0 || sheet_q.im != 0.0)
+                        if (regular_current)
                         {
-                            double tj_k = cheb(j, tau_k);
-                            double sqrt_w = std::sqrt(1.0 - tau_k * tau_k);
-                            result = result - sheet_q * (tj_k / sqrt_w);
+                            result = result - sheet_q * legendre(j, tau_k);
                         }
                     }
                     else
@@ -434,7 +491,7 @@ namespace
                             int offset = source_plate * m_quad + m;
                             double distance = std::fabs(t_q[offset] - xk);
                             if (distance < 1e-14) distance = 1e-14;
-                            double tj = cheb(j, tau_q[offset]);
+                            double tj = regular_current ? legendre(j, tau_q[offset]) : cheb(j, tau_q[offset]);
                             sum_cross = sum_cross + h0_2(k_wave * distance) * (tj * w_q[offset]);
                         }
 
@@ -539,11 +596,18 @@ int main(int argc, char** argv)
         double k_wave = 2.0 * PI / params.lambda;
         ComplexValue chi = surface_impedance(params.skin_depth, params.lambda);
         ComplexValue sheet_q = sheet_coefficient(chi, k_wave);
+        double max_argument = k_wave * (std::max(params.beta[0], params.beta[1]) - std::min(params.alpha[0], params.alpha[1]));
+        if (!std::isfinite(k_wave) || k_wave <= 0.0 || !std::isfinite(max_argument)
+            || !std::isfinite(chi.re) || !std::isfinite(chi.im)
+            || !std::isfinite(sheet_q.re) || !std::isfinite(sheet_q.im)
+            || !std::isfinite(params.theta * 180.0 / PI))
+            throw std::runtime_error("Derived solver parameters must be finite");
 
-        std::vector<double> tau_q = build_tau_q(params.plate_count, m_quad);
+        std::vector<double> tau_q;
+        std::vector<double> w_q;
+        build_quadrature(params, m_quad, tau_q, w_q);
         std::vector<double> tau_c = build_tau_c(params.plate_count, params.n);
         std::vector<double> t_q = build_t_q(params, tau_q, m_quad);
-        std::vector<double> w_q = build_w_q(params, m_quad);
         std::vector<double> x_c = build_x_c(params, tau_c);
 
         auto total_start = std::chrono::high_resolution_clock::now();
@@ -565,10 +629,16 @@ int main(int argc, char** argv)
         double solve_ms = std::chrono::duration<double, std::milli>(solve_stop - solve_start).count();
         double total_ms = std::chrono::duration<double, std::milli>(total_stop - total_start).count();
 
+        for (int i = 0; i < total_unknowns; ++i)
+        {
+            if (!std::isfinite(solution[i].re) || !std::isfinite(solution[i].im))
+                throw std::runtime_error("Non-finite solution coefficient at index " + std::to_string(i));
+        }
+
         std::cout << std::setprecision(17);
         std::cout << "status=ok\n";
         std::cout << "backend=CPU C++ (matrix + solve)\n";
-        std::cout << "model=thin_sheet_v2\n";
+        std::cout << "model=thin_sheet_v4\n";
         std::cout << "alpha1=" << params.alpha[0] << "\n";
         std::cout << "beta1=" << params.beta[0] << "\n";
         std::cout << "alpha2=" << params.alpha[1] << "\n";

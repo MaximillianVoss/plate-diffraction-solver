@@ -25,6 +25,12 @@ public sealed class WpfIntegrationTests
         Exception? failure = null;
         bool scenarioCompleted = false;
         int scenarioStarts = 0;
+        string phase = "window startup";
+        void BeginPhase(string value)
+        {
+            Volatile.Write(ref phase, value);
+            TestContext.WriteLine("START: " + value);
+        }
         using var completed = new ManualResetEventSlim();
 
         var uiThread = new Thread(() =>
@@ -67,6 +73,7 @@ public sealed class WpfIntegrationTests
                             wavelengthInput.Language.GetSpecificCulture());
                         Assert.AreEqual(1.2, viewModel.Parameters.WavelengthMicrometers, 1e-12);
 
+                        BeginPhase("initial calculation");
                         Task calculation = viewModel.CalculateAsync();
                         Assert.IsTrue(viewModel.IsBusy);
                         Assert.IsFalse(wavelengthInput.IsEnabled, "Parameters must be locked while a calculation is running.");
@@ -85,6 +92,18 @@ public sealed class WpfIntegrationTests
                         Assert.IsTrue(viewModel.CurrentEnergyPlot.HasData);
                         Assert.IsTrue(Descendants<ScientificPlot>(window).Any(plot => plot.Data?.HasData == true));
                         Assert.IsTrue(Descendants<FieldMapView>(window).Count(map => map.Data is not null) >= 2);
+                        Assert.IsTrue(viewModel.Energy.HasGlobalBalance);
+                        SavePreview(window, "physics-energy-desktop.png");
+                        window.Width = 1320;
+                        window.UpdateLayout();
+                        AssertBalanceTextFits(window, viewModel, "Energy.LocalBalanceResidualDisplay");
+                        SavePreview(window, "physics-energy-narrow-desktop.png");
+                        window.Width = 390;
+                        window.UpdateLayout();
+                        AssertBalanceTextFits(window, viewModel, "Energy.CompactBalanceDisplay");
+                        SavePreview(window, "physics-energy-compact.png");
+                        window.Width = 1440;
+                        window.UpdateLayout();
 
                         wavelengthInput.Text = 1.3.ToString(
                             "0.000",
@@ -96,6 +115,7 @@ public sealed class WpfIntegrationTests
                         var previousPlot = viewModel.SlicePlot;
                         var command = (AsyncRelayCommand)viewModel.RunCommand;
                         wavelengthInput.Text = "0";
+                        BeginPhase("zero wavelength validation");
                         await command.ExecuteAsync();
                         window.UpdateLayout();
                         StringAssert.Contains(viewModel.StatusDetail, "Длина волны должна быть положительным числом.");
@@ -123,6 +143,7 @@ public sealed class WpfIntegrationTests
                             Assert.AreEqual(1, viewModel.Runs.Count);
                         }
 
+                        BeginPhase("corrected numeric input");
                         wavelengthInput.Text = "1,5";
                         await command.ExecuteAsync();
                         Assert.IsFalse(viewModel.HasError);
@@ -131,6 +152,7 @@ public sealed class WpfIntegrationTests
                         Assert.AreNotSame(previousPlot, viewModel.SlicePlot);
 
                         previousPlot = viewModel.SlicePlot;
+                        BeginPhase("overflowing skin depth");
                         viewModel.Parameters.SkinDepthMicrometers = double.MaxValue;
                         await command.ExecuteAsync();
                         Assert.IsTrue(viewModel.HasError);
@@ -139,6 +161,7 @@ public sealed class WpfIntegrationTests
                         Assert.AreSame(previousPlot, viewModel.SlicePlot);
                         Assert.IsTrue(command.CanExecute(null));
                         viewModel.Parameters.SkinDepthMicrometers = 0.01;
+                        BeginPhase("cancel before result publication");
                         wavelengthInput.Text = "1,7";
                         void CancelBeforePublication(object? _, System.ComponentModel.PropertyChangedEventArgs args)
                         {
@@ -155,6 +178,7 @@ public sealed class WpfIntegrationTests
                         Assert.IsFalse(viewModel.HasError);
                         Assert.IsTrue(command.CanExecute(null));
 
+                        BeginPhase("asynchronous command error");
                         bool commandErrorReported = false;
                         var failingCommand = new AsyncRelayCommand(async () =>
                         {
@@ -167,6 +191,7 @@ public sealed class WpfIntegrationTests
                         Assert.IsTrue(commandErrorReported);
                         Assert.IsTrue(failingCommand.CanExecute(null));
 
+                        BeginPhase("history restoration");
                         viewModel.OpenRun(viewModel.Runs[0]);
                         wavelengthInput.Text = "abc";
                         Assert.IsTrue(viewModel.HasError);
@@ -174,6 +199,7 @@ public sealed class WpfIntegrationTests
                         window.UpdateLayout();
                         Assert.IsFalse(Validation.GetHasError(wavelengthInput), "Restoring the same values must also clear invalid input text.");
                         Assert.IsFalse(viewModel.HasError);
+                        BeginPhase("additional workflows");
                         await CheckAdditionalWorkflowsAsync(window);
                         scenarioCompleted = true;
                     }
@@ -202,7 +228,8 @@ public sealed class WpfIntegrationTests
         uiThread.SetApartmentState(ApartmentState.STA);
         uiThread.Start();
 
-        Assert.IsTrue(completed.Wait(TimeSpan.FromSeconds(90)), "WPF integration test timed out.");
+        Assert.IsTrue(completed.Wait(TimeSpan.FromSeconds(90)),
+            "WPF integration test timed out during: " + Volatile.Read(ref phase));
         Assert.IsTrue(uiThread.Join(TimeSpan.FromSeconds(5)), "WPF UI thread did not stop.");
         if (failure is not null)
             throw new AssertFailedException("WPF integration failed: " + failure);
@@ -450,6 +477,22 @@ public sealed class WpfIntegrationTests
     private static TextBox FindInput(DependencyObject root, string propertyName) =>
         Descendants<TextBox>(root).First(input => input.IsVisible &&
             BindingOperations.GetBinding(input, TextBox.TextProperty)?.Path?.Path == "Parameters." + propertyName);
+
+    private static void AssertBalanceTextFits(Window window, MainViewModel model, string bindingPath)
+    {
+        TextBlock text = Descendants<TextBlock>(window).Single(item => item.IsVisible &&
+            BindingOperations.GetBinding(item, TextBlock.TextProperty)?.Path?.Path == bindingPath);
+        DependencyObject parent = VisualTreeHelper.GetParent(text);
+        while (parent is not Border)
+            parent = VisualTreeHelper.GetParent(parent);
+        var border = (Border)parent;
+        Rect bounds = text.TransformToAncestor(border).TransformBounds(new Rect(text.RenderSize));
+        Assert.IsTrue(bounds.Left >= 0 && bounds.Right <= border.ActualWidth + 0.5 &&
+            bounds.Top >= 0 && bounds.Bottom <= border.ActualHeight + 0.5,
+            "Both balance residuals must fit inside the summary: " + bindingPath);
+        StringAssert.Contains(text.Text, model.Energy.LocalBalanceErrorDisplay);
+        StringAssert.Contains(text.Text, model.Energy.OpticalBalanceErrorDisplay);
+    }
 
     private void SavePreview(Window window, string fileName)
     {

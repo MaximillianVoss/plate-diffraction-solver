@@ -21,7 +21,7 @@
                 <TextBlock Grid.Row="3" Margin="0,10,0,0" FontWeight="SemiBold" Text="Модель" />
                 <TextBlock Grid.Row="3" Grid.Column="1" Margin="0,10,0,0" Text="Тонкий лист с импедансным граничным условием" />
                 <TextBlock Grid.Row="4" Margin="0,10,0,0" FontWeight="SemiBold" Text="Методы" />
-                <TextBlock Grid.Row="4" Grid.Column="1" Margin="0,10,0,0" Text="Коллокация и метод Галеркина, полиномы Чебышёва" />
+                <TextBlock Grid.Row="4" Grid.Column="1" Margin="0,10,0,0" Text="Коллокация и метод Галеркина. δ > 0: Лежандр P_n; PEC: Чебышёв T_n/√(1−τ²)." TextWrapping="Wrap" />
                 <TextBlock Grid.Row="5" Margin="0,10,0,0" FontWeight="SemiBold" Text="Статус" />
                 <TextBlock Grid.Row="5" Grid.Column="1" Margin="0,10,0,0" Foreground="{StaticResource SuccessBrush}" Text="Параметры, поля, коэффициенты и диагностика вычисляются Diffraction.Core" />
             </Grid>

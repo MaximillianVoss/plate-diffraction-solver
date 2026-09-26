@@ -4,7 +4,7 @@
              xmlns:controls="clr-namespace:Diffraction.WpfPrototype.Controls">
     <Grid x:Name="EnergyRoot" Margin="10">
         <Grid.RowDefinitions>
-            <RowDefinition x:Name="SummaryRow" Height="90" />
+            <RowDefinition x:Name="SummaryRow" Height="Auto" MinHeight="90" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
@@ -25,8 +25,8 @@
                 <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
                     <controls:InfoLabel HorizontalAlignment="Center"
                                         FontWeight="SemiBold"
-                                        Text="R_scat — обратно"
-                                        HelpText="Нормированный поток рассеянного поля вверх. Это не полный коэффициент отражения." />
+                                        Text="C_back, мкм"
+                                        HelpText="Сечение обратного рассеяния: мощность в полупространстве падения / интенсивность падающей волны." />
                     <TextBlock Margin="0,2,0,0" FontSize="25" FontWeight="SemiBold" Text="{Binding Energy.ReflectedDisplay}" />
                     <TextBlock Style="{StaticResource CaptionStyle}" Text="{Binding Energy.ReflectedPercentDisplay}" />
                 </StackPanel>
@@ -35,8 +35,8 @@
                 <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
                     <controls:InfoLabel HorizontalAlignment="Center"
                                         FontWeight="SemiBold"
-                                        Text="T_scat — вперёд"
-                                        HelpText="Нормированный поток рассеянного поля вниз. Это не полная прошедшая энергия." />
+                                        Text="C_forward, мкм"
+                                        HelpText="Сечение переднего рассеяния: излучение тока в противоположное полупространство, без падающей волны." />
                     <TextBlock Margin="0,2,0,0" FontSize="25" FontWeight="SemiBold" Text="{Binding Energy.ForwardDisplay}" />
                     <TextBlock Style="{StaticResource CaptionStyle}" Text="{Binding Energy.ForwardPercentDisplay}" />
                 </StackPanel>
@@ -45,7 +45,7 @@
                 <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
                     <controls:InfoLabel HorizontalAlignment="Center"
                                         FontWeight="SemiBold"
-                                        Text="A_J — поглощение"
+                                        Text="C_abs, мкм"
                                         HelpText="Джоулево поглощение, вычисленное интегрированием по самой пластине." />
                     <TextBlock Margin="0,2,0,0" FontSize="25" FontWeight="SemiBold" Text="{Binding Energy.AbsorbedDisplay}" />
                     <TextBlock Style="{StaticResource CaptionStyle}" Text="{Binding Energy.AbsorbedPercentDisplay}" />
@@ -55,9 +55,9 @@
                 <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
                     <controls:InfoLabel HorizontalAlignment="Center"
                                         FontWeight="SemiBold"
-                                        Text="Локальная невязка ЗСЭ"
-                                        HelpText="Относительная невязка локального энергетического равенства на пластине." />
-                    <TextBlock Margin="0,2,0,0" FontSize="25" FontWeight="SemiBold" Text="{Binding Energy.LocalBalanceErrorDisplay}" />
+                                        Text="Оптическая теорема"
+                                        HelpText="Независимая проверка P_ext = P_scat + P_abs. Невязка нормирована на P_ext." />
+                    <TextBlock Margin="0,2,0,0" FontSize="25" FontWeight="SemiBold" Text="{Binding Energy.OpticalBalanceErrorDisplay}" />
                     <TextBlock Style="{StaticResource CaptionStyle}" Text="допуск 2,0%" />
                 </StackPanel>
             </Border>
@@ -67,7 +67,7 @@
                         <TextBlock FontFamily="Segoe MDL2 Assets" FontSize="22" Foreground="{Binding Energy.BalanceForeground}" Text="&#xE73E;" />
                         <TextBlock Margin="8,0,0,0" VerticalAlignment="Center" FontSize="18" FontWeight="SemiBold" Foreground="{Binding Energy.BalanceForeground}" Text="{Binding Energy.BalanceStatus}" />
                     </StackPanel>
-                    <TextBlock Margin="0,5,0,0" Style="{StaticResource CaptionStyle}" Text="{Binding Energy.LocalBalanceResidualDisplay}" />
+                    <TextBlock Margin="0,5,0,0" Style="{StaticResource CaptionStyle}" Text="{Binding Energy.LocalBalanceResidualDisplay}" TextWrapping="Wrap" />
                 </StackPanel>
             </Border>
         </Grid>
@@ -81,34 +81,35 @@
                 <UniformGrid Columns="2">
                     <Border Margin="0,0,3,3" Padding="7" Style="{StaticResource PanelBorderStyle}">
                         <StackPanel HorizontalAlignment="Center">
-                            <controls:InfoLabel HorizontalAlignment="Center" FontSize="11.5" Text="R_scat — обратно" HelpText="Поток рассеянного поля вверх; не полный коэффициент отражения." />
+                            <controls:InfoLabel HorizontalAlignment="Center" FontSize="11.5" Text="C_back, мкм" HelpText="Сечение обратного рассеяния; не коэффициент отражения." />
                             <TextBlock Margin="0,2,0,0" HorizontalAlignment="Center" FontSize="21" FontWeight="SemiBold" Text="{Binding Energy.ReflectedDisplay}" />
                         </StackPanel>
                     </Border>
                     <Border Margin="3,0,0,3" Padding="7" Style="{StaticResource PanelBorderStyle}">
                         <StackPanel HorizontalAlignment="Center">
-                            <controls:InfoLabel HorizontalAlignment="Center" FontSize="11.5" Text="T_scat — вперёд" HelpText="Поток рассеянного поля вниз; не полная прошедшая энергия." />
+                            <controls:InfoLabel HorizontalAlignment="Center" FontSize="11.5" Text="C_forward, мкм" HelpText="Сечение переднего рассеяния; не полная прошедшая энергия." />
                             <TextBlock Margin="0,2,0,0" HorizontalAlignment="Center" FontSize="21" FontWeight="SemiBold" Text="{Binding Energy.ForwardDisplay}" />
                         </StackPanel>
                     </Border>
                     <Border Margin="0,3,3,0" Padding="7" Style="{StaticResource PanelBorderStyle}">
                         <StackPanel HorizontalAlignment="Center">
-                            <controls:InfoLabel HorizontalAlignment="Center" FontSize="11.5" Text="A_J — поглощение" HelpText="Джоулево поглощение, интегрированное по пластине." />
+                            <controls:InfoLabel HorizontalAlignment="Center" FontSize="11.5" Text="C_abs, мкм" HelpText="Сечение поглощения, интегрированного по пластине." />
                             <TextBlock Margin="0,2,0,0" HorizontalAlignment="Center" FontSize="21" FontWeight="SemiBold" Text="{Binding Energy.AbsorbedDisplay}" />
                         </StackPanel>
                     </Border>
                     <Border Margin="3,3,0,0" Padding="7" Style="{StaticResource PanelBorderStyle}">
                         <StackPanel HorizontalAlignment="Center">
-                            <controls:InfoLabel HorizontalAlignment="Center" FontSize="11.5" Text="Невязка ЗСЭ" HelpText="Относительная невязка локального энергетического равенства." />
-                            <TextBlock Margin="0,2,0,0" HorizontalAlignment="Center" FontSize="21" FontWeight="SemiBold" Text="{Binding Energy.LocalBalanceErrorDisplay}" />
+                            <controls:InfoLabel HorizontalAlignment="Center" FontSize="11.5" Text="Оптическая теорема" HelpText="Невязка P_ext = P_scat + P_abs относительно P_ext." />
+                            <TextBlock Margin="0,2,0,0" HorizontalAlignment="Center" FontSize="21" FontWeight="SemiBold" Text="{Binding Energy.OpticalBalanceErrorDisplay}" />
                         </StackPanel>
                     </Border>
                 </UniformGrid>
                 <Border Grid.Row="1" Margin="0,6,0,0" Padding="8" Background="{Binding Energy.BalanceBackground}" BorderBrush="{Binding Energy.BalanceBorder}" BorderThickness="1" CornerRadius="4">
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                         <TextBlock FontFamily="Segoe MDL2 Assets" Foreground="{Binding Energy.BalanceForeground}" Text="&#xE73E;" />
-                        <TextBlock Margin="7,0,0,0" Foreground="{Binding Energy.BalanceForeground}" FontWeight="SemiBold" Text="{Binding Energy.CompactBalanceDisplay}" TextWrapping="Wrap" />
-                    </StackPanel>
+                        <TextBlock Grid.Column="1" Margin="7,0,0,0" Foreground="{Binding Energy.BalanceForeground}" FontWeight="SemiBold" Text="{Binding Energy.CompactBalanceDisplay}" TextWrapping="Wrap" />
+                    </Grid>
                 </Border>
             </Grid>
         </Grid>
@@ -192,7 +193,7 @@
                     </Grid.RowDefinitions>
                     <TextBlock FontWeight="SemiBold" Text="Энергетика текущего расчёта" />
                     <controls:ScientificPlot Grid.Row="1" Margin="0,8,0,8" MinHeight="280" Data="{Binding CurrentEnergyPlot}" />
-                    <TextBlock Grid.Row="2" Style="{StaticResource CaptionStyle}" Text="Точки рассчитаны независимо для текущей толщины δ и нормированы на падающий поток через пластину." TextWrapping="Wrap" />
+                    <TextBlock Grid.Row="2" Style="{StaticResource CaptionStyle}" Text="C_ext = C_back + C_forward + C_abs. Все сечения нормированы на интенсивность падающей волны; единица — мкм." TextWrapping="Wrap" />
                 </Grid>
             </Border>
 

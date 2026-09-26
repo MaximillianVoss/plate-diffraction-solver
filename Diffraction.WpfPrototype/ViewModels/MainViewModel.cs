@@ -24,9 +24,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private PlotData _methodPlot = PlotData.Empty("x", "Re u(x, λ/10)");
     private PlotData _methodDifferencePlot = PlotData.Empty("x", "|u_col − u_gal|");
     private PlotData _skinDifferencePlot = PlotData.Empty("x", "|u_skin − u_ideal|");
-    private PlotData _currentEnergyPlot = PlotData.Empty("Толщина δ", "Доля падающей энергии");
-    private PlotData _skinEnergyPlot = PlotData.Empty("Толщина δ", "Доля падающей энергии", "Запустите расчёт в режиме «Серия»");
-    private PlotData _angleEnergyPlot = PlotData.Empty("Угол θ, °", "Доля падающей энергии", "Запустите расчёт в режиме «Серия»");
+    private PlotData _currentEnergyPlot = PlotData.Empty("Толщина δ", "Сечение, мкм");
+    private PlotData _skinEnergyPlot = PlotData.Empty("Толщина δ", "Сечение, мкм", "Запустите расчёт в режиме «Серия»");
+    private PlotData _angleEnergyPlot = PlotData.Empty("Угол θ, °", "Сечение, мкм", "Запустите расчёт в режиме «Серия»");
     private PlotData _seriesDiagnosticsPlot = PlotData.Empty("Толщина δ", "Отклонение, %", "Запустите расчёт в режиме «Серия»");
     private FieldMapData? _idealFieldMap;
     private FieldMapData? _skinFieldMap;
@@ -35,6 +35,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private IReadOnlyList<EnergyStudyRow> _skinDepthStudyRows = Array.Empty<EnergyStudyRow>();
     private IReadOnlyList<EnergyStudyRow> _angleStudyIdealRows = Array.Empty<EnergyStudyRow>();
     private IReadOnlyList<EnergyStudyRow> _angleStudySkinRows = Array.Empty<EnergyStudyRow>();
+    private CalculationParameters? _resultParameters;
+    private string? _resultParameterSummary;
     private bool _exportIncludeCsv = true;
     private bool _exportIncludePng = true;
     private bool _exportIncludeSvg = true;
@@ -432,12 +434,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public string ContextSummary => BuildContextSummary();
 
-    public string SeriesPointTitle =>
-        $"Выбранная точка: δ = {Format(Parameters.SkinDepthMicrometers, "0.000")}";
+    public string SeriesPointTitle => Energy.IsAvailable
+        ? $"Выбранная точка: δ = {Format(Energy.SkinDepth, "G6")} мкм"
+        : "Результат ещё не рассчитан";
 
-    public string SeriesAngleCaption =>
-        $"Контрольная серия: δ={Format(Parameters.SkinDepthMicrometers, "0.000")}, N={Parameters.HarmonicCount}. " +
-        $"Углы {Format(Parameters.SeriesAngleStartDegrees, "0.#")}…{Format(Parameters.SeriesAngleEndDegrees, "0.#")}° с шагом {Format(Parameters.SeriesAngleStepDegrees, "0.#")}°.";
+    public string SeriesAngleCaption => _resultParameters is { } parameters && HasAngleStudy
+        ? $"Контрольная серия: δ={Format(parameters.SkinDepthMicrometers, "G6")} мкм, N={parameters.HarmonicCount}. " +
+          $"Углы {Format(parameters.SeriesAngleStartDegrees, "G6")}…{Format(parameters.SeriesAngleEndDegrees, "G6")}° с шагом {Format(parameters.SeriesAngleStepDegrees, "G6")}°."
+        : "Серия по углу θ не рассчитана.";
 
     public string SeriesEstimateText
     {
@@ -539,7 +543,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
             await SetPhaseAsync(token, "Обновление таблиц и графиков...", 92);
             token.ThrowIfCancellationRequested();
 
-            bool toleranceExceeded = output.Energy.LocalBalanceErrorPercent > 2.0;
+            bool toleranceExceeded = !output.Energy.IsWithinTolerance ||
+                output.Diagnostics.Any(row => row.Status == "Проверить");
             var completedRun = new CalculationRun
             {
                 RunNumber = Runs.Count == 0 ? 1 : Runs.Max(run => run.RunNumber) + 1,
@@ -559,7 +564,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
             StatusText = "Расчёт завершён";
             StatusDetail = $"{output.BackendName}  •  {(DateTime.Now - startedAt).TotalSeconds:0.00} с";
             JournalEntries.Add(
-                $"[{DateTime.Now:HH:mm:ss}] Расчёт завершён: A_J={output.Energy.Absorbed:0.000000}, ΔЗСЭ={output.Energy.LocalBalanceErrorPercent:0.000}%.");
+                $"[{DateTime.Now:HH:mm:ss}] Расчёт завершён: A_J/I_plate={output.Energy.Absorbed:0.000000}, " +
+                $"локальная невязка={output.Energy.LocalBalanceErrorPercent:0.000}%, " +
+                $"оптическая теорема={output.Energy.OpticalBalanceErrorPercent:0.000}%.");
             _parametersModified = false;
             NotifyParameterContextChanged();
         }
@@ -568,9 +575,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
             StatusText = "Расчёт отменён";
             StatusDetail = "Результаты не изменены";
             JournalEntries.Add($"[{DateTime.Now:HH:mm:ss}] Расчёт отменён пользователем.");
-            System.Windows.MessageBox.Show(
-                "Расчёт отменён. Результаты предыдущего успешного расчёта сохранены.",
-                "Отмена расчёта", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Information);
         }
         catch (Exception ex)
         {
@@ -770,8 +774,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         if (!Energy.IsAvailable)
             return;
 
-        var row = new EnergyStudyRow(Energy.SkinDepth, Energy);
-        string csv = StudyCsvExporter.BuildSingleRunCsv(row, BuildExportParameterSummary());
+        string csv = BuildSingleRunExportCsv();
         ExportCsv($"diffraction_run_{Energy.SkinDepth:0.######}.csv", csv, "результата расчёта");
     }
 
@@ -780,7 +783,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         if (!HasSkinDepthStudy)
             return;
 
-        string csv = StudyCsvExporter.BuildSkinDepthStudyCsv(_skinDepthStudyRows, BuildExportParameterSummary());
+        string csv = BuildSkinDepthStudyExportCsv();
         ExportCsv("skin_depth_study.csv", csv, "исследования изменения толщины скин-слоя");
     }
 
@@ -789,17 +792,30 @@ public sealed class MainViewModel : INotifyPropertyChanged
         if (!HasAngleStudy)
             return;
 
-        string csv = StudyCsvExporter.BuildAngleStudyCsv(
-            _angleStudyIdealRows,
-            _angleStudySkinRows,
-            Parameters.SkinDepthMicrometers,
-            BuildExportParameterSummary());
+        string csv = BuildAngleStudyExportCsv();
         ExportCsv("angle_study.csv", csv, "исследования изменения угла");
     }
 
+    private string BuildSingleRunExportCsv() =>
+        StudyCsvExporter.BuildSingleRunCsv(new EnergyStudyRow(Energy.SkinDepth, Energy), BuildExportParameterSummary());
+
+    private string BuildSkinDepthStudyExportCsv() =>
+        StudyCsvExporter.BuildSkinDepthStudyCsv(_skinDepthStudyRows, BuildExportParameterSummary());
+
+    private string BuildAngleStudyExportCsv() =>
+        StudyCsvExporter.BuildAngleStudyCsv(
+            _angleStudyIdealRows,
+            _angleStudySkinRows,
+            GetResultParameters().SkinDepthMicrometers,
+            BuildExportParameterSummary());
+
+    private CalculationParameters GetResultParameters() => _resultParameters ??
+        throw new InvalidOperationException("Параметры результата для экспорта отсутствуют.");
+
     private string BuildExportParameterSummary()
     {
-        string summary = SelectedRun?.FullParameterSummary ?? ContextSummary;
+        string summary = _resultParameterSummary ??
+            throw new InvalidOperationException("Параметры результата для экспорта отсутствуют.");
         // Кириллица и служебные символы внутри CSV-комментария должны занимать одну ячейку.
         return $"Параметры: {summary}";
     }
@@ -866,7 +882,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private void BuildExportPackage(string zipPath)
     {
         DateTime exportedAtUtc = DateTime.UtcNow;
-        string summary = BuildExportParameterSummary();
+        CalculationParameters resultParameters = GetResultParameters();
 
         var namedPlots = new (string Name, PlotData Plot)[]
         {
@@ -899,14 +915,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         if (ExportIncludeCsv)
         {
-            AddTextEntry("csv/single_run_energy.csv",
-                StudyCsvExporter.BuildSingleRunCsv(new EnergyStudyRow(Energy.SkinDepth, Energy), summary));
+            AddTextEntry("csv/single_run_energy.csv", BuildSingleRunExportCsv());
             if (HasSkinDepthStudy)
-                AddTextEntry("csv/skin_depth_study.csv",
-                    StudyCsvExporter.BuildSkinDepthStudyCsv(_skinDepthStudyRows, summary));
+                AddTextEntry("csv/skin_depth_study.csv", BuildSkinDepthStudyExportCsv());
             if (HasAngleStudy)
-                AddTextEntry("csv/angle_study.csv",
-                    StudyCsvExporter.BuildAngleStudyCsv(_angleStudyIdealRows, _angleStudySkinRows, Parameters.SkinDepthMicrometers, summary));
+                AddTextEntry("csv/angle_study.csv", BuildAngleStudyExportCsv());
             foreach ((string name, PlotData plot) in namedPlots)
             {
                 if (plot.HasData)
@@ -916,7 +929,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         if (ExportIncludeJson)
         {
-            AddTextEntry("parameters.json", ExportPackageBuilder.BuildParametersJson(Parameters, _backendName, exportedAtUtc));
+            AddTextEntry("parameters.json", ExportPackageBuilder.BuildParametersJson(resultParameters, _backendName, exportedAtUtc));
         }
 
         if (ExportIncludeReport)
@@ -1036,7 +1049,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
 
         if (run.Output is not null)
+        {
+            // Export metadata belongs to the displayed output, not to the editable draft or selection.
+            _resultParameters = run.Parameters.Clone();
+            _resultParameterSummary = run.FullParameterSummary;
             ApplyCalculationOutput(run.Output);
+        }
         NotifyParameterContextChanged();
     }
 
@@ -1104,14 +1122,16 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private void ClearCalculationOutput()
     {
+        _resultParameters = null;
+        _resultParameterSummary = null;
         Energy = EnergySnapshot.Empty;
         SlicePlot = PlotData.Empty("x", "Re u(x, λ/10)");
         MethodPlot = PlotData.Empty("x", "Re u(x, λ/10)");
         MethodDifferencePlot = PlotData.Empty("x", "|u_col − u_gal|");
         SkinDifferencePlot = PlotData.Empty("x", "|u_skin − u_ideal|");
-        CurrentEnergyPlot = PlotData.Empty("Толщина δ", "Доля падающей энергии");
-        SkinEnergyPlot = PlotData.Empty("Толщина δ", "Доля падающей энергии", "Запустите расчёт в режиме «Серия»");
-        AngleEnergyPlot = PlotData.Empty("Угол θ, °", "Доля падающей энергии", "Запустите расчёт в режиме «Серия»");
+        CurrentEnergyPlot = PlotData.Empty("Толщина δ", "Сечение, мкм");
+        SkinEnergyPlot = PlotData.Empty("Толщина δ", "Сечение, мкм", "Запустите расчёт в режиме «Серия»");
+        AngleEnergyPlot = PlotData.Empty("Угол θ, °", "Сечение, мкм", "Запустите расчёт в режиме «Серия»");
         SeriesDiagnosticsPlot = PlotData.Empty("Толщина δ", "Отклонение, %", "Запустите расчёт в режиме «Серия»");
         IdealFieldMap = null;
         SkinFieldMap = null;

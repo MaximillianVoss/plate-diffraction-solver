@@ -20,7 +20,8 @@ public partial class EnergyView : UserControl
 
         DesktopSummary.Visibility = useCompactSummary ? Visibility.Collapsed : Visibility.Visible;
         CompactSummary.Visibility = useCompactSummary ? Visibility.Visible : Visibility.Collapsed;
-        SummaryRow.Height = useCompactSummary ? GridLength.Auto : new GridLength(90);
+        SummaryRow.Height = GridLength.Auto;
+        SummaryRow.MinHeight = useCompactSummary ? 0 : 90;
         EnergyRoot.Margin = useCompactSummary ? new Thickness(4) : new Thickness(10);
 
         if (stackPanels)

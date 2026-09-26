@@ -7,6 +7,7 @@
 #include <cstring>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -96,23 +97,50 @@ namespace
         return t;
     }
 
-    __host__ __device__ double j0_series(double x)
+    __host__ __device__ double j0_func(double x)
     {
-        double x_half_sq = x * x / 4.0;
-        double sum = 1.0;
-        double term = 1.0;
-        for (int k = 1; k <= 100; ++k)
-        {
-            term *= -x_half_sq / (static_cast<double>(k) * static_cast<double>(k));
-            sum += term;
-            if (fabs(term) < 1e-15) break;
-        }
-        return sum;
+#ifdef __CUDA_ARCH__
+        return ::j0(x);
+#else
+        return std::cyl_bessel_j(0.0, std::fabs(x));
+#endif
+    }
+
+    __host__ __device__ double n0_func(double x)
+    {
+#ifdef __CUDA_ARCH__
+        return ::y0(x);
+#else
+        return std::cyl_neumann(0.0, x);
+#endif
+    }
+
+    __host__ __device__ double j1_func(double x)
+    {
+#ifdef __CUDA_ARCH__
+        return ::j1(x);
+#else
+        double value = std::cyl_bessel_j(1.0, std::fabs(x));
+        return x < 0.0 ? -value : value;
+#endif
+    }
+
+    __host__ __device__ double n1_func(double x)
+    {
+#ifdef __CUDA_ARCH__
+        return ::y1(x);
+#else
+        return std::cyl_neumann(1.0, x);
+#endif
     }
 
     __host__ __device__ double y0_regular(double x)
     {
-        double j0 = j0_series(x);
+        double j0 = j0_func(x);
+        if (x > 1.0)
+            return PI / 2.0 * n0_func(x) - j0 * log(x / 2.0);
+
+        // Keep the logarithm analytically separated near the origin.
         double x_half_sq = x * x / 4.0;
         double sum = 0.0;
         double h_k = 0.0;
@@ -133,81 +161,25 @@ namespace
         return GAMMA_E * j0 + sum;
     }
 
-    __host__ __device__ double n0_func(double x)
-    {
-        return 2.0 / PI * (j0_series(x) * log(x / 2.0) + y0_regular(x));
-    }
-
-    __host__ __device__ double j1_series(double x)
-    {
-        if (fabs(x) < 1e-10) return 0.0;
-
-        double x_half = x / 2.0;
-        double x_half_sq = x_half * x_half;
-        double sum = x_half;
-        double term = x_half;
-
-        for (int k = 1; k <= 100; ++k)
-        {
-            term *= -x_half_sq / (static_cast<double>(k) * static_cast<double>(k + 1));
-            sum += term;
-            if (fabs(term) < 1e-15) break;
-        }
-
-        return sum;
-    }
-
-    __host__ __device__ double y1_regular(double x)
-    {
-        double x_half = x / 2.0;
-        double x_half_sq = x_half * x_half;
-        double h_k = 0.0;
-        double x_pow = x_half;
-        double fact_k = 1.0;
-        double fact_k1 = 1.0;
-        double sum = -1.0 / x;
-
-        for (int k = 0; k <= 100; ++k)
-        {
-            if (k > 0)
-            {
-                fact_k *= static_cast<double>(k);
-                fact_k1 *= static_cast<double>(k + 1);
-                x_pow *= -x_half_sq;
-                h_k += 1.0 / static_cast<double>(k);
-            }
-
-            double h_k1 = h_k + 1.0 / static_cast<double>(k + 1);
-            double term = x_pow / (fact_k * fact_k1) * (h_k + h_k1);
-            sum += term;
-            if (k > 0 && fabs(term) < 1e-15) break;
-        }
-
-        return sum;
-    }
-
-    __host__ __device__ double n1_func(double x)
-    {
-        if (fabs(x) < 1e-10) return -1e300;
-        return 2.0 / PI * (j1_series(x) * log(x / 2.0) + y1_regular(x));
-    }
-
     __host__ __device__ ComplexValue h0_2(double x)
     {
-        return ComplexValue(j0_series(x), -n0_func(x));
+        return ComplexValue(j0_func(x), -n0_func(x));
     }
 
     __host__ __device__ ComplexValue h1_2(double x)
     {
-        return ComplexValue(j1_series(x), -n1_func(x));
+        return ComplexValue(j1_func(x), -n1_func(x));
     }
 
     __host__ __device__ ComplexValue r_h0(double z)
     {
         if (z < 1e-12) return ComplexValue(1.0, -2.0 * GAMMA_E / PI);
 
-        double j0 = j0_series(z);
+        double j0 = j0_func(z);
         double lnz2 = log(z / 2.0);
+        if (z > 1.0)
+            return ComplexValue(j0, -n0_func(z) + (2.0 / PI) * lnz2);
+
         double y0reg = y0_regular(z);
         double re = j0;
         double im = (2.0 / PI) * lnz2 * (1.0 - j0) - (2.0 / PI) * y0reg;
@@ -427,8 +399,21 @@ namespace
 
     void validate_parameters(const SolverParameters& params)
     {
+        if (!std::isfinite(params.lambda) || !std::isfinite(params.theta) || !std::isfinite(params.skin_depth))
+            throw std::runtime_error("Solver parameters must be finite");
+        for (int p = 0; p < params.plate_count; ++p)
+        {
+            if (!std::isfinite(params.alpha[p]) || !std::isfinite(params.beta[p])
+                || !std::isfinite(half_length(params.alpha, params.beta, p))
+                || !std::isfinite(midpoint(params.alpha, params.beta, p)))
+                throw std::runtime_error("Plate coordinates and lengths must be finite");
+        }
         if (params.n <= 0) throw std::runtime_error("N должен быть положительным");
         if (params.m_quad != 0 && params.m_quad <= 0) throw std::runtime_error("M должен быть положительным");
+        long long total_unknowns = static_cast<long long>(params.n) * params.plate_count;
+        if (total_unknowns > std::numeric_limits<int>::max() / total_unknowns
+            || params.m_quad > std::numeric_limits<int>::max() / params.plate_count)
+            throw std::runtime_error("N or M exceeds the supported index range");
         if (params.lambda <= 0.0) throw std::runtime_error("Длина волны должна быть положительной");
         if (params.skin_depth < 0.0) throw std::runtime_error("Толщина скин-слоя не может быть отрицательной");
         if (params.alpha[0] >= params.beta[0] || params.alpha[1] >= params.beta[1])
@@ -508,6 +493,12 @@ int main(int argc, char** argv)
         double k_wave = 2.0 * PI / params.lambda;
         ComplexValue chi = surface_impedance(params.skin_depth, params.lambda);
         ComplexValue sheet_q = sheet_coefficient(chi, k_wave);
+        double max_argument = k_wave * (std::max(params.beta[0], params.beta[1]) - std::min(params.alpha[0], params.alpha[1]));
+        if (!std::isfinite(k_wave) || k_wave <= 0.0 || !std::isfinite(max_argument)
+            || !std::isfinite(chi.re) || !std::isfinite(chi.im)
+            || !std::isfinite(sheet_q.re) || !std::isfinite(sheet_q.im)
+            || !std::isfinite(params.theta * 180.0 / PI))
+            throw std::runtime_error("Derived solver parameters must be finite");
 
         std::vector<double> tau_q = build_tau_q(params.plate_count, m_quad);
         std::vector<double> tau_c = build_tau_c(params.plate_count, params.n);
@@ -668,10 +659,16 @@ int main(int argc, char** argv)
         cudaFree(d_pivots);
         cudaFree(d_info);
 
+        for (int i = 0; i < total_unknowns; ++i)
+        {
+            if (!std::isfinite(cuCreal(solution[i])) || !std::isfinite(cuCimag(solution[i])))
+                throw std::runtime_error("Non-finite solution coefficient at index " + std::to_string(i));
+        }
+
         std::cout << std::setprecision(17);
         std::cout << "status=ok\n";
         std::cout << "backend=CUDA (matrix + solve)\n";
-        std::cout << "model=thin_sheet_v2\n";
+        std::cout << "model=thin_sheet_v3\n";
         std::cout << "alpha1=" << params.alpha[0] << "\n";
         std::cout << "beta1=" << params.beta[0] << "\n";
         std::cout << "alpha2=" << params.alpha[1] << "\n";
